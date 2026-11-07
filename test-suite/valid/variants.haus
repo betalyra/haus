@@ -1,0 +1,12 @@
+[
+  None,
+  Some(1),
+  Point(1, 2),
+  Circle { radius: 5 },
+  Circle({ radius: 5 }),
+  Circle 	 { radius: 5 },
+  Err(NotFound("x")),
+  Polygon([Point(0, 0), Point(1, 1)]),
+  True, False,
+  A1_b,
+]

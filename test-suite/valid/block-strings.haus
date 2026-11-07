@@ -1,0 +1,27 @@
+{
+  simple: """
+    line one
+    line two
+    """,
+  relative: """
+      indented
+    base
+    """,
+  blank: """
+    a
+
+    b
+    """,
+  empty: """
+    """,
+  quotes: """
+    say "hi" and ""twice"" and \"""
+    """,
+  escapes: """
+    tab:\t unicode:\u{263A}
+    """,
+  trailing_newline: """
+    text
+
+    """,
+}

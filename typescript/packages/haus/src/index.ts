@@ -1,0 +1,39 @@
+import { HausSyntaxError } from "./errors.js"
+import { DEFAULT_LIMITS, Parser, type Limits } from "./parser.js"
+import type { Value } from "./value.js"
+
+export { HausSyntaxError } from "./errors.js"
+export { DEFAULT_LIMITS, MAX_DEPTH, type Limits } from "./parser.js"
+export { parseStream, StreamReader, type ChunkSource, type StreamOptions } from "./stream.js"
+export * from "./value.js"
+export { format, quote, stringify, type FormatOptions } from "./format.js"
+export { infer, inferSchema, printShape, RecordShape, Shape, VariantShape, type Inference, type PrintOptions } from "./infer.js"
+
+/** Parse a complete text into its sequence of top-level values. */
+export function parseAll(text: string, limits: Partial<Limits> = {}): Value[] {
+  return new Parser(text, undefined, { ...DEFAULT_LIMITS, ...limits }).parseSequence()
+}
+
+/**
+ * Like `parseAll`, but every value carries `start`/`end` offsets and records
+ * carry `keySpans`. Slower; meant for editors and language servers.
+ */
+export function parseWithLocations(text: string, limits: Partial<Limits> = {}): Value[] {
+  return new Parser(text, undefined, { ...DEFAULT_LIMITS, ...limits }, true).parseSequence()
+}
+
+/** Values with locations plus the [start, end) span of every comment (for editors). */
+export function parseDocument(text: string, limits: Partial<Limits> = {}): { values: Value[]; comments: [number, number][] } {
+  const parser = new Parser(text, undefined, { ...DEFAULT_LIMITS, ...limits }, true)
+  const values = parser.parseSequence()
+  return { values, comments: parser.comments }
+}
+
+/** Parse a complete text that must contain exactly one value. */
+export function parse(text: string, limits: Partial<Limits> = {}): Value {
+  const values = parseAll(text, limits)
+  if (values.length !== 1) {
+    throw new HausSyntaxError(`expected exactly one value, found ${values.length}`, 0, 1, 1)
+  }
+  return values[0]!
+}

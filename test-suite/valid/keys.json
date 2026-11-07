@@ -1,0 +1,30 @@
+[
+  {
+    "rec": {
+      "snake_case": {
+        "num": "1"
+      },
+      "camelCase": {
+        "num": "2"
+      },
+      "_private": {
+        "num": "3"
+      },
+      "x9": {
+        "num": "4"
+      },
+      "content-type": {
+        "num": "5"
+      },
+      "Upper": {
+        "num": "6"
+      },
+      "": {
+        "num": "7"
+      },
+      "with space": {
+        "num": "8"
+      }
+    }
+  }
+]

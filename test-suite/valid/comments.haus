@@ -1,0 +1,7 @@
+// leading
+{ /* before key */ a /* after key */ : /* before value */ 1 /* after value */, // trailing
+  b: Some(2) /* after a payload */,
+  /* /* nested */ still a comment */
+  c: 3, // end
+}
+// after

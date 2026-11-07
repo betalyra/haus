@@ -1,0 +1,32 @@
+{
+  "name": "@haus-fmt/effect",
+  "version": "0.1.0",
+  "description": "Decode haus data with Effect schemas",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@haus-fmt/haus": "workspace:*"
+  },
+  "peerDependencies": {
+    "effect": "^4.0.6"
+  },
+  "devDependencies": {
+    "@effect/vitest": "4.0.6",
+    "@types/node": "24.10.1",
+    "effect": "4.0.6",
+    "typescript": "5.9.3",
+    "vitest": "5.0.5"
+  }
+}

@@ -1,0 +1,183 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Haus",
+  "scopeName": "source.haus",
+  "patterns": [
+    {
+      "include": "#value"
+    }
+  ],
+  "repository": {
+    "value": {
+      "patterns": [
+        {
+          "include": "#comments"
+        },
+        {
+          "include": "#string-triple"
+        },
+        {
+          "include": "#quoted-key"
+        },
+        {
+          "include": "#string"
+        },
+        {
+          "include": "#number"
+        },
+        {
+          "include": "#key"
+        },
+        {
+          "include": "#tag"
+        },
+        {
+          "include": "#type-variable"
+        },
+        {
+          "include": "#operators"
+        }
+      ]
+    },
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.haus",
+          "begin": "//",
+          "end": "$",
+          "patterns": [
+            {
+              "include": "#bidi"
+            }
+          ]
+        },
+        {
+          "include": "#block-comment"
+        }
+      ]
+    },
+    "block-comment": {
+      "name": "comment.block.haus",
+      "begin": "/\\*",
+      "end": "\\*/",
+      "patterns": [
+        {
+          "include": "#block-comment"
+        },
+        {
+          "include": "#bidi"
+        }
+      ]
+    },
+    "escape": {
+      "patterns": [
+        {
+          "name": "constant.character.escape.haus",
+          "match": "\\\\(?:[\"\\\\nrt]|u\\{[0-9A-Fa-f]{1,6}\\})"
+        },
+        {
+          "name": "invalid.illegal.escape.haus",
+          "match": "\\\\."
+        }
+      ]
+    },
+    "string-triple": {
+      "name": "string.quoted.triple.haus",
+      "begin": "\"\"\"",
+      "end": "\"\"\"",
+      "patterns": [
+        {
+          "include": "#bidi"
+        },
+        {
+          "include": "#escape"
+        }
+      ]
+    },
+    "quoted-key": {
+      "match": "(\"(?:[^\"\\\\]|\\\\.)*\")\\s*(?=:)",
+      "captures": {
+        "1": {
+          "name": "support.type.property-name.haus"
+        }
+      }
+    },
+    "string": {
+      "name": "string.quoted.double.haus",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "include": "#bidi"
+        },
+        {
+          "include": "#escape"
+        }
+      ]
+    },
+    "number": {
+      "patterns": [
+        {
+          "name": "constant.numeric.hex.haus",
+          "match": "-?\\b0[xX][0-9A-Fa-f](?:_?[0-9A-Fa-f])*\\b"
+        },
+        {
+          "name": "constant.numeric.binary.haus",
+          "match": "-?\\b0[bB][01](?:_?[01])*\\b"
+        },
+        {
+          "name": "constant.numeric.decimal.haus",
+          "match": "-?\\b[0-9](?:_?[0-9])*(?:\\.[0-9](?:_?[0-9])*)?(?:[eE][+-]?[0-9]+)?\\b"
+        }
+      ]
+    },
+    "key": {
+      "match": "\\b([a-z_][A-Za-z0-9_]*)\\s*(?=:)",
+      "captures": {
+        "1": {
+          "name": "support.type.property-name.haus"
+        }
+      }
+    },
+    "tag": {
+      "name": "constant.other.variant.haus",
+      "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+    },
+    "type-variable": {
+      "name": "variable.parameter.type.haus",
+      "match": "\\b[a-z_][A-Za-z0-9_]*\\b"
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "punctuation.definition.record.closed.haus",
+          "match": "\\{\\||\\|\\}"
+        },
+        {
+          "name": "keyword.operator.row.haus",
+          "match": "\\|"
+        },
+        {
+          "name": "keyword.operator.assignment.haus",
+          "match": "="
+        },
+        {
+          "name": "punctuation.definition.variant.haus",
+          "match": "[<>]"
+        },
+        {
+          "name": "punctuation.separator.key-value.haus",
+          "match": ":"
+        },
+        {
+          "name": "punctuation.separator.comma.haus",
+          "match": ","
+        }
+      ]
+    },
+    "bidi": {
+      "name": "invalid.illegal.bidi.haus",
+      "match": "[\u202a-\u202e\u2066-\u2069]"
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "haus-typescript",
+  "private": true,
+  "scripts": {
+    "build": "pnpm --filter './packages/*' build",
+    "test": "pnpm build && pnpm --filter './packages/*' test",
+    "typecheck": "pnpm build && pnpm -r typecheck"
+  }
+}

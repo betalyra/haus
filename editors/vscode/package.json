@@ -1,0 +1,119 @@
+{
+  "name": "haus",
+  "displayName": "Haus",
+  "description": "Syntax highlighting and language server for the haus data format",
+  "version": "0.5.0",
+  "publisher": "haus-fmt",
+  "engines": {
+    "vscode": "^1.91.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "main": "./dist/extension.js",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "package": "node build.mjs && vsce package --no-dependencies --allow-missing-repository --skip-license -o haus.vsix"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "haus",
+        "aliases": [
+          "Haus",
+          "haus"
+        ],
+        "extensions": [
+          ".haus"
+        ],
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "haus-schema",
+        "aliases": [
+          "Haus Schema"
+        ],
+        "filenamePatterns": [
+          "*.schema.haus"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "haus",
+        "scopeName": "source.haus",
+        "path": "./syntaxes/haus.tmLanguage.json"
+      },
+      {
+        "language": "haus-schema",
+        "scopeName": "source.haus.schema",
+        "path": "./syntaxes/haus-schema.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "haus.inferSchema",
+        "title": "Infer Schema from This File",
+        "category": "haus"
+      },
+      {
+        "command": "haus.print.pretty",
+        "title": "Pretty Print (one entry per line)",
+        "category": "haus"
+      },
+      {
+        "command": "haus.print.compact",
+        "title": "Compact (one item per line, drops comments)",
+        "category": "haus"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "haus.inferSchema",
+          "when": "editorLangId == haus"
+        },
+        {
+          "command": "haus.print.pretty",
+          "when": "editorLangId == haus"
+        },
+        {
+          "command": "haus.print.compact",
+          "when": "editorLangId == haus"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "haus.inferSchema",
+          "when": "editorLangId == haus",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configurationDefaults": {
+      "[haus]": {
+        "editor.tabSize": 2,
+        "editor.insertSpaces": true,
+        "editor.defaultFormatter": "haus-fmt.haus"
+      }
+    }
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "@types/vscode": "1.91.0",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3",
+    "vscode-languageclient": "10.1.2",
+    "vscode-languageserver": "10.1.2",
+    "vscode-languageserver-textdocument": "1.0.16",
+    "@vscode/vsce": "4.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/haus-fmt/haus"
+  }
+}

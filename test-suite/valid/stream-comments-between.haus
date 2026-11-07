@@ -1,0 +1,3 @@
+A, // one
+/* two */ B, // , not a separator
+C

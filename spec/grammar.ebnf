@@ -1,0 +1,87 @@
+(* haus data grammar, draft 0.2 (prose: spec/README.md)
+   Notation: W3C EBNF (as used in the XML spec).
+   Input is UTF-8 text. A leading byte order mark (U+FEFF) is ignored.
+
+   ─────────────────────────────────────────────────────────────────────
+   Structure
+   ───────────────────────────────────────────────────────────────────── *)
+
+file        ::= ws ( value ws ( "," ws value ws )* ( "," ws )? )?
+                (* A file is a sequence of zero or more values. A "document"
+                   is a sequence of one. Writers of streams SHOULD put a comma
+                   after every value, including the last. *)
+
+value       ::= record | array | variant | string | number
+
+record      ::= "{" ws ( field ws ( "," ws field ws )* ( "," ws )? )? "}"
+field       ::= key ws ":" ws value
+key         ::= ident | basic_string
+
+array       ::= "[" ws ( value ws ( "," ws value ws )* ( "," ws )? )? "]"
+
+variant     ::= tag ( [ \t]* payload )?
+payload     ::= "(" ws value ws ( "," ws value ws )* ( "," ws )? ")"
+              | record
+                (* The payload must start on the same line as the tag: only
+                   spaces and tabs in between, no line break and no comment.
+                   So a forgotten comma (`Heartbeat⏎{ a: 1 }`) is an error
+                   instead of silently becoming a payload.
+                   `Tag()` (empty parentheses) is not allowed. Write `Tag`.
+                   `Tag { ... }` and `Tag({ ... })` denote the same value. *)
+
+(* ─────────────────────────────────────────────────────────────────────
+   Lexical
+   ───────────────────────────────────────────────────────────────────── *)
+
+ident       ::= [a-z_] [A-Za-z0-9_]*       (* record keys only *)
+tag         ::= [A-Z] [A-Za-z0-9_]*        (* variant tags only *)
+
+number      ::= "-"? ( decimal | hex | binary )
+decimal     ::= int frac? exp?
+int         ::= "0" | [1-9] ( "_"? [0-9] )*
+frac        ::= "." digits
+exp         ::= [eE] [+-]? digits
+digits      ::= [0-9] ( "_"? [0-9] )*
+hex         ::= "0x" [0-9A-Fa-f] ( "_"? [0-9A-Fa-f] )*
+binary      ::= "0b" [01] ( "_"? [01] )*
+                (* A number must not be directly followed by [A-Za-z0-9_.].
+                   So `007`, `1.`, `1_`, `0x` and `1e` are errors. *)
+
+string      ::= basic_string | block_string
+
+basic_string ::= '"' ( basic_char | escape )* '"'
+basic_char  ::= [^"\#x00-#x1F#x202A-#x202E#x2066-#x2069]
+                (* no raw control characters (incl. tab/newline) and no raw
+                   bidirectional controls; write those as escapes *)
+escape      ::= "\" ( '"' | "\" | "n" | "r" | "t" | "u{" hex_digit hex_digit? hex_digit?
+                      hex_digit? hex_digit? hex_digit? "}" )
+                (* \u{...} must be a Unicode scalar value: <= 10FFFF and not a
+                   surrogate (D800-DFFF). *)
+hex_digit   ::= [0-9A-Fa-f]
+
+block_string ::= '"""' [ \t]* newline block_line* [ \t]* '"""'
+block_line  ::= ( block_char | escape )* newline
+block_char  ::= [^\#x00-#x08#x0A-#x1F#x202A-#x202E#x2066-#x2069]  (* tab allowed *)
+                (* Content may not contain an unescaped `"""`.
+                   Indentation: the whitespace before the closing `"""` is the
+                   indent. It is removed from the start of every content line.
+                   A non-blank line that doesn't start with exactly that indent
+                   is an error. Blank lines become empty. Lines are joined with
+                   "\n" (CRLF is normalised). The newline before the closing
+                   `"""` is not part of the value. Escapes are processed after
+                   indentation is removed. *)
+
+newline     ::= #x0A | #x0D #x0A
+
+ws          ::= ( [ \t] | newline | comment )*
+comment     ::= line_comment | block_comment
+line_comment  ::= "//" [^#x0A#x202A-#x202E#x2066-#x2069]*
+block_comment ::= "/*" ( block_comment | comment_char )* "*/"
+                (* block comments nest; comment_char is any character except
+                   the bidirectional controls #x202A-#x202E and #x2066-#x2069
+                   ("Trojan Source": reordered text hidden in comments) *)
+
+(* ─────────────────────────────────────────────────────────────────────
+   Semantic rules: see spec/README.md (data model, equality, numbers,
+   Unicode, streams, limits, error positions, security, evolution).
+   ───────────────────────────────────────────────────────────────────── *)

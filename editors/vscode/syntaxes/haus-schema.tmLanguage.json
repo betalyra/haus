@@ -1,0 +1,63 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Haus Schema",
+  "scopeName": "source.haus.schema",
+  "patterns": [
+    {
+      "include": "source.haus#comments"
+    },
+    {
+      "include": "source.haus#string-triple"
+    },
+    {
+      "include": "source.haus#quoted-key"
+    },
+    {
+      "include": "source.haus#string"
+    },
+    {
+      "include": "#type-decl"
+    },
+    {
+      "include": "source.haus#key"
+    },
+    {
+      "include": "#constructor"
+    },
+    {
+      "include": "#type"
+    },
+    {
+      "include": "source.haus#type-variable"
+    },
+    {
+      "include": "source.haus#operators"
+    }
+  ],
+  "repository": {
+    "type-decl": {
+      "match": "\\b(type)\\s+([A-Z][A-Za-z0-9_]*)",
+      "captures": {
+        "1": {
+          "name": "keyword.other.type.haus"
+        },
+        "2": {
+          "name": "entity.name.type.declaration.haus"
+        }
+      }
+    },
+    "constructor": {
+      "comment": "A variant arm: the tag right after `<` or `|`.",
+      "match": "(?:(?<=<)|(?<=\\|))\\s*([A-Z][A-Za-z0-9_]*)",
+      "captures": {
+        "1": {
+          "name": "constant.other.variant.haus"
+        }
+      }
+    },
+    "type": {
+      "name": "entity.name.type.haus",
+      "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+    }
+  }
+}

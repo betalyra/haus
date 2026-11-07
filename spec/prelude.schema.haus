@@ -1,0 +1,63 @@
+// prelude.schema.haus: the standard types. They ship with the spec, are
+// versioned with it, and are always in scope. There are no imports from URLs.
+//
+// None of these are keywords. `True` is an ordinary tag, and the data grammar
+// has no reserved words at all. The prelude only fixes what these tags MEAN,
+// so every language binding can map them to its native type.
+
+// ── Core variants ────────────────────────────────────────────
+type Bool       = < False | True >
+type Maybe a    = < None | Some a >      // a missing field of type Maybe T decodes as None
+type Result e a = < Err e | Ok a >
+
+// ── Partial updates ──────────────────────────────────────────
+// Absence and None are different in haus. As a record field, Patch a reads:
+//   field absent → Keep          (leave unchanged)
+//   field: x     → Set x         (for Patch (Maybe T): None clears, Some(v) sets)
+type Patch a = < Keep | Set a >
+
+// ── Collections ──────────────────────────────────────────────
+// Records only have string keys. Maps with other keys and sets are written
+// as tagged arrays; decoders reject duplicate keys / elements.
+type Map k v = < Map (Array (k, v)) >     // Map([(1, "one"), (2, "two")])
+type Set a   = < Set (Array a) >          // Set([EUR, USD])
+
+// ── Numbers ──────────────────────────────────────────────────
+// Number literals are exact decimals: the parser keeps the literal as written,
+// including trailing zeros. The schema picks the native representation:
+//
+//   Int                    arbitrary-precision integer   (BigInt)
+//   Int8 .. Int64          bounded integers, out-of-range is an error
+//   UInt8 .. UInt64
+//   Float32, Float64       binary floating point, rounding is accepted;
+//                          also accept the tags NaN, Infinity, NegInfinity
+//   Number                 = Float64
+//   Decimal                exact decimal, scale preserved (19.90 != 19.9)
+//
+// A schemaless decoder must not silently lose precision: it returns numbers
+// as exact decimals (or their literal text), never as a lossy float.
+
+// ── Money ────────────────────────────────────────────────────
+type Money    = < Money Decimal Currency >          // Money(19.99, EUR)
+type Currency = < EUR | USD | GBP | CHF | JPY | CNY | BRL | _ >
+                // ISO 4217 codes; open, so new or crypto currencies (BTC) pass
+
+// ── Time ─────────────────────────────────────────────────────
+// The same model as JavaScript's Temporal and Java's java.time. Payloads
+// are RFC 3339 / RFC 9557 strings, always in the ISO (Gregorian) calendar.
+// Bindings map them to native types (Temporal.PlainDate, LocalDate, ...).
+type Date          = < Date String >           // Date("2026-11-07")
+type Time          = < Time String >           // Time("14:30:00.250")
+type DateTime      = < DateTime String >       // DateTime("2026-11-07T14:30:00"), no zone
+type Instant       = < Instant String >        // Instant("2026-11-07T14:30:00Z")
+type ZonedDateTime = < ZonedDateTime String >  // ZonedDateTime("2027-03-29T10:00:00+01:00[Europe/Lisbon]")
+type Duration      = < Duration String >       // Duration("PT1H30M")
+
+// ── Other formatted scalars ──────────────────────────────────
+type Bytes = < Bytes String >                  // Bytes("aGF1cw==")  base64
+type Uuid  = < Uuid String >                   // Uuid("0f8fad5b-d9cb-469f-a165-70867728950e")
+
+// ── Streams ──────────────────────────────────────────────────
+// `Stream a` describes a whole file as a sequence of `a`s, rather than a
+// single value. It is only valid as the root type of a file.
+//   type Events = Stream AppEvent

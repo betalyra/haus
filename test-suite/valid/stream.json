@@ -1,0 +1,42 @@
+[
+  {
+    "tag": "UserCreated",
+    "args": [
+      {
+        "rec": {
+          "id": {
+            "num": "1"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "tag": "UserRenamed",
+    "args": [
+      {
+        "rec": {
+          "id": {
+            "num": "1"
+          },
+          "to": "Jan"
+        }
+      }
+    ]
+  },
+  {
+    "tag": "Heartbeat"
+  },
+  {
+    "num": "42"
+  },
+  "text",
+  [
+    {
+      "num": "1"
+    },
+    {
+      "num": "2"
+    }
+  ]
+]

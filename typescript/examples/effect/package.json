@@ -1,0 +1,19 @@
+{
+  "name": "haus-example-effect",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prestart": "pnpm --filter @haus-fmt/haus --filter @haus-fmt/effect build",
+    "start": "node src/main.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@haus-fmt/effect": "workspace:*",
+    "@haus-fmt/haus": "workspace:*",
+    "effect": "4.0.6"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "typescript": "5.9.3"
+  }
+}

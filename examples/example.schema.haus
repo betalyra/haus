@@ -1,0 +1,63 @@
+// example.schema.haus: optional schema layer, PureScript-flavoured but with
+// single-colon annotations. It can't be confused with the data syntax:
+// in data a field's right-hand side is a value, here it's a type.
+//
+// Prelude types (Bool, Maybe, Result, Date, Decimal, ...) are always in scope.
+
+// ── Closed variant: exactly these tags, anything else is rejected ──
+type Level = < Debug | Info | Warn | Error >
+
+type Point = < Point Number Number >
+
+type Shape =
+  < Circle  { center: Point, radius: Number }
+  | Rect    { topLeft: Point, width: Number, height: Number }
+  | Polygon (Array Point)
+  | Empty
+  >
+
+// ── Open variants (row of tags) ──────────────────────────────
+// `| r` = "these tags plus whatever else".
+type UserEvent r =
+  < UserCreated { id: Int, email: String }
+  | UserRenamed { id: Int, from: String, to: String }
+  | r
+  >
+
+type PaymentEvent r =
+  < PaymentReceived { id: Int, amount: Money } | r >
+
+// Money, Currency, Date, Instant, ... come from the prelude.
+type Theme = < Light | Dark | _ >   // `_` = open, anonymous row
+
+// Composing rows. This one is closed: exactly four tags.
+type AppEvent = UserEvent (PaymentEvent < Heartbeat >)
+
+// ── Extensible records (row of fields) ───────────────────────
+// Two rows: `k` extends the kind tags, `r` extends the fields.
+type Entity k r = { id: Int, kind: < Person | Robot | k > | r }
+
+// Closed record: extra fields are a validation error.
+type Headers = {| "content-type": String, "x-request-id": String |}
+
+// ── Stream root (for stream.haus) ────────────────────────────
+// A server that only handles user events: its row is open, so a
+// PaymentReceived in the stream decodes as Unknown instead of failing.
+type ServerEvents = Stream (UserEvent _)
+
+// ── Root ─────────────────────────────────────────────────────
+type Root =
+  { name:     String
+  , version:  Int
+  , enabled:  Bool
+  , level:    Level
+  , theme:    Theme
+  , price:    Decimal
+  , released: Date
+  , meeting:  ZonedDateTime
+  , timeout:  Maybe Int
+  , shapes:   Array Shape
+  , events:   Array AppEvent
+  , entities: Array (Entity _ _)
+  | _                      // root is open: unknown fields are tolerated
+  }

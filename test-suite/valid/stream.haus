@@ -1,0 +1,9 @@
+UserCreated { id: 1 },
+UserRenamed {
+  id: 1,
+  to: "Jan",
+},
+Heartbeat,
+42,
+"text",
+[1, 2],

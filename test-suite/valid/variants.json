@@ -1,0 +1,111 @@
+[
+  [
+    {
+      "tag": "None"
+    },
+    {
+      "tag": "Some",
+      "args": [
+        {
+          "num": "1"
+        }
+      ]
+    },
+    {
+      "tag": "Point",
+      "args": [
+        {
+          "num": "1"
+        },
+        {
+          "num": "2"
+        }
+      ]
+    },
+    {
+      "tag": "Circle",
+      "args": [
+        {
+          "rec": {
+            "radius": {
+              "num": "5"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "tag": "Circle",
+      "args": [
+        {
+          "rec": {
+            "radius": {
+              "num": "5"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "tag": "Circle",
+      "args": [
+        {
+          "rec": {
+            "radius": {
+              "num": "5"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "tag": "Err",
+      "args": [
+        {
+          "tag": "NotFound",
+          "args": [
+            "x"
+          ]
+        }
+      ]
+    },
+    {
+      "tag": "Polygon",
+      "args": [
+        [
+          {
+            "tag": "Point",
+            "args": [
+              {
+                "num": "0"
+              },
+              {
+                "num": "0"
+              }
+            ]
+          },
+          {
+            "tag": "Point",
+            "args": [
+              {
+                "num": "1"
+              },
+              {
+                "num": "1"
+              }
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "tag": "True"
+    },
+    {
+      "tag": "False"
+    },
+    {
+      "tag": "A1_b"
+    }
+  ]
+]

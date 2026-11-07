@@ -1,0 +1,33 @@
+{
+  "name": "@haus-fmt/haus",
+  "version": "0.1.0",
+  "description": "Streaming parser for the haus data format",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./schema": {
+      "types": "./dist/schema.d.ts",
+      "default": "./dist/schema.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@effect/vitest": "4.0.6",
+    "@types/node": "24.10.1",
+    "effect": "4.0.6",
+    "typescript": "5.9.3",
+    "vitest": "5.0.5"
+  }
+}
