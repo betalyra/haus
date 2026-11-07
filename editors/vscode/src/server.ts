@@ -11,7 +11,7 @@ import {
   type HRecord,
   type Inference,
   type Value,
-} from "@haus-fmt/haus"
+} from "@betalyra/haus-fmt"
 import {
   createConnection,
   DiagnosticSeverity,
@@ -189,7 +189,7 @@ function inferred(inference: Inference, v: Value): string {
   const shape = inference.shapeOf.get(v)
   if (!shape) return ""
   const seen = shape.occurrences === 1 ? "1 value" : `${shape.occurrences} values`
-  return `\n\n---\n\nInferred from this file (${seen} at this position):\n\n\`\`\`haus-schema\n${printShape(shape, { width: 60 })}\n\`\`\``
+  return `\n\n---\n\nInferred from this file (${seen} at this position):\n\n\`\`\`haus-schema\n${printShape(shape, { width: 60, context: inference.root })}\n\`\`\``
 }
 
 // ── formatting ───────────────────────────────────────────────

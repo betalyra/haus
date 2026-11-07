@@ -22,9 +22,9 @@
  *   ZonedDateTime("…")       → DateTimeZoned
  *   unknown tag in OpenUnion → { _tag: "@unknown", tag, value }
  */
-import { HausSyntaxError, parseAll, parseStream, stringify, type ChunkSource, type FormatOptions, type Value } from "@haus-fmt/haus"
+import { HausSyntaxError, parseAll, parseStream, stringify, type ChunkSource, type FormatOptions, type Value } from "@betalyra/haus-fmt"
 import { Effect, Schema, SchemaAST, Stream } from "effect"
-import { compile, compileEncoder, ConversionError, POSITIONAL, PRELUDE_TAG, UNKNOWN_TAG } from "./convert.js"
+import { checkSchema, compile, compileEncoder, ConversionError, decodeBudget, DEFAULT_ENCODE_STEPS, guarded, POSITIONAL, PRELUDE_TAG, UNKNOWN_TAG } from "./convert.js"
 
 // ── errors ───────────────────────────────────────────────────
 
@@ -94,11 +94,14 @@ const decodeOptions = { onExcessProperty: "ignore", errors: "first" } as const
 
 /** Decode an already-parsed haus value. */
 export const decodeValue = <S extends Schema.Top>(schema: S) => {
-  const convert = compile(SchemaAST.toEncoded(schema.ast))
+  const ast = SchemaAST.toEncoded(schema.ast)
+  checkSchema(ast)
+  const convert = compile(ast)
   const decode = Schema.decodeUnknownEffect(schema)
   return (value: Value): Effect.Effect<S["Type"], HausSchemaError, S["DecodingServices"]> =>
     Effect.try({
-      try: () => convert(value),
+      // Conversion work is bounded by the size of the input (see convert.ts).
+      try: () => guarded(decodeBudget(value), () => convert(value)),
       catch: (e) => {
         if (e instanceof ConversionError) return new HausSchemaError({ message: e.message })
         throw e
@@ -140,12 +143,21 @@ export const decodeStream = <S extends Schema.Top>(schema: S) => {
 
 /** Encode a typed value into a haus `Value` (Effect's encoder runs first: transformations, filters…). */
 export const encodeValue = <S extends Schema.Top>(schema: S) => {
-  const toValue = compileEncoder(SchemaAST.toEncoded(schema.ast))
+  const ast = SchemaAST.toEncoded(schema.ast)
+  checkSchema(ast)
+  const toValue = compileEncoder(ast)
   const encode = Schema.encodeUnknownEffect(schema)
   return (value: S["Type"]): Effect.Effect<Value, HausSchemaError, S["EncodingServices"]> =>
     encode(value, { errors: "first" }).pipe(
-      Effect.map(toValue),
       Effect.mapError((e) => new HausSchemaError({ message: e.message })),
+      Effect.flatMap((encoded) =>
+        Effect.try({
+          try: () => guarded(DEFAULT_ENCODE_STEPS, () => toValue(encoded)),
+          catch: (e) => {
+            if (e instanceof ConversionError) return new HausSchemaError({ message: e.message })
+            throw e
+          },
+        })),
     )
 }
 

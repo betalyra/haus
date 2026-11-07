@@ -10,7 +10,7 @@ importers:
 
   examples/basic:
     dependencies:
-      '@haus-fmt/haus':
+      '@betalyra/haus-fmt':
         specifier: workspace:*
         version: link:../../packages/haus
     devDependencies:
@@ -23,12 +23,12 @@ importers:
 
   examples/effect:
     dependencies:
-      '@haus-fmt/effect':
-        specifier: workspace:*
-        version: link:../../packages/effect
-      '@haus-fmt/haus':
+      '@betalyra/haus-fmt':
         specifier: workspace:*
         version: link:../../packages/haus
+      '@betalyra/haus-fmt-effect':
+        specifier: workspace:*
+        version: link:../../packages/effect
       effect:
         specifier: 4.0.6
         version: 4.0.6
@@ -42,7 +42,7 @@ importers:
 
   packages/effect:
     dependencies:
-      '@haus-fmt/haus':
+      '@betalyra/haus-fmt':
         specifier: workspace:*
         version: link:../haus
     devDependencies:

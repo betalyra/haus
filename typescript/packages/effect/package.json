@@ -1,5 +1,5 @@
 {
-  "name": "@haus-fmt/effect",
+  "name": "@betalyra/haus-fmt-effect",
   "version": "0.1.0",
   "description": "Decode haus data with Effect schemas",
   "type": "module",
@@ -17,7 +17,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@haus-fmt/haus": "workspace:*"
+    "@betalyra/haus-fmt": "workspace:*"
   },
   "peerDependencies": {
     "effect": "^4.0.6"

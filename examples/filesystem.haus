@@ -1,0 +1,111 @@
+// A file system snapshot: folders hold entries, archives hold entries too, and
+// a mount holds a whole folder. Three types nest in each other in turns
+// (Folder → Archive → Folder → Mount → Folder …), and every level adds its own
+// attributes and variants:
+//
+// - only the top folder has `owner`, only some entries have `hidden`
+// - files have different kinds: Text { encoding }, Image { width, height }, Binary
+// - `size` is a whole number in most places but a decimal in one
+// - links are positional (`Link(Path("…"))`), the rest are records
+//
+// Hover `children`, `contents` or `root` in VS Code, or run "haus: Infer Schema
+// from This File": inference merges what it saw at every level into one
+// recursive type, and fields that only some levels have become Maybe.
+
+Folder {
+  name: "home",
+  owner: "ada",
+  children: [
+    File {
+      name: "notes.txt",
+      size: 1204,
+      kind: Text {
+        encoding: Utf8,
+      },
+      modified: Instant("2026-11-05T08:30:00Z"),
+    },
+    Folder {
+      name: "photos",
+      shared: True,
+      children: [
+        File {
+          name: "lisbon.jpg",
+          size: 2483011,
+          kind: Image {
+            width: 4032,
+            height: 3024,
+          },
+        },
+        File {
+          name: ".thumbs.db",
+          size: 12,
+          kind: Binary,
+          hidden: True,
+        },
+        Archive {
+          name: "2025.zip",
+          format: Zip,
+          contents: [
+            Folder {
+              name: "summer",
+              children: [
+                File {
+                  name: "beach.jpg",
+                  size: 1830022,
+                  kind: Image {
+                    width: 3000,
+                    height: 2000,
+                  },
+                },
+                Link(Path("../../lisbon.jpg")),
+              ],
+            },
+            File {
+              name: "index.csv",
+              size: 0.5,
+              kind: Text {
+                encoding: Ascii,
+              },
+              checksum: Sha256("9f86d0…"),
+            },
+          ],
+        },
+      ],
+    },
+    Mount {
+      name: "backup",
+      device: Usb {
+        vendor: "Kingston",
+        serial: "0042",
+      },
+      root: Folder {
+        name: "/",
+        children: [
+          Archive {
+            name: "old-home.tar",
+            format: Tar {
+              compressed: Some(Gzip),
+            },
+            contents: [
+              Folder {
+                name: "home",
+                owner: "ada",
+                children: [
+                  Mount {
+                    name: "nested",
+                    device: Network(Url("smb://nas/share")),
+                    root: Folder {
+                      name: "/",
+                      children: [],
+                      hidden: True,
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    },
+  ],
+}

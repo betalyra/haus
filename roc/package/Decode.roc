@@ -4,6 +4,12 @@
 ## path that is built on the way out (`$[1].amount.currency`), so decoders
 ## don't need to know where they are.
 ##
+## Decoders are plain functions, so recursion (a tree decoder calling itself
+## for the children) is just a recursive function, bounded by the parser's
+## depth limit. Keep each decoder to one pass: pick the case by the tag and
+## never try one decoder after another on the same value, which would grow
+## exponentially with the nesting depth (spec §9.8).
+##
 ##     user_created : Value -> Try({ id : U64, email : Str }, Decode.Error)
 ##     user_created = |v| {
 ##         fields = Decode.record(v)?

@@ -3,13 +3,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "prestart": "pnpm --filter @haus-fmt/haus --filter @haus-fmt/effect build",
+    "prestart": "pnpm --filter @betalyra/haus-fmt --filter @betalyra/haus-fmt-effect build",
     "start": "node src/main.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@haus-fmt/effect": "workspace:*",
-    "@haus-fmt/haus": "workspace:*",
+    "@betalyra/haus-fmt-effect": "workspace:*",
+    "@betalyra/haus-fmt": "workspace:*",
     "effect": "4.0.6"
   },
   "devDependencies": {

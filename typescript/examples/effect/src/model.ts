@@ -3,7 +3,7 @@
  * haus variants map to TaggedStruct, closed sets of tags to Literals, and
  * open variants to Haus.OpenUnion.
  */
-import * as Haus from "@haus-fmt/effect"
+import * as Haus from "@betalyra/haus-fmt-effect"
 import { Schema } from "effect"
 
 /** Open: unknown currencies (CHF, BTC, …) decode as Haus.Unknown instead of failing. */

@@ -8,7 +8,7 @@
  * mismatch it falls back to a schema-less conversion and lets Effect report
  * the error with its path.
  */
-import { arr as vArr, num as vNum, rec as vRec, str as vStr, variant as vVariant, type HVariant, type Value } from "@haus-fmt/haus"
+import { arr as vArr, num as vNum, rec as vRec, str as vStr, variant as vVariant, type HVariant, type Value } from "@betalyra/haus-fmt"
 import { Array as Arr, BigDecimal, DateTime, Match, Option, Predicate, SchemaAST } from "effect"
 
 export type Converter = (value: Value) => unknown
@@ -42,8 +42,70 @@ const scalarString = (v: Value, tag?: string): Option.Option<string> =>
     Option.flatMap(({ args: [arg] }) => (arg?.kind === "string" ? Option.some(arg.value) : Option.none())),
   )
 
+// ── limits ───────────────────────────────────────────────────
+
+/**
+ * Limits for one conversion. Converters are plain closures shared by all
+ * calls, so the entry points set these around each (synchronous) conversion.
+ */
+interface Guard {
+  steps: number
+  readonly maxSteps: number
+  depth: number
+}
+
+/** Nested converter calls: schema wrappers plus value levels, comfortably above the parser's 256 levels. */
+export const MAX_NESTING = 2048
+/** Steps per input value when decoding: conversion stays linear in the input. */
+export const STEPS_PER_VALUE = 16
+/** Default budget when encoding, which also bounds objects shared many times (a DAG). */
+export const DEFAULT_ENCODE_STEPS = 16 * 1024 * 1024
+
+let guard: Guard = { steps: 0, maxSteps: Infinity, depth: 0 }
+
+/** Run `f` with a fresh budget. */
+export const guarded = <R>(maxSteps: number, f: () => R): R => {
+  const saved = guard
+  guard = { steps: 0, maxSteps, depth: 0 }
+  try {
+    return f()
+  } finally {
+    guard = saved
+  }
+}
+
+const enter = () => {
+  if (++guard.steps > guard.maxSteps) throw new ConversionError(`conversion budget of ${guard.maxSteps} steps exceeded`)
+  if (guard.depth >= MAX_NESTING) throw new ConversionError(`value nested deeper than ${MAX_NESTING} levels (or cyclic)`)
+  guard.depth++
+}
+
+const leave = () => {
+  guard.depth--
+}
+
+/** The decode budget for `value`: proportional to its size. Fails on values too deep or large to be parsed input. */
+export const decodeBudget = (value: Value): number => {
+  let count = 0
+  const stack: [Value, number][] = [[value, 0]]
+  while (stack.length > 0) {
+    const [v, depth] = stack.pop()!
+    if (++count > 64 * 1024 * 1024) throw new ConversionError("value has too many nodes")
+    if (depth > 256) throw new ConversionError("value nested deeper than 256 levels (or cyclic)")
+    if (v.kind === "array") for (const x of v.items) stack.push([x, depth + 1])
+    else if (v.kind === "record") for (const x of v.fields.values()) stack.push([x, depth + 1])
+    // `Tag { … }` is one level, as in the parser; `Tag(a, b)` nests its arguments.
+    else if (v.kind === "variant") {
+      const [first] = v.args
+      if (v.args.length === 1 && first!.kind === "record") stack.push([first!, depth])
+      else for (const x of v.args) stack.push([x, depth + 1])
+    }
+  }
+  return STEPS_PER_VALUE * count + 1024
+}
+
 /** Schema-less conversion, used where the schema gives no guidance. */
-export const generic: Converter = Match.type<Value>().pipe(
+const genericNode: Converter = Match.type<Value>().pipe(
   Match.discriminatorsExhaustive("kind")({
     string: (v) => v.value,
     number: (v) => Number(v.text),
@@ -59,6 +121,16 @@ export const generic: Converter = Match.type<Value>().pipe(
       }),
   }),
 )
+
+/** Schema-less conversion, used where the schema gives no guidance. */
+export const generic: Converter = (v) => {
+  enter()
+  try {
+    return genericNode(v)
+  } finally {
+    leave()
+  }
+}
 
 // ── AST helpers ──────────────────────────────────────────────
 
@@ -101,7 +173,14 @@ export const compile = (ast: AST): Converter => {
   const cached = cache.get(ast)
   if (cached) return cached
   let compiled: Converter | undefined
-  const lazy: Converter = (v) => (compiled ??= compileNode(resolve(ast)))(v)
+  const lazy: Converter = (v) => {
+    enter()
+    try {
+      return (compiled ??= compileNode(resolve(ast)))(v)
+    } finally {
+      leave()
+    }
+  }
   cache.set(ast, lazy)
   return lazy
 }
@@ -283,6 +362,15 @@ const decimalText = ({ value, scale }: BigDecimal.BigDecimal): string => {
 
 /** Schema-less conversion of plain JS data. */
 export const encodeGeneric = (js: unknown): Value => {
+  enter()
+  try {
+    return encodeGenericNode(js)
+  } finally {
+    leave()
+  }
+}
+
+const encodeGenericNode = (js: unknown): Value => {
   if (typeof js === "string") return vStr(js)
   if (typeof js === "number") return numberValue(js)
   if (typeof js === "bigint") return vNum(js.toString())
@@ -311,7 +399,14 @@ export const compileEncoder = (ast: AST): Encoder => {
   const cached = encCache.get(ast)
   if (cached) return cached
   let compiled: Encoder | undefined
-  const lazy: Encoder = (js) => (compiled ??= encodeNode(resolve(ast)))(js)
+  const lazy: Encoder = (js) => {
+    enter()
+    try {
+      return (compiled ??= encodeNode(resolve(ast)))(js)
+    } finally {
+      leave()
+    }
+  }
   encCache.set(ast, lazy)
   return lazy
 }
@@ -415,5 +510,69 @@ function encodeDeclaration(ast: SchemaAST.Declaration): Encoder {
     }
     default:
       return encodeGeneric
+  }
+}
+
+// ── schema checks ────────────────────────────────────────────
+
+/** What a union member looks like in haus, for members that contain further values. */
+const containerKind = (m: AST): string | undefined => {
+  const tag = Option.getOrUndefined(tagOf(m))
+  if (tag !== undefined) return `variant ${tag}`
+  if (m._tag === "Objects") return "record"
+  if (m._tag === "Arrays") return "array"
+  if (m._tag === "Declaration" && m.typeParameters.length > 0) return `declaration ${String(Option.getOrUndefined(declarationId(m)))}`
+  return undefined
+}
+
+/**
+ * Reject recursive schemas with ambiguous unions. Effect decodes a union by
+ * trying its members in turn; when two members can both start matching the
+ * same nested value (two untagged structs, two array types), a recursive
+ * schema makes that exponential in the nesting depth: a small hostile input
+ * can keep a server busy for hours. Members told apart by a `_tag` are fine.
+ */
+export const checkSchema = (root: AST): void => {
+  const seen = new Set<AST>()
+  let recursive = false
+  const ambiguous = new Set<string>()
+  const visit = (ast: AST): void => {
+    if (seen.has(ast)) return
+    seen.add(ast)
+    switch (ast._tag) {
+      case "Suspend":
+        recursive = true
+        return visit(ast.thunk())
+      case "Objects":
+        ast.propertySignatures.forEach((p) => visit(p.type))
+        ast.indexSignatures.forEach((i) => visit(i.type))
+        return
+      case "Arrays":
+        ast.elements.forEach(visit)
+        ast.rest.forEach(visit)
+        return
+      case "Declaration":
+        ast.typeParameters.forEach(visit)
+        return
+      case "Union": {
+        const kinds = new Map<string, number>()
+        for (const m of members(ast)) {
+          const kind = containerKind(m)
+          if (kind !== undefined) kinds.set(kind, (kinds.get(kind) ?? 0) + 1)
+        }
+        for (const [kind, n] of kinds) if (n > 1) ambiguous.add(`${n} members of kind ${kind}`)
+        ast.types.forEach(visit)
+        return
+      }
+      default:
+        return
+    }
+  }
+  visit(root)
+  if (recursive && ambiguous.size > 0) {
+    throw new Error(
+      `Haus: a recursive schema contains a union whose members can't be told apart (${[...ambiguous].join("; ")}). ` +
+        "Decoding it takes exponential time on nested input. Give the members a _tag (Schema.TaggedStruct).",
+    )
   }
 }

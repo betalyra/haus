@@ -7,7 +7,7 @@ export { DEFAULT_LIMITS, MAX_DEPTH, type Limits } from "./parser.js"
 export { parseStream, StreamReader, type ChunkSource, type StreamOptions } from "./stream.js"
 export * from "./value.js"
 export { format, quote, stringify, type FormatOptions } from "./format.js"
-export { infer, inferSchema, printShape, RecordShape, Shape, VariantShape, type Inference, type PrintOptions } from "./infer.js"
+export { infer, inferSchema, printShape, RecordShape, resolve, Shape, VariantShape, type Inference, type PrintOptions } from "./infer.js"
 
 /** Parse a complete text into its sequence of top-level values. */
 export function parseAll(text: string, limits: Partial<Limits> = {}): Value[] {

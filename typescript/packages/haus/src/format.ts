@@ -166,9 +166,13 @@ class Formatter {
 
   private all(values: readonly Value[]): string[] | undefined {
     const out: string[] = []
+    let length = 0
     for (const v of values) {
       const f = this.flat(v)
       if (f === undefined) return undefined
+      // Too wide to stay inline anyway: stop early, so nested payloads aren't
+      // rendered in full at every level (that would be quadratic in the depth).
+      if ((length += f.length + 2) > this.width) return undefined
       out.push(f)
     }
     return out
@@ -247,10 +251,17 @@ class Formatter {
     const src = this.source
 
     if (src !== undefined && from !== undefined && to !== undefined) {
-      for (const c of this.comments) {
+      // Comments and entries are sorted by position, so binary search keeps
+      // this linear in the comments of this container (not all comments).
+      const starts = entries.map((e) => e.start ?? -1)
+      const ends = entries.map((e) => e.end ?? -1)
+      for (let k = firstAtOrAfter(this.comments, from); k < this.comments.length; k++) {
+        const c = this.comments[k]!
         const [cs, ce] = c
-        if (cs < from || ce > to) continue
-        const owner = entries.findIndex((e) => e.start !== undefined && e.end !== undefined && cs >= e.start && cs < e.end)
+        if (cs >= to) break
+        if (ce > to) continue
+        const last = countBelow(starts, cs + 1) - 1 // last entry starting at or before cs
+        const owner = last >= 0 && cs < ends[last]! ? last : -1
         if (owner >= 0) {
           // Inside an entry: between key and value it moves above the entry;
           // deeper inside, the nested container places it.
@@ -258,8 +269,9 @@ class Formatter {
           if (e.valueStart !== undefined && cs < e.valueStart) leading[owner]!.push(c)
           continue
         }
-        const prev = findLast(entries, (e) => e.end !== undefined && e.end <= cs)
-        const next = entries.findIndex((e) => e.start !== undefined && e.start >= ce)
+        const prev = countBelow(ends, cs + 1) - 1 // last entry ending at or before cs
+        const n = countBelow(starts, ce) // first entry starting at or after ce
+        const next = n < entries.length ? n : -1
         if (prev >= 0 && !src.slice(entries[prev]!.end, cs).includes("\n")) trailing[prev]!.push(c)
         else if (next >= 0) leading[next]!.push(c)
         else dangling.push(c)
@@ -303,7 +315,8 @@ class Formatter {
   /** Is there a comment inside [start, end)? */
   private hasComments(start: number | undefined, end: number | undefined): boolean {
     if (start === undefined || end === undefined || this.comments.length === 0) return false
-    return this.comments.some(([s]) => s >= start && s < end)
+    const k = firstAtOrAfter(this.comments, start)
+    return k < this.comments.length && this.comments[k]![0] < end
   }
 
   /** The source span between `(` and `)` of a positional payload. */
@@ -335,9 +348,28 @@ class Formatter {
 const inside = (v: Value): [number, number] | undefined =>
   v.start !== undefined && v.end !== undefined ? [v.start + 1, v.end - 1] : undefined
 
-const findLast = <A>(xs: readonly A[], p: (x: A) => boolean): number => {
-  for (let i = xs.length - 1; i >= 0; i--) if (p(xs[i]!)) return i
-  return -1
+/** How many of the ascending numbers `xs` are below `x`. */
+const countBelow = (xs: readonly number[], x: number): number => {
+  let lo = 0
+  let hi = xs.length
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (xs[mid]! < x) lo = mid + 1
+    else hi = mid
+  }
+  return lo
+}
+
+/** Index of the first comment starting at or after `offset`. */
+const firstAtOrAfter = (comments: readonly (readonly [number, number])[], offset: number): number => {
+  let lo = 0
+  let hi = comments.length
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (comments[mid]![0] < offset) lo = mid + 1
+    else hi = mid
+  }
+  return lo
 }
 
 const key = (k: string) => (BARE_KEY.test(k) ? k : quote(k))

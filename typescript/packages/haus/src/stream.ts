@@ -27,6 +27,14 @@ export interface StreamOptions {
  * After a HausSyntaxError the reader is unusable.
  */
 export class StreamReader {
+  /**
+   * Text of the current value already scanned, as pieces. Appending to one
+   * growing string and indexing into it would flatten V8's rope on every
+   * chunk, which is quadratic for a large value arriving in small chunks.
+   */
+  private done: string[] = []
+  private doneLength = 0
+  /** Text not scanned yet (plus at most a few characters of lookahead). */
   private buf = ""
   private i = 0
   private mode: Mode = "normal"
@@ -62,13 +70,16 @@ export class StreamReader {
     this.ended = true
     const out = this.scan(true)
     // Whatever is left has no top-level comma: zero or one value.
-    const rest = new Parser(this.buf, this.origin, this.limits).parseSequence()
+    const text = this.done.join("") + this.buf
+    const rest = new Parser(text, this.origin, this.limits).parseSequence()
     if (rest.length > 0 && this.requireTerminator) {
-      const p = locate(this.buf, this.buf.length, this.origin)
+      const p = locate(text, text.length, this.origin)
       throw new HausSyntaxError("stream ended without ',' after the last value (truncated?)", p.offset, p.line, p.column)
     }
     out.push(...rest)
     this.buf = ""
+    this.done = []
+    this.doneLength = 0
     return out
   }
 
@@ -78,12 +89,24 @@ export class StreamReader {
    * when it parses the piece.
    */
   private scan(final: boolean): Value[] {
+    const out = this.scanBuffer(final)
+    // Move the scanned prefix out of `buf`, so the next chunk is appended to a short string.
+    if (this.i > 0) {
+      this.done.push(this.buf.slice(0, this.i))
+      this.doneLength += this.i
+      this.buf = this.buf.slice(this.i)
+      this.i = 0
+    }
+    return out
+  }
+
+  private scanBuffer(final: boolean): Value[] {
     const out: Value[] = []
     // Is the character `n` positions ahead available (or will it never come)?
     const has = (n: number) => final || this.i + n < this.buf.length
 
     while (this.i < this.buf.length) {
-      if (this.i > this.maxValueLength) {
+      if (this.doneLength + this.i > this.maxValueLength) {
         throw new HausSyntaxError(`value longer than ${this.maxValueLength} characters`, this.origin.offset, this.origin.line, this.origin.column)
       }
       const c = this.buf[this.i]
@@ -174,18 +197,26 @@ export class StreamReader {
 
   /** Parse the piece before the comma at `i` and drop it from the buffer. */
   private cut(): Value {
-    const value = new Parser(this.buf.slice(0, this.i), this.origin, this.limits).parseSingle()
-    const consumed = this.i + 1
-    this.origin = locate(this.buf, consumed, this.origin)
-    this.buf = this.buf.slice(consumed)
+    const text = this.scanned(this.i + 1) // including the comma
+    const value = new Parser(text.slice(0, -1), this.origin, this.limits).parseSingle()
+    this.origin = locate(text, text.length, this.origin)
+    this.buf = this.buf.slice(this.i + 1)
     this.i = 0
+    this.done = []
+    this.doneLength = 0
     return value
+  }
+
+  /** The current value's text up to `buf[end]` (exclusive). */
+  private scanned(end: number): string {
+    return this.done.join("") + this.buf.slice(0, end)
   }
 
   private failUnbalanced(): never {
     // Let the Parser produce the precise message.
-    new Parser(this.buf.slice(0, this.i + 1), this.origin, this.limits).parseSingle()
-    const p = locate(this.buf, this.i, this.origin)
+    const text = this.scanned(this.i + 1)
+    new Parser(text, this.origin, this.limits).parseSingle()
+    const p = locate(text, text.length - 1, this.origin)
     throw new HausSyntaxError(`unexpected '${this.buf[this.i]}'`, p.offset, p.line, p.column)
   }
 }

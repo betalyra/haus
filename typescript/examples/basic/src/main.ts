@@ -1,6 +1,6 @@
 import { createReadStream, readFileSync } from "node:fs"
-import { HausSyntaxError } from "@haus-fmt/haus"
-import * as h from "@haus-fmt/haus/schema"
+import { HausSyntaxError } from "@betalyra/haus-fmt"
+import * as h from "@betalyra/haus-fmt/schema"
 import { Order, OrderStatus, ShopEvent, type Money } from "./model.ts"
 
 const data = (file: string) => new URL(`../data/${file}`, import.meta.url)

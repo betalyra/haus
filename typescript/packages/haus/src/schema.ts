@@ -2,7 +2,7 @@
  * Schemas in code: describe the expected shape once, get a TypeScript type
  * and a decoder from the generic haus `Value` tree into plain JS values.
  *
- *   import * as h from "@haus-fmt/haus/schema"
+ *   import * as h from "@betalyra/haus-fmt/schema"
  *   const User = h.Record({ id: h.Int, name: h.String })
  *   type User = h.Infer<typeof User>
  *   const user = h.parse(User, text)
@@ -12,6 +12,10 @@
  *
  * Every schema also encodes: `h.stringify(User, user)` writes haus text,
  * `h.encodeStream(Event, events)` writes a stream.
+ *
+ * Decoding is linear in the input whatever the schema (spec §9.8): variants
+ * dispatch on the tag, depth is limited, and every call has a work budget.
+ * Types that contain themselves are declared with `h.Recursive`.
  */
 import { format, stringify as stringifyValue, type FormatOptions } from "./format.js"
 import { Parser } from "./parser.js"
@@ -50,18 +54,164 @@ export class HausEncodeError extends Error {
 export const formatPath = (path: Path) =>
   "$" + path.map((p) => (typeof p === "number" ? `[${p}]` : /^[a-z_]\w*$/.test(p) ? `.${p}` : `[${JSON.stringify(p)}]`)).join("")
 
+/**
+ * Limits for one decode or encode call. They hold whatever the schema looks
+ * like, so a mistake in a schema (or a hostile input meeting a recursive one)
+ * ends in an error instead of exhausting CPU, memory or the stack.
+ */
+export interface Limits {
+  /** Deepest nesting of values (default 256, the parser's limit). */
+  readonly maxDepth?: number
+  /**
+   * Most schema steps (one per schema applied to a value). Decoding defaults
+   * to 16 per value in the input plus 1024, so decoding is linear in the
+   * input. Encoding defaults to 16 Mi steps, which also bounds values that
+   * share sub-objects (a DAG of depth 64 would otherwise expand to 2^64 nodes).
+   */
+  readonly maxSteps?: number
+}
+
+const DEFAULT_MAX_DEPTH = 256
+const STEPS_PER_VALUE = 16
+const DEFAULT_ENCODE_STEPS = 16 * 1024 * 1024
+
+interface Context {
+  readonly mode: "decode" | "encode"
+  readonly maxDepth: number
+  readonly maxSteps: number
+  steps: number
+  /** Per `h.Recursive`: how deeply it is nested, and the value it was last entered with. */
+  readonly recursion: Map<object, { depth: number; current: unknown }>
+  /** Encoding: the objects being encoded on the current path, to detect cycles. */
+  readonly ancestors: Set<object>
+}
+
+/**
+ * Where a schema is applied: the path (linked to its parent and only turned
+ * into an array when an error is reported), the depth, and the limits shared
+ * by the whole call. Schemas receive it and pass `at.child(key)` down.
+ */
+export class At {
+  private constructor(
+    private readonly ctx: Context,
+    private readonly parent: At | undefined,
+    private readonly key: string | number | undefined,
+    readonly depth: number,
+  ) {}
+
+  /** @internal */
+  static root(ctx: Context, key?: string | number): At {
+    return new At(ctx, undefined, key, 0)
+  }
+
+  /** The position of a child value. Fails beyond the depth limit. */
+  child(key: string | number): At {
+    if (this.depth >= this.ctx.maxDepth) this.fail(`nesting deeper than ${this.ctx.maxDepth} levels`, key)
+    return new At(this.ctx, this, key, this.depth + 1)
+  }
+
+  /** Count one schema step. Fails when the budget is used up. */
+  step(): void {
+    if (++this.ctx.steps > this.ctx.maxSteps) {
+      this.fail(`${this.ctx.mode} budget of ${this.ctx.maxSteps} steps exceeded (a schema doing more work than the input justifies)`)
+    }
+  }
+
+  path(): Path {
+    const out: (string | number)[] = []
+    for (let at: At | undefined = this; at; at = at.parent) if (at.key !== undefined) out.push(at.key)
+    return out.reverse()
+  }
+
+  fail(reason: string, childKey?: string | number): never {
+    const path = childKey === undefined ? this.path() : [...this.path(), childKey]
+    throw this.ctx.mode === "decode" ? new HausDecodeError(reason, path) : new HausEncodeError(reason, path)
+  }
+
+  /** @internal Bookkeeping for `h.Recursive`. */
+  recursion(schema: object) {
+    let state = this.ctx.recursion.get(schema)
+    if (!state) this.ctx.recursion.set(schema, (state = { depth: 0, current: NOTHING }))
+    return state
+  }
+
+  /** Encoding: is `value` an object currently being encoded further up? */
+  isEncoding(value: unknown): boolean {
+    return typeof value === "object" && value !== null && this.ctx.ancestors.has(value)
+  }
+
+  /** Encoding: run `f` with `obj` marked as being encoded; a cycle back to it fails. */
+  enter<R>(obj: unknown, f: () => R): R {
+    if (typeof obj !== "object" || obj === null) return f()
+    if (this.ctx.ancestors.has(obj)) this.fail("cyclic value: an object contains itself")
+    this.ctx.ancestors.add(obj)
+    try {
+      return f()
+    } finally {
+      this.ctx.ancestors.delete(obj)
+    }
+  }
+}
+
+const NOTHING = Symbol("nothing")
+
+const context = (mode: "decode" | "encode", maxSteps: number, limits: Limits): Context => ({
+  mode,
+  maxDepth: limits.maxDepth ?? DEFAULT_MAX_DEPTH,
+  maxSteps: limits.maxSteps ?? maxSteps,
+  steps: 0,
+  recursion: new Map(),
+  ancestors: new Set(),
+})
+
+/**
+ * Count the values in a tree, failing beyond `maxDepth` or `cap` values. A
+ * parsed value is a tree within the parser's limits; a `Value` built in code
+ * might be deeper, share nodes (a DAG) or even contain itself.
+ */
+const countValues = (root: Value, maxDepth: number, cap: number, at: At): number => {
+  let count = 0
+  const stack: [Value, number][] = [[root, 0]]
+  while (stack.length > 0) {
+    const [v, depth] = stack.pop()!
+    if (++count > cap) at.fail(`value has more than ${cap} nodes`)
+    if (depth > maxDepth) at.fail(`value nested deeper than ${maxDepth} levels`)
+    if (v.kind === "array") for (const x of v.items) stack.push([x, depth + 1])
+    else if (v.kind === "record") for (const x of v.fields.values()) stack.push([x, depth + 1])
+    // `Tag { … }` is one level, as in the parser; `Tag(a, b)` nests its arguments.
+    else if (v.kind === "variant") {
+      const [first] = v.args
+      if (v.args.length === 1 && first!.kind === "record") stack.push([first!, depth])
+      else for (const x of v.args) stack.push([x, depth + 1])
+    }
+  }
+  return count
+}
+
+/** Values beyond this are rejected before decoding (the parser's 64 Mi characters can't produce more). */
+const MAX_VALUES = 64 * 1024 * 1024
+
+const decodeAt = (value: Value, limits: Limits, key?: string | number): At => {
+  const maxDepth = limits.maxDepth ?? DEFAULT_MAX_DEPTH
+  const probe = At.root(context("decode", Infinity, limits), key)
+  const steps = limits.maxSteps ?? STEPS_PER_VALUE * countValues(value, maxDepth, MAX_VALUES, probe) + 1024
+  return At.root(context("decode", steps, limits), key)
+}
+
+const encodeAt = (limits: Limits, key?: string | number): At => At.root(context("encode", DEFAULT_ENCODE_STEPS, limits), key)
+
 export interface Schema<A> {
   /** Human-readable description used in error messages. */
   readonly expected: string
-  readonly decode: (value: Value, path: Path) => A
-  readonly encode: (value: A, path: Path) => Value
+  readonly decode: (value: Value, at: At) => A
+  readonly encode: (value: A, at: At) => Value
   /**
    * What a record field of this type decodes to when the field is absent.
    * Unset: absence is an error. `Maybe` → undefined, `Patch` → Keep.
    */
-  readonly missing?: () => A
+  readonly missing?: (() => A) | undefined
   /** As a record field, leave the field out when this is true (`Maybe` undefined, `Patch` Keep). */
-  readonly omit?: (value: A) => boolean
+  readonly omit?: ((value: A) => boolean) | undefined
 }
 
 export type Infer<S> = S extends Schema<infer A> ? A : never
@@ -72,7 +222,7 @@ export type AnySchema = Schema<any>
 
 const describe = (v: Value): string => {
   switch (v.kind) {
-    case "number": return `number ${v.text}`
+    case "number": return `number ${v.text.length > 30 ? v.text.slice(0, 30) + "…" : v.text}`
     case "string": return `string ${JSON.stringify(v.value.length > 30 ? v.value.slice(0, 30) + "…" : v.value)}`
     case "array": return "array"
     case "record": return "record"
@@ -80,19 +230,36 @@ const describe = (v: Value): string => {
   }
 }
 
-const mismatch = (expected: string, v: Value, path: Path): never => {
-  throw new HausDecodeError(`expected ${expected}, found ${describe(v)}`, path)
+/** A short description of a JS value for encode errors. Never calls the value's own methods. */
+const describeJs = (value: unknown): string => {
+  switch (typeof value) {
+    case "string": return JSON.stringify(value.length > 30 ? value.slice(0, 30) + "…" : value)
+    case "number":
+    case "bigint":
+    case "boolean":
+    case "undefined": return String(value)
+    case "symbol": return "a symbol"
+    case "function": return "a function"
+    default: return value === null ? "null" : Array.isArray(value) ? `an array of ${value.length}` : "an object"
+  }
 }
 
-const make = <A>(expected: string, decode: (value: Value, path: Path) => A, encode: (value: A, path: Path) => Value): Schema<A> => ({
+const mismatch = (expected: string, v: Value, at: At): never => at.fail(`expected ${expected}, found ${describe(v)}`)
+
+/** A schema from its decoder and encoder; every application counts one step. */
+const make = <A>(expected: string, decode: (value: Value, at: At) => A, encode: (value: A, at: At) => Value): Schema<A> => ({
   expected,
-  decode,
-  encode,
+  decode: (v, at) => {
+    at.step()
+    return decode(v, at)
+  },
+  encode: (a, at) => {
+    at.step()
+    return encode(a, at)
+  },
 })
 
-const invalid = (what: string, value: unknown, path: Path): never => {
-  throw new HausEncodeError(`expected ${what}, got ${typeof value === "string" ? JSON.stringify(value) : String(value)}`, path)
-}
+const invalid = (what: string, value: unknown, at: At): never => at.fail(`expected ${what}, got ${describeJs(value)}`)
 
 // ── scalars ──────────────────────────────────────────────────
 
@@ -108,7 +275,7 @@ const INTEGER = /^-?\d+$/
 const int = make("Int", (v, p) => {
   if (v.kind !== "number" || !INTEGER.test(v.text)) return mismatch("Int", v, p)
   const n = Number(v.text)
-  if (!Number.isSafeInteger(n)) throw new HausDecodeError(`integer ${v.text} does not fit a JS number exactly (use BigInt)`, p)
+  if (!Number.isSafeInteger(n)) p.fail(`integer ${v.text.length > 30 ? v.text.slice(0, 30) + "…" : v.text} does not fit a JS number exactly (use BigInt)`)
   return n
 }, (n, p) => (Number.isSafeInteger(n) ? num(String(n)) : invalid("a safe integer", n, p)))
 
@@ -160,7 +327,7 @@ const taggedString = <A>(tag: string, format: RegExp, convert: (s: string) => A 
     const arg = v.args[0]
     if (v.args.length !== 1 || arg?.kind !== "string") return mismatch(`${tag}("…")`, v, p)
     const out = format.test(arg.value) ? convert(arg.value) : undefined
-    if (out === undefined) throw new HausDecodeError(`invalid ${tag} ${JSON.stringify(arg.value)}`, [...p, 0])
+    if (out === undefined) return p.fail(`invalid ${tag} ${JSON.stringify(arg.value.length > 40 ? arg.value.slice(0, 40) + "…" : arg.value)}`, 0)
     return out
   }, (a, p) => {
     const text = toText(a)
@@ -198,11 +365,11 @@ export {
 
 // ── containers ───────────────────────────────────────────────
 
-const array_ = <A>(item: Schema<A>): Schema<A[]> =>
-  make(
+const array_ = <A>(item: Schema<A>): Schema<readonly A[]> =>
+  make<readonly A[]>(
     `Array ${item.expected}`,
-    (v, p) => (v.kind === "array" ? v.items.map((x, i) => item.decode(x, [...p, i])) : mismatch(`Array ${item.expected}`, v, p)),
-    (xs, p) => (Array.isArray(xs) ? arr(xs.map((x, i) => item.encode(x, [...p, i]))) : invalid("an array", xs, p)),
+    (v, p) => (v.kind === "array" ? v.items.map((x, i) => item.decode(x, p.child(i))) : mismatch(`Array ${item.expected}`, v, p)),
+    (xs, p) => (Array.isArray(xs) ? p.enter(xs, () => arr((xs as readonly A[]).map((x, i) => item.encode(x, p.child(i))))) : invalid("an array", xs, p)),
   )
 
 export { array_ as Array }
@@ -215,10 +382,10 @@ export const Maybe = <A>(inner: Schema<A>): Schema<A | undefined> => ({
     `Maybe ${inner.expected}`,
     (v, p) => {
       if (v.kind === "variant" && v.tag === "None" && v.args.length === 0) return undefined
-      if (v.kind === "variant" && v.tag === "Some" && v.args.length === 1) return inner.decode(v.args[0]!, [...p, 0])
+      if (v.kind === "variant" && v.tag === "Some" && v.args.length === 1) return inner.decode(v.args[0]!, p.child(0))
       return mismatch(`None | Some(${inner.expected})`, v, p)
     },
-    (a, p) => (a === undefined ? variant("None") : variant("Some", [inner.encode(a, [...p, 0])])),
+    (a, p) => (a === undefined ? variant("None") : variant("Some", [inner.encode(a, p.child(0))])),
   ),
 })
 
@@ -238,7 +405,7 @@ export const Patch = <A>(inner: Schema<A>): Schema<Patch<A>> => ({
     (v, p) => ({ _tag: "Set", value: inner.decode(v, p) }),
     (a, p) => {
       // Inside a record, Keep is left out (omit). Anywhere else there's no way to say it.
-      if (a._tag === "Keep") throw new HausEncodeError("Keep can only be encoded as an absent record field", p)
+      if (a._tag === "Keep") return p.fail("Keep can only be encoded as an absent record field")
       // A Set(None) of a Patch(Maybe(X)) must still be written: as an explicit None.
       return inner.encode(a.value, p)
     },
@@ -252,8 +419,8 @@ export type RecordOf<F extends Fields> = { readonly [K in keyof F]: Infer<F[K]> 
 
 export interface RecordSchema<A> extends Schema<A> {
   readonly kind: "record"
-  readonly decodeRecord: (value: HRecord, path: Path) => A
-  readonly encodeRecord: (value: A, path: Path) => HRecord
+  readonly decodeRecord: (value: HRecord, at: At) => A
+  readonly encodeRecord: (value: A, at: At) => HRecord
 }
 
 /**
@@ -262,44 +429,55 @@ export interface RecordSchema<A> extends Schema<A> {
  * `{ closed: true }` rejects unknown fields instead.
  */
 const record_ = <F extends Fields>(fields: F, options: { closed?: boolean } = {}): RecordSchema<RecordOf<F>> => {
-  const expected = `{ ${Object.entries(fields).map(([k, s]) => `${k}: ${s.expected}`).join(", ")}${options.closed ? "" : " | _"} }`
-  const decodeRecord = (v: HRecord, p: Path) => {
+  const entries = Object.entries(fields)
+  const expected = `{ ${entries.map(([k, s]) => `${k}: ${s.expected}`).join(", ")}${options.closed ? "" : " | _"} }`
+  const decodeRecord = (v: HRecord, at: At) => {
     const out: Record<string, unknown> = {}
-    for (const [key, schema] of Object.entries(fields)) {
+    for (const [key, schema] of entries) {
       const field = v.fields.get(key)
-      // defineProperty: a schema field named "__proto__" must not replace the prototype.
-      const set = (value: unknown) => Object.defineProperty(out, key, { value, enumerable: true, writable: true, configurable: true })
-      if (field !== undefined) set(schema.decode(field, [...p, key]))
-      else if (schema.missing) set(schema.missing())
-      else throw new HausDecodeError(`missing field '${key}'`, p)
+      if (field !== undefined) setOwn(out, key, schema.decode(field, at.child(key)))
+      else if (schema.missing) setOwn(out, key, schema.missing())
+      else at.fail(`missing field '${key}'`)
     }
     if (options.closed) {
       for (const key of v.fields.keys()) {
-        if (!(key in fields)) throw new HausDecodeError(`unexpected field '${key}' (record is closed)`, [...p, key])
+        if (!Object.hasOwn(fields, key)) at.fail(`unexpected field '${key}' (record is closed)`, key)
       }
     }
     return out as RecordOf<F>
   }
-  const encodeRecord = (a: RecordOf<F>, p: Path): HRecord => {
-    if (typeof a !== "object" || a === null) return invalid("an object", a, p)
-    const out = new Map<string, Value>()
-    for (const [key, schema] of Object.entries(fields)) {
-      const value = (a as Record<string, unknown>)[key]
-      // A Patch(Maybe(X)) set to None is written as an explicit None; other omits leave the field out.
-      if (schema.omit?.(value)) continue
-      out.set(key, schema.encode(value, [...p, key]))
-    }
-    return rec(out)
+  const encodeRecord = (a: RecordOf<F>, at: At): HRecord => {
+    if (typeof a !== "object" || a === null) return invalid("an object", a, at)
+    return at.enter(a, () => {
+      const out = new Map<string, Value>()
+      for (const [key, schema] of entries) {
+        const value = Object.hasOwn(a, key) ? (a as Record<string, unknown>)[key] : undefined
+        // A Patch(Maybe(X)) set to None is written as an explicit None; other omits leave the field out.
+        if (schema.omit?.(value)) continue
+        out.set(key, schema.encode(value, at.child(key)))
+      }
+      return rec(out)
+    })
   }
   return {
     kind: "record",
     expected,
     decodeRecord,
     encodeRecord,
-    decode: (v, p) => (v.kind === "record" ? decodeRecord(v, p) : mismatch("record", v, p)),
-    encode: encodeRecord,
+    decode: (v, at) => {
+      at.step()
+      return v.kind === "record" ? decodeRecord(v, at) : mismatch("record", v, at)
+    },
+    encode: (a, at) => {
+      at.step()
+      return encodeRecord(a, at)
+    },
   }
 }
+
+/** defineProperty: a field named "__proto__" must not replace the object's prototype. */
+const setOwn = (out: Record<string, unknown>, key: string, value: unknown) =>
+  Object.defineProperty(out, key, { value, enumerable: true, writable: true, configurable: true })
 
 export { record_ as Record }
 
@@ -312,8 +490,6 @@ export const Unit: { readonly kind: "unit" } = { kind: "unit" }
 export const Tuple = <const S extends readonly AnySchema[]>(...items: S) => ({ kind: "tuple" as const, items })
 
 export type TupleSchema<S extends readonly AnySchema[]> = { readonly kind: "tuple"; readonly items: S }
-
-const UNIT_VALUE = (tag: string) => variant(tag)
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Case = typeof Unit | RecordSchema<any> | TupleSchema<readonly AnySchema[]> | AnySchema
@@ -346,18 +522,23 @@ export interface Unknown {
 const isRecordSchema = (c: Case): c is RecordSchema<any> => "kind" in c && c.kind === "record"
 const isTuple = (c: Case): c is TupleSchema<readonly AnySchema[]> => "kind" in c && c.kind === "tuple"
 
+/** A list of tags for error messages, shortened for very large variants. */
+const tagList = (tags: readonly string[]) => (tags.length > 10 ? `${tags.slice(0, 10).join(" | ")} | … (${tags.length} tags)` : tags.join(" | "))
+
 const variantSchema = <C extends Cases, A>(cases: C, open: boolean): Schema<A> => {
   const tags = Object.keys(cases)
-  const expected = `< ${tags.join(" | ")}${open ? " | _" : ""} >`
-  return make(expected, (v, p) => {
-    if (v.kind !== "variant") return mismatch(expected, v, p)
-    const c = Object.hasOwn(cases, v.tag) ? cases[v.tag] : undefined
+  const expected = `< ${tagList(tags)}${open ? " | _" : ""} >`
+  // Dispatch is one hash lookup on the tag: never "try each case and backtrack".
+  const byTag = new Map<string, Case>(Object.entries(cases))
+  return make(expected, (v, at) => {
+    if (v.kind !== "variant") return mismatch(expected, v, at)
+    const c = byTag.get(v.tag)
     if (c === undefined) {
       if (open) return { _tag: "@unknown", tag: v.tag, value: v } as A
-      throw new HausDecodeError(`unknown tag '${v.tag}', expected one of ${tags.join(" | ")}`, p)
+      return at.fail(`unknown tag '${v.tag}', expected one of ${tagList(tags)}`)
     }
     const arity = (n: number, shape: string) => {
-      if (v.args.length !== n) throw new HausDecodeError(`'${v.tag}' expects ${shape}, found ${v.args.length} argument(s)`, p)
+      if (v.args.length !== n) at.fail(`'${v.tag}' expects ${shape}, found ${v.args.length} argument(s)`)
     }
     if (c === Unit) {
       arity(0, "no payload")
@@ -366,34 +547,57 @@ const variantSchema = <C extends Cases, A>(cases: C, open: boolean): Schema<A> =
     if (isRecordSchema(c)) {
       arity(1, "a record payload")
       const arg = v.args[0]!
-      if (arg.kind !== "record") return mismatch(`${v.tag} { … }`, arg, [...p, 0])
-      return { _tag: v.tag, ...(c.decodeRecord(arg, p) as object) } as A
+      if (arg.kind !== "record") return mismatch(`${v.tag} { … }`, arg, at.child(0))
+      const out = c.decodeRecord(arg, at) as Record<string, unknown>
+      return Object.defineProperties({ _tag: v.tag }, Object.getOwnPropertyDescriptors(out)) as A
     }
     if (isTuple(c)) {
       arity(c.items.length, `${c.items.length} argument(s)`)
-      return { _tag: v.tag, values: c.items.map((s, i) => s.decode(v.args[i]!, [...p, i])) } as A
+      return { _tag: v.tag, values: c.items.map((s, i) => s.decode(v.args[i]!, at.child(i))) } as A
     }
     arity(1, "one argument")
-    return { _tag: v.tag, value: (c as AnySchema).decode(v.args[0]!, [...p, 0]) } as A
-  }, (a, p) => {
+    return { _tag: v.tag, value: (c as AnySchema).decode(v.args[0]!, at.child(0)) } as A
+  }, (a, at) => {
     const obj = a as { _tag?: unknown; tag?: unknown; value?: unknown; values?: unknown }
-    if (typeof obj !== "object" || obj === null || typeof obj._tag !== "string") return invalid("an object with a _tag", a, p)
-    // Unknown variants are written back as they were received.
-    if (open && obj._tag === "@unknown") return obj.value as Value
-    const c = Object.hasOwn(cases, obj._tag) ? cases[obj._tag] : undefined
-    if (c === undefined) return invalid(`one of ${tags.join(" | ")}`, obj._tag, p)
-    if (c === Unit) return UNIT_VALUE(obj._tag)
-    if (isRecordSchema(c)) {
-      const { _tag, ...fields } = obj as Record<string, unknown>
-      return variant(obj._tag, [c.encodeRecord(fields, p)])
-    }
-    if (isTuple(c)) {
-      const values = obj.values
-      if (!Array.isArray(values) || values.length !== c.items.length) return invalid(`${c.items.length} values`, values, p)
-      return variant(obj._tag, c.items.map((s, i) => s.encode(values[i], [...p, i])))
-    }
-    return variant(obj._tag, [(c as AnySchema).encode(obj.value, [...p, 0])])
+    if (typeof obj !== "object" || obj === null || typeof obj._tag !== "string") return invalid("an object with a _tag", a, at)
+    // Unknown variants are written back as they were received, after checking
+    // that what's there really is a haus value within the limits.
+    if (open && obj._tag === "@unknown") return checkedValue(obj.value, at)
+    const c = byTag.get(obj._tag)
+    if (c === undefined) return invalid(`one of ${tagList(tags)}`, obj._tag, at)
+    if (c === Unit) return variant(obj._tag)
+    return at.enter(obj, () => {
+      const tag = obj._tag as string
+      if (isRecordSchema(c)) {
+        const { _tag, ...fields } = obj as Record<string, unknown>
+        return variant(tag, [c.encodeRecord(fields, at)])
+      }
+      if (isTuple(c)) {
+        const values = obj.values
+        if (!Array.isArray(values) || values.length !== c.items.length) return invalid(`${c.items.length} values`, values, at)
+        return variant(tag, c.items.map((s, i) => s.encode(values[i], at.child(i))))
+      }
+      return variant(tag, [(c as AnySchema).encode(obj.value, at.child(0))])
+    })
   })
+}
+
+const VALUE_KINDS = new Set(["number", "string", "array", "record", "variant"])
+
+/** A raw `Value` handed to the encoder (an Unknown's payload): check its shape, depth and size. */
+const checkedValue = (raw: unknown, at: At): Value => {
+  const stack: [unknown, At][] = [[raw, at]]
+  while (stack.length > 0) {
+    const [v, here] = stack.pop()!
+    here.step()
+    const kind = typeof v === "object" && v !== null ? (v as { kind?: unknown }).kind : undefined
+    if (typeof kind !== "string" || !VALUE_KINDS.has(kind)) return invalid("a haus value", v, here)
+    const value = v as Value
+    if (value.kind === "array") value.items.forEach((x, i) => stack.push([x, here.child(i)]))
+    else if (value.kind === "record") for (const [k, x] of value.fields) stack.push([x, here.child(k)])
+    else if (value.kind === "variant") value.args.forEach((x, i) => stack.push([x, here.child(i)]))
+  }
+  return raw as Value
 }
 
 /** A closed variant: any other tag is an error. */
@@ -403,43 +607,120 @@ export const Variant = <const C extends Cases>(cases: C): Schema<VariantOf<C>> =
 export const OpenVariant = <const C extends Cases>(cases: C): Schema<VariantOf<C> | Unknown> => variantSchema(cases, true)
 
 /** Shorthand for a closed variant of payload-less tags, decoded to string literals. */
-export const Enum = <const T extends readonly string[]>(...tags: T): Schema<T[number]> =>
-  make(
-    `< ${tags.join(" | ")} >`,
-    (v, p) =>
-      v.kind === "variant" && v.args.length === 0 && tags.includes(v.tag)
+export const Enum = <const T extends readonly string[]>(...tags: T): Schema<T[number]> => {
+  const known = new Set<string>(tags)
+  return make(
+    `< ${tagList(tags)} >`,
+    (v, at) =>
+      v.kind === "variant" && v.args.length === 0 && known.has(v.tag)
         ? (v.tag as T[number])
-        : mismatch(`one of ${tags.join(" | ")}`, v, p),
-    (t, p) => (tags.includes(t) ? variant(t) : invalid(`one of ${tags.join(" | ")}`, t, p)),
+        : mismatch(`one of ${tagList(tags)}`, v, at),
+    (t, at) => (typeof t === "string" && known.has(t) ? variant(t) : invalid(`one of ${tagList(tags)}`, t, at)),
   )
+}
+
+// ── recursion ────────────────────────────────────────────────
+
+export interface RecursiveOptions {
+  /**
+   * How deeply this type may be nested in itself (default 64). Kept well
+   * below the overall depth limit: recursion is where a small input can
+   * make a schema do the most work, so it gets its own, explicit bound.
+   */
+  readonly maxDepth?: number
+}
+
+/**
+ * A type that contains itself, such as a tree or a comment thread. Schemas
+ * can't refer to themselves otherwise, so recursion is always visible.
+ *
+ *   interface Tree { readonly name: string; readonly children: readonly Tree[] }
+ *   const Tree: h.Schema<Tree> = h.Recursive<Tree>("Tree", (self) =>
+ *     h.Record({ name: h.String, children: h.Array(self) }))
+ *
+ * Every cycle must pass through a record field, array element or variant
+ * payload ("guarded"), so each level consumes one level of the input. A
+ * schema that refers to itself directly, or decodes or encodes the same value
+ * with itself again, fails instead of looping.
+ */
+export const Recursive = <A>(name: string, build: (self: Schema<A>) => Schema<A>, options: RecursiveOptions = {}): Schema<A> => {
+  const maxDepth = options.maxDepth ?? 64
+  let body: Schema<A> | undefined
+  let building = false
+  // Built on first use, so it may refer to schemas defined after it (mutual recursion).
+  const force = (): Schema<A> => {
+    if (body) return body
+    if (building) throw new Error(`h.Recursive("${name}"): used while it is being built`)
+    building = true
+    const built = build(self)
+    if (built === self) throw new Error(`h.Recursive("${name}"): the schema is only itself (unguarded recursion)`)
+    return (body = built)
+  }
+  const run = <R>(value: unknown, at: At, f: (body: Schema<A>) => R): R => {
+    at.step()
+    const b = force()
+    const state = at.recursion(self)
+    if (state.current === value) {
+      // Entering again with the very value we're inside: an object that
+      // contains itself, or a schema that consumed nothing in between.
+      if (at.isEncoding(value)) at.fail("cyclic value: an object contains itself")
+      at.fail(`unguarded recursion in ${name}: it applies itself to the same value again`)
+    }
+    if (state.depth >= maxDepth) at.fail(`${name} nested deeper than ${maxDepth} levels`)
+    const saved = state.current
+    state.depth++
+    state.current = value
+    try {
+      return f(b)
+    } finally {
+      state.depth--
+      state.current = saved
+    }
+  }
+  const self: Schema<A> = {
+    expected: name,
+    decode: (v, at) => run(v, at, (b) => b.decode(v, at)),
+    encode: (a, at) => run(a, at, (b) => b.encode(a, at)),
+    get missing() {
+      return force().missing
+    },
+    get omit() {
+      return force().omit
+    },
+  }
+  return self
+}
 
 // ── entry points ─────────────────────────────────────────────
 
-export const decode = <A>(schema: Schema<A>, value: Value): A => schema.decode(value, [])
+export const decode = <A>(schema: Schema<A>, value: Value, limits: Limits = {}): A => schema.decode(value, decodeAt(value, limits))
 
 /** Parse a text holding exactly one value and decode it. */
-export const parse = <A>(schema: Schema<A>, text: string): A => {
+export const parse = <A>(schema: Schema<A>, text: string, limits: Limits = {}): A => {
   const values = new Parser(text).parseSequence()
   if (values.length !== 1) throw new HausDecodeError(`expected exactly one value, found ${values.length}`, [])
-  return decode(schema, values[0]!)
+  return decode(schema, values[0]!, limits)
 }
 
-/** Parse and decode a stream; each element's errors carry its index in the path. */
-export async function* decodeStream<A>(schema: Schema<A>, source: ChunkSource): AsyncGenerator<A, void, undefined> {
+/** Parse and decode a stream; each element's errors carry its index in the path. Limits apply per element. */
+export async function* decodeStream<A>(schema: Schema<A>, source: ChunkSource, limits: Limits = {}): AsyncGenerator<A, void, undefined> {
   let i = 0
-  for await (const value of parseStream(source)) yield schema.decode(value, [i++])
+  for await (const value of parseStream(source)) {
+    yield schema.decode(value, decodeAt(value, limits, i))
+    i++
+  }
 }
 
 /** Encode a typed value into a haus `Value`. */
-export const encode = <A>(schema: Schema<A>, value: A): Value => schema.encode(value, [])
+export const encode = <A>(schema: Schema<A>, value: A, limits: Limits = {}): Value => schema.encode(value, encodeAt(limits))
 
 /** Encode and write as haus text in the standard format (no trailing newline). */
-export const stringify = <A>(schema: Schema<A>, value: A, options: FormatOptions = {}): string =>
-  stringifyValue(encode(schema, value), options)
+export const stringify = <A>(schema: Schema<A>, value: A, options: FormatOptions & Limits = {}): string =>
+  stringifyValue(encode(schema, value, options), options)
 
 /** Encode several values as a stream file: a comma after every value. */
-export const formatAll = <A>(schema: Schema<A>, values: Iterable<A>, options: FormatOptions = {}): string =>
-  format([...values].map((v, i) => schema.encode(v, [i])), options)
+export const formatAll = <A>(schema: Schema<A>, values: Iterable<A>, options: FormatOptions & Limits = {}): string =>
+  format([...values].map((v, i) => schema.encode(v, encodeAt(options, i))), options)
 
 /**
  * Encode values one at a time as stream chunks, each ending in ",\n", e.g.
@@ -448,9 +729,9 @@ export const formatAll = <A>(schema: Schema<A>, values: Iterable<A>, options: Fo
 export async function* encodeStream<A>(
   schema: Schema<A>,
   values: AsyncIterable<A> | Iterable<A>,
-  options: FormatOptions = {},
+  options: FormatOptions & Limits = {},
 ): AsyncGenerator<string, void, undefined> {
   let i = 0
   // Streams default to compact: one item per line.
-  for await (const v of values) yield stringifyValue(schema.encode(v, [i++]), { style: "compact", ...options }) + ",\n"
+  for await (const v of values) yield stringifyValue(schema.encode(v, encodeAt(options, i++)), { style: "compact", ...options }) + ",\n"
 }

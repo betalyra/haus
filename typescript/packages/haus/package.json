@@ -1,5 +1,5 @@
 {
-  "name": "@haus-fmt/haus",
+  "name": "@betalyra/haus-fmt",
   "version": "0.1.0",
   "description": "Streaming parser for the haus data format",
   "type": "module",

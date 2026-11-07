@@ -3,12 +3,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "prestart": "pnpm --filter @haus-fmt/haus build",
+    "prestart": "pnpm --filter @betalyra/haus-fmt build",
     "start": "node src/main.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@haus-fmt/haus": "workspace:*"
+    "@betalyra/haus-fmt": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "24.10.1",

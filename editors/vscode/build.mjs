@@ -11,7 +11,7 @@ const options = {
   format: "cjs",
   sourcemap: true,
   external: ["vscode"],
-  alias: { "@haus-fmt/haus": haus },
+  alias: { "@betalyra/haus-fmt": haus },
   logLevel: "info",
 }
 const builds = [

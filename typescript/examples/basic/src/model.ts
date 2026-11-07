@@ -17,7 +17,7 @@
  *   type ShopEvent   = < OrderPlaced { orderId: Int, total: Money }
  *                      | OrderShipped { orderId: Int, at: Instant } | _ >
  */
-import * as h from "@haus-fmt/haus/schema"
+import * as h from "@betalyra/haus-fmt/schema"
 
 export const Currency = h.OpenVariant({ EUR: h.Unit, USD: h.Unit, GBP: h.Unit })
 

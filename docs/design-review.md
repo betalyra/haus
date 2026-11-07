@@ -45,6 +45,8 @@ The security and spec issues are now fixed (§1, §2). What's left is mostly new
 | 🟡 | S7 | **Unicode spoofing.** | Raw bidi controls are rejected everywhere (strings, block strings, comments) in both parsers, with 6 conformance tests, and VS Code highlights them as invalid. The spec says keys are compared by code point with no normalization, and notes the risk of NUL characters. **Open:** a linter for lookalike characters and mixed NFC/NFD keys. |
 | ✅ | S8 | **Error positions differed between parsers** (UTF-16 vs code points). | Both now count code points. Spec §8. |
 | ⬜ | S9 | **No canonical form**, so values can't be hashed or signed. | Spec §9.7 says to sign the exact bytes. The canonical form is planned (spec §11) and needs the serializer. |
+| ✅ | S10 | **Work that grows faster than the input.** Probing with hostile inputs found: schema inference printing was exponential in nesting depth (depth 20 took 0.8 s, so a small file could hang the editor); formatting with comments was quadratic (8,000 commented entries took 1.4 s); a large stream value arriving in small chunks was quadratic; Effect's union decoding is exponential for recursive unions of untagged structs. | All linear now (depth 250 infers in 3 ms, 8,000 comments format in 22 ms, chunked values scale linearly). The Effect adapter rejects recursive schemas with ambiguous unions up front. Inference now recognises recursive data (a tag inside the same tag, or a record inside one with the same keys) and prints a named type (`type Comment = …`) instead of unrolling it; shapes are merged with union-find, so unification is linear too. Regression tests in `adversarial.test.ts` (core and Effect). |
+| ✅ | S11 | **Schema decoding had no bound beyond the parser's limits**, and values built in code (deep, shared or cyclic) weren't checked at all. | Spec §9.8–10. `h.*` and the Effect adapter enforce depth, a work budget (16 steps per input value; 16 Mi steps when encoding), cycle detection on encode and checks on raw `Unknown` values. Recursion is opt-in via `h.Recursive` with its own depth limit (64) and a check for unguarded cycles. Error paths are built only when an error occurs. **Open:** Effect's own encoder runs before ours and has no budget, so a JS value with heavy sharing still costs time there; Roc decoders are plain functions without a budget. |
 
 ### 1.3 Rules for binding authors
 
@@ -89,7 +91,7 @@ Ecosystem gotchas, documented in the examples:
 | | Item |
 |---|---|
 | ⬜ | **Canonical form** for hashing, signing and deduplication (spec §12). |
-| ⬜ | **Schema language** spec, parser and checker: rows, open vs closed, recursion, `Stream`, generics. |
+| ⬜ | **Schema language** spec, parser and checker: rows, open vs closed, `Stream`, generics. Rules for recursion and expressiveness are settled (spec §9.9–10): explicit, guarded, regular recursion and no computation in schemas. |
 | ⬜ | **JSON interop:** a mapping both ways, `from-json` / `to-json`, and the `application/haus` MIME type. |
 | ⬜ | **CLI:** `check`, `fmt`, `convert`, and a jq-like `query` using the path syntax from error messages. |
 | ✅ | **A parser that keeps comments and formatting**: `parseDocument` records comment and value positions; the formatter places comments and blank lines. |

@@ -95,6 +95,15 @@ Errors report a 1-based line and column. Columns count **Unicode code points**, 
 5. **Unknown variants carry raw data.** The raw value kept for an unknown tag in an open variant is untrusted and subject to the same limits when stored or forwarded.
 6. **Fail on the first error.** Parsers MUST NOT guess or repair invalid input. Two parsers that "repair" differently disagree about what a document says.
 7. **Signatures.** Sign the exact bytes and transport them unchanged, as JWS and COSE do. A canonical form for hashing equal values (§12) is planned.
+8. **Decoding with a schema is linear in the input,** whatever the schema. Implementations MUST:
+   - choose a variant's case by looking up its tag, never by trying cases in turn and backtracking. A union of members that the value's tag or kind can't tell apart MUST NOT be allowed in a recursive schema;
+   - limit the nesting depth while decoding and encoding (default 256, as in §7), including for values built in code rather than parsed;
+   - limit the total work of one decode to a constant times the number of values in the input (a *work budget*; TypeScript uses 16 steps per value). The budget ends any schema mistake, such as a combinator that decodes a value twice, before it can grow with the input;
+   - when encoding, detect values that contain themselves, and limit the total work, since objects shared many times (a DAG) expand when written out;
+   - check a raw value kept for an unknown variant (item 5) with the same limits before writing it again;
+   - build error messages in constant time: no printing of whole schemas or values.
+9. **Recursive types** (a type that contains itself, like a tree) are allowed but MUST be explicit (e.g. `h.Recursive`). Every cycle MUST pass through a record field, array element or variant payload, so that each level of recursion consumes a level of input. A schema that applies itself to the same value again MUST fail. Each recursive type SHOULD have its own, smaller depth limit (default 64).
+10. **Schemas are declarative.** The schema language describes structure only: records, arrays, variants, prelude types and recursion. Generic types MAY refer to themselves only with the same parameters (`type List a = < Nil | Cons a (List a) >`; not `T (Pair a a)`). There are no type-level functions, conditions on values, references between values, or user code in schemas. Constraints are limited to built-in predicates that run in linear time (no backtracking regular expressions). Checking a value against a schema then always terminates in linear time; anything more belongs in application code, where the work budget (item 8) still applies.
 
 ## 10. Evolution
 

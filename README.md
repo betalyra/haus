@@ -61,7 +61,7 @@ Reload VS Code (**Developer: Reload Window**) and open [`examples/fmt.haus`](exa
 - 🌊 **Streams built in:** a file is a sequence of values, so appending, `tail -f` and line-by-line processing just work.
 - 🎨 **One official format:** pretty (one entry per line) or compact (one item per line), like `gofmt`.
 - 🔍 **Type inference:** derive a schema from example data.
-- 🛡️ **Hardened:** depth, number and string limits, and rejection of invisible bidi control characters.
+- 🛡️ **Hardened:** depth, number and string limits, rejection of invisible bidi control characters, and schema decoding that stays linear in the input, even with recursive types.
 
 ## The same order in JSON
 
@@ -80,7 +80,7 @@ It works, but every one of these choices is a convention you have to explain and
 ## Using it from TypeScript
 
 ```ts
-import * as h from "@haus-fmt/haus/schema"
+import * as h from "@betalyra/haus-fmt/schema"
 
 const Status = h.Variant({
   Pending: h.Unit,

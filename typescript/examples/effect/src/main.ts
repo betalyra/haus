@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises"
 import { createReadStream } from "node:fs"
-import * as Haus from "@haus-fmt/effect"
+import * as Haus from "@betalyra/haus-fmt-effect"
 import { BigDecimal, Console, DateTime, Effect, Match, Option, Stream } from "effect"
 import { Order, OrderStatus, ShopEvent, type Money } from "./model.ts"
 
