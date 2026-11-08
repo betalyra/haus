@@ -55,7 +55,8 @@ type Root =
   , price:    Decimal
   , released: Date
   , meeting:  ZonedDateTime
-  , timeout:  Maybe Int
+  , timeout:  Maybe Int    // always written: None or Some(…)
+  , owner?:   String       // optional field: may be left out (it is, in syntax-tour.haus)
   , shapes:   Array Shape
   , events:   Array AppEvent
   , entities: Array (Entity _ _)

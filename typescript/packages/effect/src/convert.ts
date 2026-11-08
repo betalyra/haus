@@ -214,12 +214,10 @@ const compileNode: (ast: AST) => Converter = Match.type<AST>().pipe(
 
 function compileObject(ast: SchemaAST.Objects): Converter {
   const tag = tagOf(ast)
-  const props = new Map(
-    ast.propertySignatures.map((p) => {
-      const optionalKey = p.type.context?.isOptional === true && !isOptionDeclaration(p.type)
-      return [String(p.name), { convert: compile(p.type), optionalKey }] as const
-    }),
-  )
+  // An optionalKey is a haus optional field (`name?: T`): missing stays missing.
+  // Option is a haus Maybe: always written as None / Some(…). The two are never
+  // converted into each other.
+  const props = new Map(ast.propertySignatures.map((p) => [String(p.name), { convert: compile(p.type) }] as const))
   const positional = ast.propertySignatures.filter((p) => p.name !== "_tag").map((p) => String(p.name))
   const allowPositional = ast.annotations?.[POSITIONAL] === true
 
@@ -248,15 +246,8 @@ function compileObject(ast: SchemaAST.Objects): Converter {
         const out: Record<string, unknown> = Option.match(tag, { onNone: () => ({}), onSome: (t) => ({ _tag: t }) })
         for (const [key, field] of fields) {
           const prop = props.get(key)
-          if (prop === undefined) {
-            setOwn(out, key, generic(field)) // excess property: ignored by the decoder (records are open)
-          } else if (prop.optionalKey && Option.isSome(variant(field, "None", 0))) {
-            // Maybe on an optional key: None → absent
-          } else if (prop.optionalKey && Option.isSome(variant(field, "Some", 1))) {
-            setOwn(out, key, prop.convert((field as HVariant).args[0]!)) // Some(x) → x
-          } else {
-            setOwn(out, key, prop.convert(field))
-          }
+          if (prop === undefined) setOwn(out, key, generic(field)) // excess property: ignored by the decoder (records are open)
+          else setOwn(out, key, prop.convert(field))
         }
         return out
       },

@@ -223,7 +223,7 @@ export interface PrintOptions {
 
 /**
  * Print a shape as a schema type, e.g. `{ name: String, type: < Engineer | Designer > }`.
- * Fields missing from some records print as `Maybe T` (absent decodes as None).
+ * Fields missing from some records print as optional fields, `key?: T`.
  * A position holding different kinds (string here, number there) prints as
  * `String | Int` — not expressible in a schema; the data should use a variant.
  */
@@ -414,10 +414,11 @@ class ShapePrinter {
   private record(rs: RecordShape, ind: string | null, used: number): string | null {
     if (rs.fields.size === 0) return "{}"
     const field = (key: string, entry: { shape: Shape; count: number }, at: string | null) => {
-      let type = this.shape(entry.shape, at)
+      const type = this.shape(entry.shape, at)
       if (type === null) return null
-      if (entry.count < rs.count && !type.startsWith("Maybe ")) type = `Maybe ${paren(type)}`
-      return `${/^[a-z_][A-Za-z0-9_]*$/.test(key) ? key : JSON.stringify(key)}: ${type}`
+      // Missing from some records: an optional field (`key?: T`), never a Maybe.
+      const optional = entry.count < rs.count ? "?" : ""
+      return `${/^[a-z_][A-Za-z0-9_]*$/.test(key) ? key : JSON.stringify(key)}${optional}: ${type}`
     }
     const flat = this.flat(rs, () => {
       const fields: string[] = []

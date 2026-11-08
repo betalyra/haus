@@ -6,7 +6,7 @@
 
 ## haus in a nutshell
 
-haus lets your data say what it means. An order isn't a bag of strings and flags: it is `Shipped`, `Pending` or `Cancelled`, its total is exact `Money`, and a missing note is plainly `None`. You write it the way you'd sketch it in a notebook, with comments, no quoted keys and no fuss about the last comma. Your code reads it straight into real types.
+haus lets your data say what it means. An order isn't a bag of strings and flags: it is `Shipped`, `Pending` or `Cancelled`, its total is exact `Money`, and an empty note is plainly `None`. You write it the way you'd sketch it in a notebook, with comments, no quoted keys and no fuss about the last comma. Your code reads it straight into real types.
 
 ```haus
 // Comments are welcome, keys don't need quotes, trailing commas are fine.
@@ -56,7 +56,7 @@ Reload VS Code (**Developer: Reload Window**) and open [`examples/person.haus`](
 - 🧩 **Open records and variants:** unknown fields are ignored, unknown tags decode as "unknown" instead of failing.
 - 🔢 **Exact numbers:** `19.90` stays `19.90`; there's no silent float rounding and no 2⁵³ limit.
 - 📅 **Standard types:** `Date("2026-11-07")`, `Instant(…)`, `Money(19.99, EUR)`, `Duration("PT30S")`.
-- 🚫 **No `null`:** `None` is a value, and a missing field is different from `None` (useful for PATCH updates).
+- 🚫 **No `null`:** `Maybe` is an ordinary variant (`None` / `Some(…)`), and an optional field (`nickname?: String`) may simply be left out. The two never stand in for each other, so every value has one spelling, and partial updates just send the fields that change.
 - ✍️ **Pleasant to write:** unquoted keys, `//` and `/* */` comments, trailing commas, `"""` multi-line strings.
 - 🌊 **Streams built in:** a file is a sequence of values, so appending, `tail -f` and line-by-line processing just work.
 - 🎨 **One official format:** pretty (one entry per line) or compact (one item per line), like `gofmt`.

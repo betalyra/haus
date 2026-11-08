@@ -6,7 +6,7 @@ import { decode, fixtures, repoFile } from "./haus.js"
 
 const files = [
   ...fixtures("valid").map(({ name, bytes }) => ({ name, bytes })),
-  ...["syntax-tour.haus", "events.haus", "person.haus", "thread.haus", "filesystem.haus", "settings-ui.haus"].map((name) => ({ name, bytes: repoFile(name) })),
+  ...["syntax-tour.haus", "events.haus", "person.haus", "thread.haus", "filesystem.haus", "settings-ui.haus", "user-update.haus"].map((name) => ({ name, bytes: repoFile(name) })),
 ]
 
 describe("format: round trip and idempotence", () => {
@@ -158,9 +158,9 @@ describe("infer", () => {
     )
   })
 
-  it("marks fields missing somewhere as Maybe, detects Bool, Maybe and Decimal", () => {
+  it("marks fields missing somewhere as optional, detects Bool, Maybe and Decimal", () => {
     const values = parseAll("{ a: 1, ok: True, n: None }, { a: 1.5, ok: False, n: Some(2), extra: [\"x\"] }")
-    expect(printShape(infer(values).root)).toBe("{ a: Decimal, ok: Bool, n: Maybe Int, extra: Maybe (Array String) }")
+    expect(printShape(infer(values).root)).toBe("{ a: Decimal, ok: Bool, n: Maybe Int, extra?: Array String }")
   })
 
   it("maps every value to the shape of its position", () => {

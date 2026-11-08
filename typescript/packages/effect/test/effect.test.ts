@@ -30,7 +30,7 @@ describe("decode", () => {
     Effect.gen(function* () {
       const order = yield* Haus.decode(Order)(`{
         id: 1, total: Money(19.90, EUR), paid: True, note: Some("gift"),
-        tracking: None, tags: ["a", "b"], origin: Point(1, 2), extra: "ignored",
+        tags: ["a", "b"], origin: Point(1, 2), extra: "ignored",
       }`)
       expect(order.id).toBe(1)
       expect(BigDecimal.equals(order.total.amount, BigDecimal.fromStringUnsafe("19.90"))).toBe(true)
@@ -40,6 +40,17 @@ describe("decode", () => {
       expect("tracking" in order).toBe(false)
       expect(order.coupon).toEqual(Option.none())
       expect(order.origin).toEqual({ _tag: "Point", x: 1, y: 2 })
+    }))
+
+  it.effect("an optional key is never None: missing and None are different things", () =>
+    Effect.gen(function* () {
+      const S = Schema.Struct({ tracking: Schema.optionalKey(Schema.String), note: Schema.Option(Schema.String) })
+      expect(yield* Haus.decode(S)("{ note: None }")).toEqual({ note: Option.none() })
+      const noneForString = yield* Effect.flip(Haus.decode(S)("{ tracking: None, note: None }"))
+      expect(noneForString.message).toContain("Expected string")
+      // A Maybe (Option) must be written: missing is not None.
+      const missingOption = yield* Effect.flip(Haus.decode(S)("{}"))
+      expect(missingOption.message).toContain("note")
     }))
 
   it.effect("decimals beyond float precision stay exact", () =>
@@ -81,12 +92,12 @@ describe("design rules", () => {
       expect(yield* Haus.decode(Haus.Positional(Point))("Point(1, 2)")).toEqual({ _tag: "Point", x: 1, y: 2 })
     }))
 
-  it.effect("partial updates: optionalKey(Option(X)) keeps absent, None and Some apart", () =>
+  it.effect("partial updates: optionalKey(Option(X)) keeps not given, None and Some apart", () =>
     Effect.gen(function* () {
-      const UserPatch = Schema.Struct({ nickname: Schema.optionalKey(Schema.Option(Schema.String)) })
-      expect(yield* Haus.decode(UserPatch)("{}")).toEqual({})
-      expect(yield* Haus.decode(UserPatch)("{ nickname: None }")).toEqual({ nickname: Option.none() })
-      expect(yield* Haus.decode(UserPatch)('{ nickname: Some("J") }')).toEqual({ nickname: Option.some("J") })
+      const UserUpdate = Schema.Struct({ nickname: Schema.optionalKey(Schema.Option(Schema.String)) })
+      expect(yield* Haus.decode(UserUpdate)("{}")).toEqual({})
+      expect(yield* Haus.decode(UserUpdate)("{ nickname: None }")).toEqual({ nickname: Option.none() })
+      expect(yield* Haus.decode(UserUpdate)('{ nickname: Some("J") }')).toEqual({ nickname: Option.some("J") })
     }))
 
   it.effect("Number accepts NaN and infinities", () =>

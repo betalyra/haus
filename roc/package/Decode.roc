@@ -118,21 +118,14 @@ Decode := [].{
 		Err(_) => Err({ reason: "missing field '${key}'", path: "" })
 	}
 
-	## A `Maybe` field: `None`, `Some(x)`, or missing (also `None`).
-	maybe_field : List((Str, Value)), Str, (Value -> Try(a, Error)) -> Try([None, Some(a)], Error)
-	maybe_field = |fields, key, decoder| match fields.find_first(|(k, _)| k == key) {
-		Err(_) => Ok(None)
-		Ok((_, Tag("None", []))) => Ok(None)
-		Ok((_, Tag("Some", [inner]))) => Ok(Some(at(decoder(inner), ".${key}[0]")?))
-		Ok((_, v)) => at(expected("None | Some(…)", v), ".${key}")
-	}
-
-	## A field of a partial update (prelude `Patch a`): absent → `Keep`, present → `Set(value)`.
-	## For a Maybe field use `|v| Decode.maybe(v, Decode.str)` as the decoder, so `None` clears.
-	patch_field : List((Str, Value)), Str, (Value -> Try(a, Error)) -> Try([Keep, Set(a)], Error)
-	patch_field = |fields, key, decoder| match fields.find_first(|(k, _)| k == key) {
-		Err(_) => Ok(Keep)
-		Ok((_, v)) => Ok(Set(at(decoder(v), ".${key}")?))
+	## An optional field (`name?: T` in a schema): `Missing`, or `Present(value)`.
+	## Missing is never `None`: for a `Maybe` value use `Decode.field(fs, key, |v| Decode.maybe(v, …))`,
+	## and for a partial update that can also clear a value, both:
+	## `Decode.optional_field(fs, "nickname", |v| Decode.maybe(v, Decode.str))`.
+	optional_field : List((Str, Value)), Str, (Value -> Try(a, Error)) -> Try([Missing, Present(a)], Error)
+	optional_field = |fields, key, decoder| match fields.find_first(|(k, _)| k == key) {
+		Err(_) => Ok(Missing)
+		Ok((_, v)) => Ok(Present(at(decoder(v), ".${key}")?))
 	}
 
 	## A `Maybe` value: `None` or `Some(x)`.
@@ -193,37 +186,42 @@ describe = |v| match v {
 
 # ── tests ────────────────────────────────────────────────────
 
-Order : { id : U64, note : [None, Some(Str)], prices : List({ amount : Str, currency : Str }), paid : Bool }
+Order : { id : U64, note : [Missing, Present(Str)], coupon : [None, Some(Str)], prices : List({ amount : Str, currency : Str }), paid : Bool }
 
 order : Value -> Try(Order, Error)
 order = |v| {
 	fs = Decode.record(v)?
 	Ok({
 		id: Decode.field(fs, "id", Decode.u64)?,
-		note: Decode.maybe_field(fs, "note", Decode.str)?,
+		note: Decode.optional_field(fs, "note", Decode.str)?,
+		coupon: Decode.field(fs, "coupon", |c| Decode.maybe(c, Decode.str))?,
 		prices: Decode.field(fs, "prices", |p| Decode.list(p, Decode.money))?,
 		paid: Decode.field(fs, "paid", Decode.bool)?,
 	})
 }
 
-expect Decode.one("{ id: 1, prices: [Money(19.90, EUR)], paid: True }", order) == Ok({ id: 1, note: None, prices: [{ amount: "19.90", currency: "EUR" }], paid: True })
-expect Decode.one("{ id: 1, note: Some(\"hi\"), prices: [], paid: False }", order) == Ok({ id: 1, note: Some("hi"), prices: [], paid: False })
-expect Decode.one("{ id: 1, note: None, prices: [Money(1, EUR), Money(2, 3)], paid: True }", order) == Err(Decode({ reason: "expected a tag without payload, found number 3", path: "$.prices[1][1]" }))
-expect Decode.one("{ id: 1, note: Some(1), prices: [], paid: True }", order) == Err(Decode({ reason: "expected String, found number 1", path: "$.note[0]" }))
-expect Decode.one("{ id: 1, prices: [], paid: Yes }", order) == Err(Decode({ reason: "expected True | False, found variant Yes", path: "$.paid" }))
+expect Decode.one("{ id: 1, coupon: None, prices: [Money(19.90, EUR)], paid: True }", order) == Ok({ id: 1, note: Missing, coupon: None, prices: [{ amount: "19.90", currency: "EUR" }], paid: True })
+expect Decode.one("{ id: 1, note: \"hi\", coupon: Some(\"X1\"), prices: [], paid: False }", order) == Ok({ id: 1, note: Present("hi"), coupon: Some("X1"), prices: [], paid: False })
+# A Maybe must be written; an optional field is never None.
+expect Decode.one("{ id: 1, prices: [], paid: True }", order) == Err(Decode({ reason: "missing field 'coupon'", path: "$" }))
+expect Decode.one("{ id: 1, note: None, coupon: None, prices: [], paid: True }", order) == Err(Decode({ reason: "expected String, found variant None", path: "$.note" }))
+expect Decode.one("{ id: 1, coupon: None, prices: [Money(1, EUR), Money(2, 3)], paid: True }", order) == Err(Decode({ reason: "expected a tag without payload, found number 3", path: "$.prices[1][1]" }))
+expect Decode.one("{ id: 1, coupon: Some(1), prices: [], paid: True }", order) == Err(Decode({ reason: "expected String, found number 1", path: "$.coupon[0]" }))
+expect Decode.one("{ id: 1, coupon: None, prices: [], paid: Yes }", order) == Err(Decode({ reason: "expected True | False, found variant Yes", path: "$.paid" }))
 expect Decode.all("1, 2, x", Decode.u64) == Err(Syntax({ reason: "unexpected identifier 'x': lowercase identifiers can only be record keys", line: 1, column: 7 }))
 
-PatchUser : { name : [Keep, Set(Str)], nickname : [Keep, Set([None, Some(Str)])] }
+# A partial update: `name?: String, nickname?: Maybe String`.
+UserUpdate : { name : [Missing, Present(Str)], nickname : [Missing, Present([None, Some(Str)])] }
 
-patch_user : Value -> Try(PatchUser, Error)
-patch_user = |v| {
+user_update : Value -> Try(UserUpdate, Error)
+user_update = |v| {
 	fs = Decode.record(v)?
 	Ok({
-		name: Decode.patch_field(fs, "name", Decode.str)?,
-		nickname: Decode.patch_field(fs, "nickname", |n| Decode.maybe(n, Decode.str))?,
+		name: Decode.optional_field(fs, "name", Decode.str)?,
+		nickname: Decode.optional_field(fs, "nickname", |n| Decode.maybe(n, Decode.str))?,
 	})
 }
 
-expect Decode.one("{}", patch_user) == Ok({ name: Keep, nickname: Keep })
-expect Decode.one("{ name: \"Jan\", nickname: None }", patch_user) == Ok({ name: Set("Jan"), nickname: Set(None) })
-expect Decode.one("{ nickname: Some(\"J\") }", patch_user) == Ok({ name: Keep, nickname: Set(Some("J")) })
+expect Decode.one("{}", user_update) == Ok({ name: Missing, nickname: Missing })
+expect Decode.one("{ name: \"Jan\", nickname: None }", user_update) == Ok({ name: Present("Jan"), nickname: Present(None) })
+expect Decode.one("{ nickname: Some(\"J\") }", user_update) == Ok({ name: Missing, nickname: Present(Some("J")) })

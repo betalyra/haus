@@ -13,7 +13,7 @@
  *   type LineItem    = { sku: String, quantity: Int, price: Money }
  *   type Order       = { id: Int, placedOn: Date, customer: Customer,
  *                        items: Array LineItem, status: OrderStatus,
- *                        note: Maybe String }
+ *                        note?: String }
  *   type ShopEvent   = < OrderPlaced { orderId: Int, total: Money }
  *                      | OrderShipped { orderId: Int, at: Instant } | _ >
  */
@@ -34,7 +34,7 @@ export const OrderStatus = h.Variant({
 export type OrderStatus = h.Infer<typeof OrderStatus>
 //   | { _tag: "Pending" }
 //   | { _tag: "Paid"; at: Date }
-//   | { _tag: "Shipped"; at: Date; tracking: string | undefined }
+//   | { _tag: "Shipped"; at: Date; tracking: string | null }
 //   | { _tag: "Cancelled"; reason: string }
 
 export const Customer = h.Record({ name: h.String, email: h.String })
@@ -48,7 +48,8 @@ export const Order = h.Record({
   customer: Customer,
   items: h.Array(LineItem),
   status: OrderStatus,
-  note: h.Maybe(h.String),
+  // May be left out: `note?: String`. Missing means there is no note.
+  note: h.Optional(h.String),
 })
 export type Order = h.Infer<typeof Order>
 

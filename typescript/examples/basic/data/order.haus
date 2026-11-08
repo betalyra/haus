@@ -12,5 +12,5 @@
     { sku: "MUG-HAUS",     quantity: 1, price: Money(14.50, EUR) },
   ],
   status: Shipped { at: Instant("2026-11-08T09:12:00Z"), tracking: Some("DHL-123456") },
-  // note: Maybe String. Missing, so it decodes as undefined
+  // note?: String may be left out: this order has no note
 }

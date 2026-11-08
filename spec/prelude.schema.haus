@@ -10,11 +10,12 @@ type Bool       = < False | True >
 type Maybe a    = < None | Some a >      // a missing field of type Maybe T decodes as None
 type Result e a = < Err e | Ok a >
 
-// ── Partial updates ──────────────────────────────────────────
-// Absence and None are different in haus. As a record field, Patch a reads:
-//   field absent → Keep          (leave unchanged)
-//   field: x     → Set x         (for Patch (Maybe T): None clears, Some(v) sets)
-type Patch a = < Keep | Set a >
+// ── Optional fields and Maybe ────────────────────────────────
+// Two separate things (spec §1):
+//   name?: T        the field may be missing ("not given"); never None
+//   name: Maybe T   the value is always written: None or Some(…)
+//   name?: Maybe T  not given, None or Some(…): a partial update that can
+//                   leave, clear or set a value
 
 // ── Collections ──────────────────────────────────────────────
 // Records only have string keys. Maps with other keys and sets are written

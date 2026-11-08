@@ -26,10 +26,33 @@ A **file** is a sequence of zero or more values separated by commas (§6). A
 single document is a sequence of one.
 
 **Absence is not a value.** A record either contains a field or it doesn't.
-`{ }` and `{ x: None }` are different values. How a reader treats a missing
-field is decided by the field's schema type: for `Maybe a` it means `None`,
-for `Patch a` it means `Keep`, and for any other type it is an error. The
-parser itself never invents values for absent fields.
+`{ }` and `{ x: None }` are different values, and nothing converts one into
+the other. Two separate things exist, each with exactly one spelling:
+
+| Schema | Field present | Field missing |
+|---|---|---|
+| `x: T` | `x: <T value>` | error |
+| `x?: T` (optional field) | `x: <T value>` | allowed: "not given" |
+| `x: Maybe T` | `x: None` or `x: Some(<T value>)`, always written | error |
+| `x?: Maybe T` | `x: None` or `x: Some(…)` | allowed: "not given" |
+
+- An **optional field** (`?`) is a property of the record: the key may be missing. It is never `None`, and decoders MUST keep "missing" and `None` apart (a missing key, not a `None` value, in the decoded result).
+- **`Maybe a`** is an ordinary variant, `< None | Some a >`. Its values are always written; a bare `32` is not `Some(32)`.
+- `x?: Maybe T` has three states: not given, `None`, `Some(…)`. That is how a partial update says "leave it", "clear it" and "set it" (§1.1).
+- The parser never invents values for missing fields, and neither does any decoder: what "not given" means (a default, "unchanged", "unknown") is up to the application.
+
+Bindings MUST represent a missing optional field and `None` differently in their language (in TypeScript: a missing key and `null`), so the two can't be confused when encoding.
+
+### 1.1 Partial updates
+
+A large document is updated by sending only what changes: a record of the same shape whose fields are optional.
+
+```haus
+// type UserUpdate = { name?: String, nickname?: Maybe String, address?: AddressUpdate }
+{ nickname: None, address: { city: "Paris" } }
+```
+
+`nickname` is cleared, `address.city` is set, everything else is not given and stays as it is. Updates that a sparse record can't express (adding one element to an array, renaming) are written as a list of change variants, e.g. `changes: [AddRole(Admin), Rename { from: "a", to: "b" }]`.
 
 ## 2. Equality
 

@@ -65,21 +65,22 @@ describe("recursive schemas", () => {
   })
 
   it("recursion without consuming input fails instead of looping", () => {
-    // Patch decodes the same value with its inner schema: Patch(self) never moves on.
-    const P = h.Recursive<unknown>("P", (self) => h.Patch(self) as h.Schema<unknown>)
+    // A wrapper that decodes the same value with its inner schema never moves on.
+    const same = <A>(inner: h.Schema<A>): h.Schema<A> => ({ expected: inner.expected, decode: inner.decode, encode: inner.encode })
+    const P = h.Recursive<unknown>("P", (self) => same(self))
     expect(within(100, () => errorOf(() => h.parse(P, "1"))).message).toContain("unguarded recursion in P")
     // Maybe(self) consumes Some(…) when decoding, but encodes a value with itself again.
     const M = h.Recursive<unknown>("M", (self) => h.Maybe(self) as h.Schema<unknown>)
-    expect(h.parse(M, "Some(Some(None))")).toBeUndefined()
+    expect(h.parse(M, "Some(Some(None))")).toBeNull()
     expect(errorOf(() => h.encode(M, 5)).message).toContain("unguarded recursion in M")
   })
 
   it("mutual recursion", () => {
-    interface A { readonly b: B | undefined }
+    interface A { readonly b: B | null }
     interface B { readonly a: A }
     const A: h.Schema<A> = h.Recursive<A>("A", () => h.Record({ b: h.Maybe(B) }))
     const B: h.Schema<B> = h.Record({ a: A })
-    expect(h.parse(A, "{ b: Some({ a: { b: None } }) }")).toEqual({ b: { a: { b: undefined } } })
+    expect(h.parse(A, "{ b: Some({ a: { b: None } }) }")).toEqual({ b: { a: { b: null } } })
   })
 })
 
@@ -219,9 +220,9 @@ describe("inferring recursive types", () => {
     expect(printShape(infer(parseAll("Some(Some(1))")).root)).toBe("Maybe (Maybe Int)")
   })
 
-  it("fields that only some levels have become Maybe", () => {
+  it("fields that only some levels have become optional", () => {
     const text = thread(3, (i) => (i === 1 ? "edited: True, " : ""))
-    expect(printShape(infer(parseAll(text)).root)).toContain("edited: Maybe Bool")
+    expect(printShape(infer(parseAll(text)).root)).toContain("edited?: Bool")
   })
 
   it("types nested in each other in turns, with different fields per level (examples/filesystem.haus)", () => {
@@ -231,9 +232,9 @@ describe("inferring recursive types", () => {
       "children: Array Node", // Folder
       "contents: Array Node", // Archive, merged with the folder entries
       "root: Node", // Mount
-      "owner: Maybe String", // only some folders
+      "owner?: String", // only some folders
       "size: Decimal", // one size is 0.5
-      "checksum: Maybe < Sha256 String >",
+      "checksum?: < Sha256 String >",
       "| Link < Path String >",
       "format: < Zip | Tar { compressed: Maybe < Gzip > } >",
     ]) expect(schema).toContain(part)
@@ -247,7 +248,7 @@ describe("inferring recursive types", () => {
       "children: Array Node",
       "| When { condition: < FeatureFlag String >, then: Node, else: Node }",
       "onClick: < Reset | Open < Url String > | Navigate String >",
-      "style: Maybe { padding: Int, font: { size: Decimal, weight: < Bold | Regular > } }",
+      "style?: { padding: Int, font: { size: Decimal, weight: < Bold | Regular > } }",
     ]) expect(schema).toContain(part)
   })
 

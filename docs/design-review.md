@@ -60,7 +60,7 @@ The security and spec issues are now fixed (§1, §2). What's left is mostly new
 |---|---|---|---|
 | ✅ | D1 | **The payload bound across line breaks**, so a forgotten comma silently created a payload. | A payload must start on the same line as its tag (only spaces and tabs in between). Changed in the grammar, both parsers and the suite, with 3 new invalid cases. |
 | ✅ | D2 | **Positional payloads were mapped to named fields by order** (Effect adapter). | Opt-in via `Haus.Positional(…)`. Without it, the error suggests the named form. Spec §5. (`h.Tuple` and Roc decoders were already explicit.) |
-| ✅ | D3 | **"Field absent" and `None` were conflated**, so PATCH updates couldn't be expressed. | Absence is not a value (spec §1). Prelude `Patch a = < Keep \| Set a >`, `h.Patch`, Roc `Decode.patch_field`. In Effect, use `optionalKey(Option(X))`. All tested. |
+| ✅ | D3 | **"Field absent" and `None` were conflated**, so PATCH updates couldn't be expressed. A first fix (a `Patch a = < Keep \| Set a >` field type, with "missing" read as `Keep`) brought back JSON's problem: two spellings of "nothing" whose meaning depends on the reader. | Two separate concepts, each with one spelling (spec §1): optional fields (`x?: T`, may be missing, never `None`) and `Maybe` (an ordinary variant, always written). `x?: Maybe T` gives the three states of a partial update. `Patch` was removed. TypeScript: `h.Optional`, `h.Maybe` (`None` → `null`); Effect: `optionalKey` / `Option`, never converted into each other; Roc: `Decode.optional_field` → `[Missing, Present a]`. Inference prints `x?: T` for fields only some records have. All tested. |
 | 🟡 | D4 | **Maps with non-string keys and sets.** | Prelude conventions: `Map([(k, v), …])` and `Set([…])`. **Open:** decoders for them in TypeScript, Effect and Roc. |
 | ✅ | D5 | **No `NaN` or `±Infinity`.** | Prelude tags `NaN`, `Infinity`, `NegInfinity`, accepted by `h.Float64` and by Effect's `Schema.Number`. |
 | ✅ | D6 | **Equality undefined.** | Spec §2. Scale and notation are part of a number's value (`1.0 ≠ 1`); numeric equality is left to the schema. |
@@ -114,7 +114,7 @@ Ecosystem gotchas, documented in the examples:
 | ✅ | Config files | Comments, trailing commas, block strings, exact numbers, and a formatter that keeps comments. |
 | 🟡 | API payloads | Sum types, exact money, open variants, schema-aware encoding and decoding. Missing: a MIME type. |
 | ✅ | Event streams and logs | Comma-terminated values, open variants, size limit per value, truncation detection (TypeScript). |
-| ✅ | Partial updates (PATCH) | `Patch a`; absent ≠ `None` (D3). |
+| ✅ | Partial updates (PATCH) | A record of optional fields: send only what changes; `x?: Maybe T` can also clear (D3, spec §1.1). |
 | ⬜ | Signed or hashed documents | Sign the exact bytes today. A canonical form for hashing equal values is planned. |
 | 🟡 | Tabular data | Works, but repeats every key. Acceptable with compression. |
 | 🟡 | Scientific and ML numbers | `NaN`/`Infinity` done (D5). Large numeric arrays are inefficient as text. |

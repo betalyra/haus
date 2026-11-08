@@ -54,19 +54,27 @@ describe("decoding", () => {
     expect(b?._tag === "@unknown" && b.tag).toBe("Refunded")
   })
 
-  it("Maybe: None, Some and a missing field all work", () => {
+  it("Maybe is always written: None and Some(…); a missing field is an error", () => {
     const S = h.Array(h.Record({ v: h.Maybe(h.Int) }))
-    expect(h.parse(S, "[{ v: None }, { v: Some(1) }, {}]")).toEqual([{ v: undefined }, { v: 1 }, { v: undefined }])
+    expect(h.parse(S, "[{ v: None }, { v: Some(1) }]")).toEqual([{ v: null }, { v: 1 }])
+    expect(() => h.parse(S, "[{}]")).toThrow("missing field 'v' at $[0]")
+    expect(() => h.parse(S, "[{ v: 1 }]")).toThrow("expected None | Some(Int), found number 1")
   })
 
-  it("Patch distinguishes absent (Keep), None (clear) and Some (set)", () => {
-    const UserPatch = h.Record({ name: h.Patch(h.String), nickname: h.Patch(h.Maybe(h.String)) })
-    expect(h.parse(UserPatch, "{}")).toEqual({ name: { _tag: "Keep" }, nickname: { _tag: "Keep" } })
-    expect(h.parse(UserPatch, '{ name: "Jan", nickname: None }')).toEqual({
-      name: { _tag: "Set", value: "Jan" },
-      nickname: { _tag: "Set", value: undefined },
-    })
-    expect(h.parse(UserPatch, '{ nickname: Some("J") }').nickname).toEqual({ _tag: "Set", value: "J" })
+  it("Optional: a field that may be missing stays missing", () => {
+    const Person = h.Record({ name: h.String, age: h.Optional(h.Int) })
+    const people = h.parse(h.Array(Person), '[{ name: "Hans", age: 32 }, { name: "Mickey" }]')
+    expect(people).toEqual([{ name: "Hans", age: 32 }, { name: "Mickey" }])
+    expect(Object.hasOwn(people[1]!, "age")).toBe(false)
+    // None is not "missing": for an Optional(Int) it's simply not an Int.
+    expect(() => h.parse(Person, '{ name: "Mickey", age: None }')).toThrow("expected Int, found variant None")
+  })
+
+  it("Optional(Maybe(…)): not given, None and Some stay apart (partial updates)", () => {
+    const UserUpdate = h.Record({ name: h.Optional(h.String), nickname: h.Optional(h.Maybe(h.String)) })
+    expect(h.parse(UserUpdate, "{}")).toEqual({})
+    expect(h.parse(UserUpdate, '{ name: "Jan", nickname: None }')).toEqual({ name: "Jan", nickname: null })
+    expect(h.parse(UserUpdate, '{ nickname: Some("J") }')).toEqual({ nickname: "J" })
   })
 
   it("Float64 accepts NaN and infinities", () => {
@@ -134,7 +142,7 @@ describe("encoding", () => {
     paid: true,
     day: "2026-11-07",
     at: new Date("2026-11-07T10:00:00.000Z"),
-    note: undefined,
+    note: null,
     tags: ["a", 'quote "x"'],
     shape: { _tag: "Point", values: [1, 2] },
     level: "Info",
@@ -144,7 +152,7 @@ describe("encoding", () => {
     const text = h.stringify(Order, order)
     expect(text).toBe(
       '{\n  id: 1,\n  big: 123456789012345678901,\n  price: 19.90,\n  ratio: 0.1,\n  paid: True,\n  day: Date("2026-11-07"),\n' +
-        '  at: Instant("2026-11-07T10:00:00.000Z"),\n  tags: [\n    "a",\n    "quote \\"x\\"",\n  ],\n  shape: Point(1, 2),\n  level: Info,\n}',
+        '  at: Instant("2026-11-07T10:00:00.000Z"),\n  note: None,\n  tags: [\n    "a",\n    "quote \\"x\\"",\n  ],\n  shape: Point(1, 2),\n  level: Info,\n}',
     )
     expect(h.parse(Order, text)).toEqual(order)
   })
@@ -156,10 +164,12 @@ describe("encoding", () => {
     expect(h.stringify(h.Array(Event), events, { style: "compact" })).toBe('[Heartbeat, Refunded { id: 1, reason: "x" }]')
   })
 
-  it("Patch: Keep is left out, Set(None) is written as None", () => {
-    const UserPatch = h.Record({ name: h.Patch(h.String), nickname: h.Patch(h.Maybe(h.String)) })
-    expect(h.stringify(UserPatch, { name: { _tag: "Keep" }, nickname: { _tag: "Set", value: undefined } }, { style: "compact" })).toBe("{ nickname: None }")
-    expect(h.stringify(UserPatch, { name: { _tag: "Set", value: "Jan" }, nickname: { _tag: "Keep" } }, { style: "compact" })).toBe('{ name: "Jan" }')
+  it("Optional fields without a value are left out; Maybe always writes None or Some", () => {
+    const UserUpdate = h.Record({ name: h.Optional(h.String), nickname: h.Optional(h.Maybe(h.String)) })
+    expect(h.stringify(UserUpdate, { nickname: null }, { style: "compact" })).toBe("{ nickname: None }")
+    expect(h.stringify(UserUpdate, { name: "Jan" }, { style: "compact" })).toBe('{ name: "Jan" }')
+    expect(h.stringify(UserUpdate, { name: "Jan", nickname: "J" }, { style: "compact" })).toBe('{ name: "Jan", nickname: Some("J") }')
+    expect(h.Record({ a: h.Optional(h.Int), b: h.Maybe(h.Int) }).expected).toBe("{ a?: Int, b: Maybe Int | _ }")
   })
 
   it("NaN and infinities", () => {

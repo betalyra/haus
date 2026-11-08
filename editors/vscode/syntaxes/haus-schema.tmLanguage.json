@@ -19,6 +19,9 @@
       "include": "#type-decl"
     },
     {
+      "include": "#optional-key"
+    },
+    {
       "include": "source.haus#key"
     },
     {
@@ -58,6 +61,18 @@
     "type": {
       "name": "entity.name.type.haus",
       "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+    },
+    "optional-key": {
+      "comment": "An optional field: `name?: T` (may be missing; never None).",
+      "match": "\\b([a-z_][A-Za-z0-9_]*)(\\?)(?=\\s*:)",
+      "captures": {
+        "1": {
+          "name": "support.type.property-name.haus"
+        },
+        "2": {
+          "name": "keyword.operator.optional.haus"
+        }
+      }
     }
   }
 }

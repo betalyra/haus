@@ -63,7 +63,7 @@ Person {
     city: "London",
     country: GB,
     geo: Point(51.5074, -0.1350),
-    // only some addresses have this field: inferred as Maybe
+    // only some addresses have this field: inferred as optional, `unit?: String`
     unit: "Flat 3",
   },
   contacts: [Phone { country: 44, number: "2079460000", mobile: False }],

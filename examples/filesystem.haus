@@ -10,7 +10,7 @@
 //
 // Hover `children`, `contents` or `root` in VS Code, or run "haus: Infer Schema
 // from This File": inference merges what it saw at every level into one
-// recursive type, and fields that only some levels have become Maybe.
+// recursive type, and fields that only some levels have become optional (`?`).
 
 Folder {
   name: "home",

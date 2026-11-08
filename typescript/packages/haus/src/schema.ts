@@ -206,12 +206,11 @@ export interface Schema<A> {
   readonly decode: (value: Value, at: At) => A
   readonly encode: (value: A, at: At) => Value
   /**
-   * What a record field of this type decodes to when the field is absent.
-   * Unset: absence is an error. `Maybe` → undefined, `Patch` → Keep.
+   * Set by `h.Optional`: as a record field, it may be missing (`name?: T`).
+   * A missing field stays missing in the decoded object; it never becomes
+   * `None` or any other value (spec §1).
    */
-  readonly missing?: (() => A) | undefined
-  /** As a record field, leave the field out when this is true (`Maybe` undefined, `Patch` Keep). */
-  readonly omit?: ((value: A) => boolean) | undefined
+  readonly optional?: true | undefined
 }
 
 export type Infer<S> = S extends Schema<infer A> ? A : never
@@ -374,48 +373,51 @@ const array_ = <A>(item: Schema<A>): Schema<readonly A[]> =>
 
 export { array_ as Array }
 
-/** `None` → undefined, `Some(x)` → x. As a record field it may also be missing. */
-export const Maybe = <A>(inner: Schema<A>): Schema<A | undefined> => ({
-  missing: () => undefined,
-  omit: (a) => a === undefined,
-  ...make(
+/**
+ * `None` → null, `Some(x)` → x. Always written out in the data: `Maybe` is an
+ * ordinary variant, and a missing field is not `None` (use `h.Optional`).
+ * `null` rather than `undefined`, so that `h.Optional(h.Maybe(T))` keeps all
+ * three states apart: key missing, `null` (None) and a value.
+ */
+export const Maybe = <A>(inner: Schema<A>): Schema<A | null> =>
+  make(
     `Maybe ${inner.expected}`,
     (v, p) => {
-      if (v.kind === "variant" && v.tag === "None" && v.args.length === 0) return undefined
+      if (v.kind === "variant" && v.tag === "None" && v.args.length === 0) return null
       if (v.kind === "variant" && v.tag === "Some" && v.args.length === 1) return inner.decode(v.args[0]!, p.child(0))
       return mismatch(`None | Some(${inner.expected})`, v, p)
     },
-    (a, p) => (a === undefined ? variant("None") : variant("Some", [inner.encode(a, p.child(0))])),
-  ),
-})
+    (a, p) => (a === null ? variant("None") : variant("Some", [inner.encode(a, p.child(0))])),
+  )
 
 /**
- * A field in a partial update. Absence and `None` are different things in haus,
- * so a PATCH body can say all three:
- *   field absent      → { _tag: "Keep" }            leave unchanged
- *   field: <value>    → { _tag: "Set", value }      for Patch(Maybe(X)): None clears, Some(x) sets
+ * A record field that may be missing: `name?: T` in a schema. In the decoded
+ * object the key is then absent (`name?: T` in TypeScript); when encoding, an
+ * absent key (or `undefined`) leaves the field out. Only meaningful as a
+ * record field.
+ *
+ *   h.Record({ name: h.String, nickname: h.Optional(h.String) })
+ *   // { name: "Ada" } and { name: "Ada", nickname: "ada" } are both valid
+ *
+ * For a partial update that can also clear a value, combine it with Maybe:
+ * `h.Optional(h.Maybe(h.String))` reads a missing key (not given), `None`
+ * (`null`: clear) and `Some(x)` (set).
  */
-export type Patch<A> = { readonly _tag: "Keep" } | { readonly _tag: "Set"; readonly value: A }
+export const Optional = <A>(inner: Schema<A>): OptionalSchema<A> => ({ ...inner, optional: true })
 
-export const Patch = <A>(inner: Schema<A>): Schema<Patch<A>> => ({
-  missing: () => ({ _tag: "Keep" }),
-  omit: (a) => a._tag === "Keep",
-  ...make<Patch<A>>(
-    `Patch ${inner.expected}`,
-    (v, p) => ({ _tag: "Set", value: inner.decode(v, p) }),
-    (a, p) => {
-      // Inside a record, Keep is left out (omit). Anywhere else there's no way to say it.
-      if (a._tag === "Keep") return p.fail("Keep can only be encoded as an absent record field")
-      // A Set(None) of a Patch(Maybe(X)) must still be written: as an explicit None.
-      return inner.encode(a.value, p)
-    },
-  ),
-})
+export interface OptionalSchema<A> extends Schema<A> {
+  readonly optional: true
+}
 
 // ── records ──────────────────────────────────────────────────
 
 type Fields = Readonly<Record<string, AnySchema>>
-export type RecordOf<F extends Fields> = { readonly [K in keyof F]: Infer<F[K]> }
+type OptionalKeys<F extends Fields> = { [K in keyof F]: F[K] extends { readonly optional: true } ? K : never }[keyof F]
+type Simplify<T> = { [K in keyof T]: T[K] } & {}
+/** Required fields as `key: T`, `h.Optional` fields as `key?: T`. */
+export type RecordOf<F extends Fields> = Simplify<
+  { readonly [K in Exclude<keyof F, OptionalKeys<F>>]: Infer<F[K]> } & { readonly [K in OptionalKeys<F>]?: Infer<F[K]> }
+>
 
 export interface RecordSchema<A> extends Schema<A> {
   readonly kind: "record"
@@ -430,14 +432,13 @@ export interface RecordSchema<A> extends Schema<A> {
  */
 const record_ = <F extends Fields>(fields: F, options: { closed?: boolean } = {}): RecordSchema<RecordOf<F>> => {
   const entries = Object.entries(fields)
-  const expected = `{ ${entries.map(([k, s]) => `${k}: ${s.expected}`).join(", ")}${options.closed ? "" : " | _"} }`
+  const expected = `{ ${entries.map(([k, s]) => `${k}${s.optional ? "?" : ""}: ${s.expected}`).join(", ")}${options.closed ? "" : " | _"} }`
   const decodeRecord = (v: HRecord, at: At) => {
     const out: Record<string, unknown> = {}
     for (const [key, schema] of entries) {
       const field = v.fields.get(key)
       if (field !== undefined) setOwn(out, key, schema.decode(field, at.child(key)))
-      else if (schema.missing) setOwn(out, key, schema.missing())
-      else at.fail(`missing field '${key}'`)
+      else if (!schema.optional) at.fail(`missing field '${key}'`)
     }
     if (options.closed) {
       for (const key of v.fields.keys()) {
@@ -452,8 +453,8 @@ const record_ = <F extends Fields>(fields: F, options: { closed?: boolean } = {}
       const out = new Map<string, Value>()
       for (const [key, schema] of entries) {
         const value = Object.hasOwn(a, key) ? (a as Record<string, unknown>)[key] : undefined
-        // A Patch(Maybe(X)) set to None is written as an explicit None; other omits leave the field out.
-        if (schema.omit?.(value)) continue
+        // An optional field without a value is left out; nothing is written in its place.
+        if (schema.optional && value === undefined) continue
         out.set(key, schema.encode(value, at.child(key)))
       }
       return rec(out)
@@ -681,12 +682,6 @@ export const Recursive = <A>(name: string, build: (self: Schema<A>) => Schema<A>
     expected: name,
     decode: (v, at) => run(v, at, (b) => b.decode(v, at)),
     encode: (a, at) => run(a, at, (b) => b.encode(a, at)),
-    get missing() {
-      return force().missing
-    },
-    get omit() {
-      return force().omit
-    },
   }
   return self
 }

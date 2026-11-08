@@ -237,8 +237,6 @@ const PRELUDE: Record<string, string> = {
   Some: "`Maybe a` (prelude): a value",
   Ok: "`Result e a` (prelude): success",
   Err: "`Result e a` (prelude): failure",
-  Keep: "`Patch a` (prelude): leave unchanged",
-  Set: "`Patch a` / `Set a` (prelude)",
   Money: "`Money` (prelude): `Money(Decimal, Currency)`",
   Date: "`Date` (prelude): RFC 3339 full-date",
   Time: "`Time` (prelude): RFC 3339 partial-time",
