@@ -5,7 +5,7 @@
 ## are needed: a tag union type is just the set of tags.
 import haus.Value
 import haus.Decode
-import "../../../examples/stream.haus" as stream_src : Str
+import "../../../examples/events.haus" as stream_src : Str
 
 Shop := [].{
 
@@ -73,7 +73,7 @@ AppEvent : [
 
 # ── showcase, run with `roc test` ────────────────────────────
 
-# The server's view of examples/stream.haus: PaymentReceived and Heartbeat
+# The server's view of examples/events.haus: PaymentReceived and Heartbeat
 # aren't user events, so they decode as Unknown.
 expect {
 	events = Decode.all(stream_src, Shop.decode_user_event)

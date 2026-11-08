@@ -15,7 +15,7 @@ cd examples/shop && roc test main.roc   # tests
 cd examples/shop && roc run.roc         # runnable demo (uses the basic-cli platform)
 ```
 
-`run.roc` reads `../../../examples/stream.haus` relative to the working
+`run.roc` reads `../../../examples/events.haus` relative to the working
 directory, so run it from `examples/shop`.
 
 Not ported yet: incremental streaming. `parse_all` takes the complete text.

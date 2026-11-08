@@ -1,4 +1,4 @@
-// example.haus: first draft of the data syntax.
+// syntax-tour.haus: a tour of the data syntax.
 //
 // Ground rules:
 //   - Record keys are bare identifiers. Quotes are only needed for keys that
@@ -14,7 +14,7 @@
 //     becomes an Int64, a Float64 or a Decimal.
 //   - A file is a sequence of values, each followed by a comma (optional
 //     after the last one). A normal document is a sequence of one value.
-//     See stream.haus.
+//     See events.haus.
 
 {
   // ── Primitives ─────────────────────────────────────────────
@@ -80,7 +80,7 @@
   // ── Extensible records ─────────────────────────────────────
   // At the data level, every record is open: extra fields are always legal.
   // A consumer typed as `{ id: Int | r }` reads `id` and keeps the rest
-  // intact in `r`. Both entries are valid `Entity`s (see example.schema.haus).
+  // intact in `r`. Both entries are valid `Entity`s (see syntax-tour.schema.haus).
   entities: [
     { id: 1, kind: Person, name: "Ada" },
     { id: 2, kind: Robot, model: "R2", firmware: Some("4.1.0") },

@@ -110,7 +110,7 @@ describe("decodeStream", () => {
 
   it.effect("decodes the repo's stream example, chunk by chunk", () =>
     Effect.gen(function* () {
-      const text = yield* Effect.promise(() => import("node:fs/promises").then((fs) => fs.readFile(new URL("../../../../examples/stream.haus", import.meta.url), "utf8")))
+      const text = yield* Effect.promise(() => import("node:fs/promises").then((fs) => fs.readFile(new URL("../../../../examples/events.haus", import.meta.url), "utf8")))
       const chunks = text.match(/[\s\S]{1,7}/g) ?? []
 
       const server = yield* Stream.runCollect(Haus.decodeStream(ServerEvent)(stream(chunks)))

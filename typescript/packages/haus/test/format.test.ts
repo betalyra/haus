@@ -6,7 +6,7 @@ import { decode, fixtures, repoFile } from "./haus.js"
 
 const files = [
   ...fixtures("valid").map(({ name, bytes }) => ({ name, bytes })),
-  ...["example.haus", "stream.haus", "fmt.haus"].map((name) => ({ name, bytes: repoFile(name) })),
+  ...["syntax-tour.haus", "events.haus", "person.haus", "thread.haus", "filesystem.haus", "settings-ui.haus"].map((name) => ({ name, bytes: repoFile(name) })),
 ]
 
 describe("format: round trip and idempotence", () => {

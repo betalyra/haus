@@ -15,7 +15,7 @@ Editor support for `.haus` data files and `.schema.haus` schemas.
   - **haus: Compact** puts every item on one line and drops comments.
 - 📐 **haus: Infer Schema from This File** opens a `.schema.haus` draft (command palette or the editor title bar).
 
-Try it on [`examples/fmt.haus`](../../examples/fmt.haus).
+Try it on [`examples/person.haus`](../../examples/person.haus), or on the recursive [`thread.haus`](../../examples/thread.haus), [`filesystem.haus`](../../examples/filesystem.haus) and [`settings-ui.haus`](../../examples/settings-ui.haus).
 
 ## Install
 

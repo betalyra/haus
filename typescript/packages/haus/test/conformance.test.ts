@@ -34,7 +34,7 @@ describe("invalid", () => {
 })
 
 describe("repository examples", () => {
-  it.effect.each(["example.haus", "stream.haus"])("%s parses", (file) =>
+  it.effect.each(["syntax-tour.haus", "events.haus"])("%s parses", (file) =>
     Effect.gen(function* () {
       const values = yield* parseBytes(repoFile(file))
       expect(values.length).toBeGreaterThan(0)

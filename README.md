@@ -48,7 +48,7 @@ pnpm run package                            # builds haus.vsix
 code --install-extension haus.vsix --force
 ```
 
-Reload VS Code (**Developer: Reload Window**) and open [`examples/fmt.haus`](examples/fmt.haus). Hover any key to see its inferred type, press Shift+Alt+F to format, or run **haus: Infer Schema from This File**. More in the [extension README](editors/vscode/README.md).
+Reload VS Code (**Developer: Reload Window**) and open [`examples/person.haus`](examples/person.haus). Hover any key to see its inferred type, press Shift+Alt+F to format, or run **haus: Infer Schema from This File**. More in the [extension README](editors/vscode/README.md).
 
 ## Features
 

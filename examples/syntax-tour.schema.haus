@@ -1,4 +1,4 @@
-// example.schema.haus: optional schema layer, PureScript-flavoured but with
+// syntax-tour.schema.haus: optional schema layer, PureScript-flavoured but with
 // single-colon annotations. It can't be confused with the data syntax:
 // in data a field's right-hand side is a value, here it's a type.
 //
@@ -40,7 +40,7 @@ type Entity k r = { id: Int, kind: < Person | Robot | k > | r }
 // Closed record: extra fields are a validation error.
 type Headers = {| "content-type": String, "x-request-id": String |}
 
-// ── Stream root (for stream.haus) ────────────────────────────
+// ── Stream root (for events.haus) ────────────────────────────
 // A server that only handles user events: its row is open, so a
 // PaymentReceived in the stream decodes as Unknown instead of failing.
 type ServerEvents = Stream (UserEvent _)

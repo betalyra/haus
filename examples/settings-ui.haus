@@ -1,0 +1,302 @@
+// A settings screen as a view tree, 18 sections deep. Every level holds
+// different widgets (Toggle, Slider, Text, Button, Picker), some levels add a
+// `style` record or an `overlay`, and four levels hide the next section
+// behind `When { condition, then, else }`.
+//
+// Views come back through three different fields (children, then, else), so
+// inference has to merge widgets, sections and conditions from every level
+// into one recursive `Node` type. Hover `children` in VS Code or run
+// "haus: Infer Schema from This File" to see it.
+
+Screen {
+  route: "/settings",
+  root: Section {
+    title: "Settings",
+    style: {
+      padding: 16,
+      font: {
+        size: 20,
+        weight: Bold,
+      },
+    },
+    children: [
+      Toggle {
+        label: "Enable settings",
+        value: True,
+      },
+      Section {
+        title: "Advanced",
+        children: [
+          Slider {
+            label: "Level",
+            min: 0,
+            max: 10,
+            value: 2.5,
+            unit: Seconds,
+          },
+          Section {
+            title: "Network",
+            children: [
+              Text("These settings affect network."),
+              When {
+                condition: FeatureFlag("beta-2"),
+                then: Section {
+                  title: "Proxy",
+                  style: {
+                    padding: 4,
+                    font: {
+                      size: 18.5,
+                      weight: Bold,
+                    },
+                  },
+                  children: [
+                    Button {
+                      label: "Reset",
+                      onClick: Reset,
+                      style: {
+                        color: Rgb(200, 40, 40),
+                      },
+                    },
+                    Section {
+                      title: "Authentication",
+                      children: [
+                        Button {
+                          label: "Docs",
+                          onClick: Open(Url("https://example.com/4")),
+                          icon: Some(Icon(Book)),
+                        },
+                        Section {
+                          title: "Certificates",
+                          children: [
+                            Picker {
+                              label: "Mode",
+                              options: [
+                                Auto,
+                                Manual,
+                                Off,
+                              ],
+                              selected: Manual,
+                            },
+                            Section {
+                              title: "Trusted roots",
+                              style: {
+                                padding: 8,
+                                font: {
+                                  size: 17,
+                                  weight: Regular,
+                                },
+                              },
+                              children: [
+                                Toggle {
+                                  label: "Enable trusted roots",
+                                  value: False,
+                                },
+                                Section {
+                                  title: "Revocation",
+                                  overlay: Badge {
+                                    text: "new",
+                                    tone: Info,
+                                  },
+                                  children: [
+                                    Slider {
+                                      label: "Level",
+                                      min: 0,
+                                      max: 70,
+                                      value: 17.5,
+                                      unit: Seconds,
+                                    },
+                                    When {
+                                      condition: FeatureFlag("beta-7"),
+                                      then: Section {
+                                        title: "OCSP",
+                                        children: [
+                                          Text("These settings affect ocsp."),
+                                          Section {
+                                            title: "Responders",
+                                            style: {
+                                              padding: 12,
+                                              font: {
+                                                size: 15.5,
+                                                weight: Regular,
+                                              },
+                                            },
+                                            children: [
+                                              Button {
+                                                label: "Reset",
+                                                onClick: Reset,
+                                                style: {
+                                                  color: Rgb(200, 40, 40),
+                                                },
+                                              },
+                                              Section {
+                                                title: "Primary",
+                                                children: [
+                                                  Button {
+                                                    label: "Docs",
+                                                    onClick: Open(
+                                                      Url(
+                                                        "https://example.com/10",
+                                                      ),
+                                                    ),
+                                                    icon: Some(Icon(Book)),
+                                                  },
+                                                  Section {
+                                                    title: "Timeouts",
+                                                    children: [
+                                                      Picker {
+                                                        label: "Mode",
+                                                        options: [
+                                                          Auto,
+                                                          Manual,
+                                                          Off,
+                                                        ],
+                                                        selected: Manual,
+                                                      },
+                                                      Section {
+                                                        title: "Retries",
+                                                        style: {
+                                                          padding: 16,
+                                                          font: {
+                                                            size: 14,
+                                                            weight: Regular,
+                                                          },
+                                                        },
+                                                        children: [
+                                                          Toggle {
+                                                            label: "Enable retries",
+                                                            value: True,
+                                                          },
+                                                          When {
+                                                            condition: FeatureFlag(
+                                                              "beta-12",
+                                                            ),
+                                                            then: Section {
+                                                              title: "Backoff",
+                                                              children: [
+                                                                Slider {
+                                                                  label: "Level",
+                                                                  min: 0,
+                                                                  max: 130,
+                                                                  value: 32.5,
+                                                                  unit: Seconds,
+                                                                },
+                                                                Section {
+                                                                  title: "Jitter",
+                                                                  children: [
+                                                                    Text(
+                                                                      "These settings affect jitter.",
+                                                                    ),
+                                                                    Section {
+                                                                      title: "Limits",
+                                                                      style: {
+                                                                        padding: 4,
+                                                                        font: {
+                                                                          size: 12.5,
+                                                                          weight: Regular,
+                                                                        },
+                                                                      },
+                                                                      children: [
+                                                                        Button {
+                                                                          label: "Reset",
+                                                                          onClick: Reset,
+                                                                          style: {
+                                                                            color: Rgb(
+                                                                              200,
+                                                                              40,
+                                                                              40,
+                                                                            ),
+                                                                          },
+                                                                        },
+                                                                        Section {
+                                                                          title: "Per host",
+                                                                          children: [
+                                                                            Button {
+                                                                              label: "Docs",
+                                                                              onClick: Open(
+                                                                                Url(
+                                                                                  "https://example.com/16",
+                                                                                ),
+                                                                              ),
+                                                                              icon: Some(
+                                                                                Icon(
+                                                                                  Book,
+                                                                                ),
+                                                                              ),
+                                                                            },
+                                                                            Section {
+                                                                              title: "Overrides",
+                                                                              children: [
+                                                                                Picker {
+                                                                                  label: "Mode",
+                                                                                  options: [
+                                                                                    Auto,
+                                                                                    Manual,
+                                                                                    Off,
+                                                                                  ],
+                                                                                  selected: Manual,
+                                                                                },
+                                                                                When {
+                                                                                  condition: FeatureFlag(
+                                                                                    "beta-17",
+                                                                                  ),
+                                                                                  then: Text(
+                                                                                    "end",
+                                                                                  ),
+                                                                                  else: Text(
+                                                                                    "Turn on beta 17 to see more.",
+                                                                                  ),
+                                                                                },
+                                                                              ],
+                                                                            },
+                                                                          ],
+                                                                        },
+                                                                      ],
+                                                                    },
+                                                                  ],
+                                                                },
+                                                              ],
+                                                            },
+                                                            else: Text(
+                                                              "Turn on beta 12 to see more.",
+                                                            ),
+                                                          },
+                                                        ],
+                                                      },
+                                                    ],
+                                                  },
+                                                ],
+                                              },
+                                            ],
+                                          },
+                                        ],
+                                      },
+                                      else: Section {
+                                        title: "Beta required",
+                                        children: [
+                                          Text("Turn on beta 7 to see more."),
+                                          Button {
+                                            label: "Join beta",
+                                            onClick: Navigate("/beta"),
+                                          },
+                                        ],
+                                      },
+                                    },
+                                  ],
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+                else: Text("Turn on beta 2 to see more."),
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+}

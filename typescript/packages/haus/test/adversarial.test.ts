@@ -239,6 +239,18 @@ describe("inferring recursive types", () => {
     ]) expect(schema).toContain(part)
   })
 
+  it("a deep view tree reached through several fields (examples/settings-ui.haus)", () => {
+    const text = readFileSync(new URL("../../../../examples/settings-ui.haus", import.meta.url), "utf8")
+    const schema = within(200, () => inferSchema(parseAll(text)))
+    for (const part of [
+      "< Screen { route: String, root: Node } >",
+      "children: Array Node",
+      "| When { condition: < FeatureFlag String >, then: Node, else: Node }",
+      "onClick: < Reset | Open < Url String > | Navigate String >",
+      "style: Maybe { padding: Int, font: { size: Decimal, weight: < Bold | Regular > } }",
+    ]) expect(schema).toContain(part)
+  })
+
   it("unifying stays linear: deep, wide and with a new field at every level", () => {
     // 120 levels (240 brackets, near the parser's limit of 256), each adding its own field.
     within(500, () => inferSchema(parseAll(thread(120, (i) => `f${i}: ${i}, `))))

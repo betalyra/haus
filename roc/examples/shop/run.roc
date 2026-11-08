@@ -14,10 +14,10 @@ main! : List(OsStr) => Try({}, _)
 main! = |_args| {
 	# Read at runtime (an embedded `import "…" as … : Str` would be evaluated at compile time).
 	stream_path : Path
-	stream_path = "../../../examples/stream.haus"
+	stream_path = "../../../examples/events.haus"
 	stream_src = stream_path.read_utf8!()?
 
-	Stdout.line!("── examples/stream.haus, server view (user events, rest is Unknown)")?
+	Stdout.line!("── examples/events.haus, server view (user events, rest is Unknown)")?
 	match Decode.all(stream_src, Shop.decode_user_event) {
 		Ok(events) =>
 			for event in events {
