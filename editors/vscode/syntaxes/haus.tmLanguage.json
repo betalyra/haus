@@ -20,6 +20,9 @@
           "include": "#quoted-key"
         },
         {
+          "include": "#bytes"
+        },
+        {
           "include": "#string"
         },
         {
@@ -177,7 +180,36 @@
     },
     "bidi": {
       "name": "invalid.illegal.bidi.haus",
-      "match": "[\u202a-\u202e\u2066-\u2069]"
+      "match": "[‪-‮⁦-⁩]"
+    },
+    "bytes": {
+      "comment": "Byte string: x\"0b34 ff\", two hex digits per byte, on one line.",
+      "begin": "\\bx\"",
+      "end": "\"|$",
+      "beginCaptures": {
+        "0": {
+          "name": "string.quoted.double.bytes.haus"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "string.quoted.double.bytes.haus"
+        }
+      },
+      "contentName": "constant.numeric.bytes.haus",
+      "patterns": [
+        {
+          "match": "[0-9A-Fa-f]{2}",
+          "name": "constant.numeric.hex.haus"
+        },
+        {
+          "match": "[ \\t]+"
+        },
+        {
+          "match": "[^\"]",
+          "name": "invalid.illegal.bytes.haus"
+        }
+      ]
     }
   }
 }

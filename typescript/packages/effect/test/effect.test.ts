@@ -42,6 +42,14 @@ describe("decode", () => {
       expect(order.origin).toEqual({ _tag: "Point", x: 1, y: 2 })
     }))
 
+  it.effect("bytes decode to Uint8Array and back", () =>
+    Effect.gen(function* () {
+      const S = Schema.Struct({ key: Schema.Uint8Array })
+      const v = yield* Haus.decode(S)('{ key: x"0b34 ff" }')
+      expect(v.key).toEqual(Uint8Array.from([0x0b, 0x34, 0xff]))
+      expect(yield* Haus.encode(S, { style: "compact" })(v)).toBe('{ key: x"0b34ff" }')
+    }))
+
   it.effect("an optional key is never None: missing and None are different things", () =>
     Effect.gen(function* () {
       const S = Schema.Struct({ tracking: Schema.optionalKey(Schema.String), note: Schema.Option(Schema.String) })

@@ -8,7 +8,7 @@
  * mismatch it falls back to a schema-less conversion and lets Effect report
  * the error with its path.
  */
-import { arr as vArr, num as vNum, rec as vRec, str as vStr, variant as vVariant, type HVariant, type Value } from "@betalyra/haus-fmt"
+import { arr as vArr, bytes as vBytes, num as vNum, rec as vRec, str as vStr, variant as vVariant, type HVariant, type Value } from "@betalyra/haus-fmt"
 import { Array as Arr, BigDecimal, DateTime, Match, Option, Predicate, SchemaAST } from "effect"
 
 export type Converter = (value: Value) => unknown
@@ -23,6 +23,15 @@ export const POSITIONAL = "hausPositional"
 
 /** Annotation set by `Haus.Date` & co.: a string written as a prelude tag, `Date("…")`. */
 export const PRELUDE_TAG = "hausPreludeTag"
+
+/** Annotation on a string schema: the value is a bare tag, `EUR` ↔ "EUR". */
+export const BARE_TAG = "hausBareTag"
+
+/** Annotation on a tagged struct `{ _tag, values }`: the variant's positional arguments are `values`. */
+export const VALUES = "hausValues"
+
+/** Annotation on a struct: a closed record `{| … |}`, other fields are an error. */
+export const CLOSED = "hausClosed"
 
 /** Thrown during conversion; `decodeValue` turns it into a HausSchemaError. */
 export class ConversionError {
@@ -108,6 +117,7 @@ export const decodeBudget = (value: Value): number => {
 const genericNode: Converter = Match.type<Value>().pipe(
   Match.discriminatorsExhaustive("kind")({
     string: (v) => v.value,
+    bytes: (v) => v.bytes,
     number: (v) => Number(v.text),
     array: (v) => v.items.map(generic),
     record: (v) => Object.fromEntries(Arr.map([...v.fields], ([k, x]) => [k, generic(x)])),
@@ -186,8 +196,9 @@ export const compile = (ast: AST): Converter => {
 }
 
 const compileNode: (ast: AST) => Converter = Match.type<AST>().pipe(
-  Match.tag("String", "TemplateLiteral", (): Converter => (v) =>
+  Match.tag("String", "TemplateLiteral", (ast): Converter => (v) =>
     v.kind === "string" ? v.value
+    : ast.annotations?.[BARE_TAG] === true && v.kind === "variant" && v.args.length === 0 ? v.tag
     : v.kind === "number" ? v.text // exact, for BigDecimalFromString, NumberFromString, …
     : Option.getOrElse(scalarString(v), () => generic(v))),
   Match.tag("Number", (): Converter => (v) =>
@@ -220,11 +231,16 @@ function compileObject(ast: SchemaAST.Objects): Converter {
   const props = new Map(ast.propertySignatures.map((p) => [String(p.name), { convert: compile(p.type) }] as const))
   const positional = ast.propertySignatures.filter((p) => p.name !== "_tag").map((p) => String(p.name))
   const allowPositional = ast.annotations?.[POSITIONAL] === true
+  const values = ast.annotations?.[VALUES] === true
+  const closed = ast.annotations?.[CLOSED] === true
+  // `Map v`: a record with an index signature converts every field with its value schema.
+  const rest = Arr.head(ast.indexSignatures).pipe(Option.map((i) => compile(i.type)), Option.getOrElse(() => generic))
 
   /** Fields of the value: a record, or a variant payload for tagged structs. */
   const fieldsOf = (v: Value): Option.Option<ReadonlyArray<readonly [string, Value]>> => {
     if (v.kind === "record") return Option.some([...v.fields])
     if (Option.isNone(tag) || v.kind !== "variant") return Option.none()
+    if (values) return Option.some([["values", vArr(v.args)]]) // Point(1, 2) → { values: [1, 2] }
     const [first] = v.args
     if (v.args.length === 0 || (v.args.length === 1 && first?.kind === "record")) {
       return Option.some(first?.kind === "record" ? [...first.fields] : []) // Heartbeat, Circle { radius: 5 }
@@ -245,9 +261,11 @@ function compileObject(ast: SchemaAST.Objects): Converter {
       onSome: (fields) => {
         const out: Record<string, unknown> = Option.match(tag, { onNone: () => ({}), onSome: (t) => ({ _tag: t }) })
         for (const [key, field] of fields) {
+          if (key === "_tag" && Option.isSome(tag)) throw new ConversionError(`'${tag.value}' has a field named _tag, which would replace its tag`)
           const prop = props.get(key)
-          if (prop === undefined) setOwn(out, key, generic(field)) // excess property: ignored by the decoder (records are open)
-          else setOwn(out, key, prop.convert(field))
+          if (prop !== undefined) setOwn(out, key, prop.convert(field))
+          else if (closed) throw new ConversionError(`unexpected field ${JSON.stringify(key)} in a closed record`)
+          else setOwn(out, key, rest(field)) // excess property: ignored by the decoder (records are open), or a Map entry
         }
         return out
       },
@@ -281,6 +299,7 @@ function compileUnion(ast: SchemaAST.Union): Converter {
   const byKind = {
     string: forKind(["String", "TemplateLiteral"]),
     number: forKind(["Number", "BigInt", "Declaration", "String"]),
+    bytes: forKind(["Declaration"]),
     array: forKind(["Arrays"]),
     record: forKind(["Objects"]),
     variant: Arr.head(others).pipe(Option.map(compile)),
@@ -299,6 +318,8 @@ function compileUnion(ast: SchemaAST.Union): Converter {
 function compileDeclaration(ast: SchemaAST.Declaration): Converter {
   const id = Option.getOrUndefined(declarationId(ast))
   switch (id) {
+    case "effect/schema/Uint8Array":
+      return (v) => (v.kind === "bytes" ? v.bytes : generic(v))
     case "effect/schema/BigDecimal":
       // Exact: never goes through a JS number.
       return (v) => (v.kind === "number" && !/[xb]/.test(v.text) ? BigDecimal.fromStringUnsafe(v.text) : generic(v))
@@ -366,6 +387,7 @@ const encodeGenericNode = (js: unknown): Value => {
   if (typeof js === "number") return numberValue(js)
   if (typeof js === "bigint") return vNum(js.toString())
   if (typeof js === "boolean") return vVariant(js ? "True" : "False")
+  if (js instanceof Uint8Array) return vBytes(js)
   if (js === null || js === undefined) return vVariant("None")
   if (Array.isArray(js)) return vArr(js.map(encodeGeneric))
   if (Option.isOption(js)) return Option.match(js, { onNone: () => vVariant("None"), onSome: (x) => vVariant("Some", [encodeGeneric(x)]) })
@@ -405,8 +427,10 @@ export const compileEncoder = (ast: AST): Encoder => {
 const encodeNode: (ast: AST) => Encoder = Match.type<AST>().pipe(
   Match.tag("String", "TemplateLiteral", (ast): Encoder => {
     const tag = ast.annotations?.[PRELUDE_TAG]
+    const bare = ast.annotations?.[BARE_TAG] === true
     return (js) =>
       typeof js !== "string" ? encodeGeneric(js)
+      : bare && TAG_NAME.test(js) ? vVariant(js)
       : typeof tag === "string" ? vVariant(tag, [vStr(js)])
       : vStr(js)
   }),
@@ -428,15 +452,27 @@ const encodeNode: (ast: AST) => Encoder = Match.type<AST>().pipe(
 function encodeObject(ast: SchemaAST.Objects): Encoder {
   const tag = Option.getOrUndefined(tagOf(ast))
   const positional = ast.annotations?.[POSITIONAL] === true
+  const values = ast.annotations?.[VALUES] === true
   const props = ast.propertySignatures
     .filter((p) => p.name !== "_tag")
     .map((p) => ({ name: String(p.name), encode: compileEncoder(p.type) }))
+  const declared = new Set(props.map((p) => p.name))
+  const rest = Arr.head(ast.indexSignatures).pipe(Option.map((i) => compileEncoder(i.type)))
   return (js) => {
     if (typeof js !== "object" || js === null) return encodeGeneric(js)
     const obj = js as Record<string, unknown>
     // The raw value of an unknown variant is written back as it was received.
     if (tag === UNKNOWN_TAG) return obj["value"] as Value
-    const present = props.filter((p) => Object.hasOwn(obj, p.name) && obj[p.name] !== undefined)
+    if (values && tag !== undefined) {
+      const items = props.find((p) => p.name === "values")?.encode(obj["values"])
+      return vVariant(tag, items?.kind === "array" ? items.items : [])
+    }
+    const present: { name: string; encode: Encoder }[] = props.filter((p) => Object.hasOwn(obj, p.name) && obj[p.name] !== undefined)
+    if (Option.isSome(rest)) {
+      for (const key of Object.keys(obj)) {
+        if (!declared.has(key) && key !== "_tag" && obj[key] !== undefined) present.push({ name: key, encode: rest.value })
+      }
+    }
     if (tag === undefined) return vRec(new Map(present.map((p) => [p.name, p.encode(obj[p.name])])))
     if (present.length === 0) return vVariant(tag)
     if (positional) return vVariant(tag, present.map((p) => p.encode(obj[p.name])))

@@ -1,14 +1,16 @@
-// prelude.schema.haus: the standard types. They ship with the spec, are
-// versioned with it, and are always in scope. There are no imports from URLs.
+// prelude.schema.haus: the types that are always in scope. Deliberately
+// small: only what nearly every schema needs. Everything else lives in
+// standard modules (std/time, std/money) or third-party modules, imported
+// explicitly by the schema (spec §13).
 //
 // None of these are keywords. `True` is an ordinary tag, and the data grammar
 // has no reserved words at all. The prelude only fixes what these tags MEAN,
 // so every language binding can map them to its native type.
 
 // ── Core variants ────────────────────────────────────────────
-type Bool       = < False | True >
-type Maybe a    = < None | Some a >      // a missing field of type Maybe T decodes as None
-type Result e a = < Err e | Ok a >
+type Bool       = closed < False | True >
+type Maybe a    = closed < None | Some a >      // always written; a missing field is not None (see below)
+type Result e a = closed < Err e | Ok a >
 
 // ── Optional fields and Maybe ────────────────────────────────
 // Two separate things (spec §1):
@@ -17,13 +19,20 @@ type Result e a = < Err e | Ok a >
 //   name?: Maybe T  not given, None or Some(…): a partial update that can
 //                   leave, clear or set a value
 
-// ── Collections ──────────────────────────────────────────────
-// Records only have string keys. Maps with other keys and sets are written
-// as tagged arrays; decoders reject duplicate keys / elements.
-type Map k v = < Map (Array (k, v)) >     // Map([(1, "one"), (2, "two")])
-type Set a   = < Set (Array a) >          // Set([EUR, USD])
-
-// ── Numbers ──────────────────────────────────────────────────
+// ── Built-in types ───────────────────────────────────────────
+// One per kind of value, plus the numeric representations:
+//
+//   String                 a string
+//   Bytes                  a byte string: x"0b34ff"
+//   Array a                an ordered list
+//   Map v                  a record used as a dictionary: any string keys,
+//                          values of one type: { en: "Hello", "pt-BR": "Olá" }
+//   { name: T, … }         a record with known fields
+//
+// Records and variants are open: a reader ignores fields it doesn't know and
+// keeps unknown tags as Unknown values. `closed { … }` and `closed < … >`
+// forbid anything not listed. `< >` is a variant with any tags.
+//
 // Number literals are exact decimals: the parser keeps the literal as written,
 // including trailing zeros. The schema picks the native representation:
 //
@@ -32,31 +41,10 @@ type Set a   = < Set (Array a) >          // Set([EUR, USD])
 //   UInt8 .. UInt64
 //   Float32, Float64       binary floating point, rounding is accepted;
 //                          also accept the tags NaN, Infinity, NegInfinity
-//   Number                 = Float64
 //   Decimal                exact decimal, scale preserved (19.90 != 19.9)
 //
 // A schemaless decoder must not silently lose precision: it returns numbers
 // as exact decimals (or their literal text), never as a lossy float.
-
-// ── Money ────────────────────────────────────────────────────
-type Money    = < Money Decimal Currency >          // Money(19.99, EUR)
-type Currency = < EUR | USD | GBP | CHF | JPY | CNY | BRL | _ >
-                // ISO 4217 codes; open, so new or crypto currencies (BTC) pass
-
-// ── Time ─────────────────────────────────────────────────────
-// The same model as JavaScript's Temporal and Java's java.time. Payloads
-// are RFC 3339 / RFC 9557 strings, always in the ISO (Gregorian) calendar.
-// Bindings map them to native types (Temporal.PlainDate, LocalDate, ...).
-type Date          = < Date String >           // Date("2026-11-07")
-type Time          = < Time String >           // Time("14:30:00.250")
-type DateTime      = < DateTime String >       // DateTime("2026-11-07T14:30:00"), no zone
-type Instant       = < Instant String >        // Instant("2026-11-07T14:30:00Z")
-type ZonedDateTime = < ZonedDateTime String >  // ZonedDateTime("2027-03-29T10:00:00+01:00[Europe/Lisbon]")
-type Duration      = < Duration String >       // Duration("PT1H30M")
-
-// ── Other formatted scalars ──────────────────────────────────
-type Bytes = < Bytes String >                  // Bytes("aGF1cw==")  base64
-type Uuid  = < Uuid String >                   // Uuid("0f8fad5b-d9cb-469f-a165-70867728950e")
 
 // ── Streams ──────────────────────────────────────────────────
 // `Stream a` describes a whole file as a sequence of `a`s, rather than a

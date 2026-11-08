@@ -19,6 +19,7 @@ empty file is `[]`). Each value is encoded as:
 | array                  | JSON array                             |
 | record                 | `{"rec": { "key": value, ... }}`       |
 | number                 | `{"num": "literal"}`                   |
+| bytes                  | `{"bytes": "hex"}`, lowercase, no spaces |
 | variant without payload| `{"tag": "Name"}`                      |
 | variant with payload   | `{"tag": "Name", "args": [value, ...]}`|
 

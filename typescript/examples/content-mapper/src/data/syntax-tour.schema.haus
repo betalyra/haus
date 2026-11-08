@@ -1,0 +1,73 @@
+// syntax-tour.schema.haus: optional schema layer, PureScript-flavoured but with
+// single-colon annotations. It can't be confused with the data syntax:
+// in data a field's right-hand side is a value, here it's a type.
+//
+// Prelude types (Bool, Maybe, Result, String, Int, Decimal, ...) are always in
+// scope; time and money come from standard modules.
+//
+// Records and variants are OPEN by default: a reader ignores fields it doesn't
+// know and keeps unknown tags as Unknown values, so writers can add both
+// without breaking older readers. `closed` forbids anything not listed.
+
+import std/time (Date, ZonedDateTime)
+import std/money (Money)
+
+// ── Closed variant: exactly these tags, anything else is rejected ──
+type Level = closed < Debug | Info | Warn | Error >
+
+type Point = closed < Point Float64 Float64 >
+
+type Shape = closed
+  < Circle  { center: Point, radius: Float64 }
+  | Rect    { topLeft: Point, width: Float64, height: Float64 }
+  | Polygon (Array Point)
+  | Empty
+  >
+
+// ── Composing variants with rows ─────────────────────────────
+// `...r` = "plus the tags of r", filled in where the type is used.
+// `closed` here: exactly these tags plus r's. Open if r is open.
+type UserEvent r = closed
+  < UserCreated { id: Int, email: String }
+  | UserRenamed { id: Int, from: String, to: String }
+  | ...r
+  >
+
+type PaymentEvent r = closed
+  < PaymentReceived { id: Int, amount: Money } | ...r >
+
+// Money comes from std/money (imported above).
+// Open (the default): a newer writer's Sepia arrives as an Unknown value.
+type Theme = < Light | Dark >
+
+// Composing rows. Closed, because every part is: exactly these four tags.
+type AppEvent = UserEvent (PaymentEvent (closed < Heartbeat >))
+
+// ── Composing records ────────────────────────────────────────
+// Two rows: `k` extends the kind tags, `r` extends the fields.
+type Entity k r = { id: Int, kind: closed < Person | Robot | ...k >, ...r }
+
+// Closed record: other fields are an error.
+type Headers = closed { "content-type": String, "x-request-id": String }
+
+// ── Stream root (for events.haus) ────────────────────────────
+// A server that only handles user events. `< >` (any tags) keeps the variant
+// open, so a PaymentReceived in the stream decodes as Unknown instead of failing.
+type ServerEvents = Stream (UserEvent < >)
+
+// ── Root ─────────────────────────────────────────────────────
+type Root =
+  { name:     String
+  , version:  Int
+  , enabled:  Bool
+  , level:    Level
+  , theme:    Theme
+  , price:    Decimal
+  , released: Date
+  , meeting:  ZonedDateTime
+  , timeout:  Maybe Int    // always written: None or Some(…)
+  , owner?:   String       // optional field: may be left out (it is, in syntax-tour.haus)
+  , shapes:   Array Shape
+  , events:   Array AppEvent
+  , entities: Array (Entity < > { })
+  }                        // open: fields not listed here (ratio, mask, …) are ignored

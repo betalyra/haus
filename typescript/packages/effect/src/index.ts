@@ -24,7 +24,7 @@
  */
 import { HausSyntaxError, parseAll, parseStream, stringify, type ChunkSource, type FormatOptions, type Value } from "@betalyra/haus-fmt"
 import { Effect, Schema, SchemaAST, Stream } from "effect"
-import { checkSchema, compile, compileEncoder, ConversionError, decodeBudget, DEFAULT_ENCODE_STEPS, guarded, POSITIONAL, PRELUDE_TAG, UNKNOWN_TAG } from "./convert.js"
+import { BARE_TAG, checkSchema, compile, compileEncoder, ConversionError, decodeBudget, DEFAULT_ENCODE_STEPS, guarded, POSITIONAL, PRELUDE_TAG, UNKNOWN_TAG } from "./convert.js"
 
 // ── errors ───────────────────────────────────────────────────
 
@@ -39,7 +39,44 @@ export class HausParseError extends Schema.TaggedError<HausParseError>()("HausPa
 export class HausSchemaError extends Schema.TaggedError<HausSchemaError>()("HausSchemaError", {
   message: Schema.String,
   index: Schema.optionalKey(Schema.Number),
+  /** Where in the decoded value the error is: field names and array indexes (see `locateIssue`). */
+  path: Schema.optionalKey(Schema.Array(Schema.Union([Schema.String, Schema.Number]))),
 }) {}
+
+/** The path of the first issue: the keys of nested Pointer issues. */
+const issuePath = (issue: unknown): Array<string | number> => {
+  const path: Array<string | number> = []
+  let node = issue as { path?: ReadonlyArray<PropertyKey>; issue?: unknown; issues?: ReadonlyArray<unknown> } | undefined
+  for (let i = 0; node && i < 1000; i++) {
+    for (const k of node.path ?? []) if (typeof k === "string" || typeof k === "number") path.push(k)
+    node = (node.issue ?? node.issues?.[0]) as typeof node
+  }
+  return path
+}
+
+/**
+ * Where a decode error is in the haus value: the innermost value the error's
+ * path leads to (parse with `parseWithLocations` to get offsets).
+ */
+export const locateIssue = (value: Value, path: ReadonlyArray<string | number>): Value => {
+  let v = value
+  for (let i = 0; i < path.length; i++) {
+    const key = path[i]!
+    let next: Value | undefined
+    if (v.kind === "array" && typeof key === "number") next = v.items[key]
+    else if (v.kind === "record") next = v.fields.get(String(key))
+    else if (v.kind === "variant") {
+      const [first] = v.args
+      if (key === "values" && typeof path[i + 1] === "number") next = v.args[path[++i] as number]
+      else if (v.args.length === 1 && first!.kind === "record") next = first!.fields.get(String(key))
+      else if (v.tag === "Some" && v.args.length === 1) (next = first), i--
+      else if (typeof key === "number") next = v.args[key]
+    }
+    if (next === undefined) return v
+    v = next
+  }
+  return v
+}
 
 export type HausError = HausParseError | HausSchemaError
 
@@ -85,6 +122,16 @@ export const Date = preludeString("Date", /^\d{4}-\d{2}-\d{2}$/)
 export const Time = preludeString("Time", /^\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/)
 /** `Duration("PT30S")` as the ISO 8601 duration string. */
 export const Duration = preludeString("Duration", /^-?P(?!$)(\d+Y)?(\d+M)?(\d+W)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+(\.\d+)?S)?)?$/)
+/** `DateTime("2026-11-07T14:30:00")` (no zone) as the ISO string. */
+export const DateTime = preludeString("DateTime", /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/)
+/** `YearMonth("2026-11")` as the ISO string. */
+export const YearMonth = preludeString("YearMonth", /^\d{4}-\d{2}$/)
+/** `TimeZone("Europe/Lisbon")` as the IANA name. */
+export const TimeZone = preludeString("TimeZone", /^[A-Za-z][A-Za-z0-9_+\-/]*$/)
+/** A currency, written as a bare tag of three capital letters: `EUR` ↔ "EUR" (std/money). */
+export const Currency = Schema.String.annotate({ [BARE_TAG]: true } as never).check(Schema.isPattern(/^[A-Z]{3}$/))
+/** `Money(19.99, EUR)` ↔ `{ _tag: "Money", amount: BigDecimal, currency: "EUR" }` (std/money). */
+export const Money = Positional(Schema.TaggedStruct("Money", { amount: Schema.BigDecimal, currency: Currency }))
 /** `Uuid("…")` as the UUID string. */
 export const Uuid = preludeString("Uuid", /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/)
 
@@ -108,7 +155,7 @@ export const decodeValue = <S extends Schema.Top>(schema: S) => {
       },
     }).pipe(
       Effect.flatMap((encoded) => decode(encoded, decodeOptions)),
-      Effect.mapError((e) => (e instanceof HausSchemaError ? e : new HausSchemaError({ message: e.message }))),
+      Effect.mapError((e) => (e instanceof HausSchemaError ? e : new HausSchemaError({ message: e.message, path: issuePath(e.issue) }))),
     )
 }
 
@@ -124,19 +171,39 @@ export const decode = <S extends Schema.Top>(schema: S) => {
   })
 }
 
+/** An error of the source stream, carried through the parser unchanged. */
+class SourceFailure<E> {
+  constructor(readonly error: E) {}
+}
+
 /**
- * Parse and decode a stream of values as they arrive. Parsing stays in the
+ * Parse and decode a stream of values as they arrive. The source is an Effect
+ * Stream of text or bytes (e.g. `FileSystem.stream(path)`; its errors pass
+ * through), an async iterable or a web ReadableStream. Parsing stays in the
  * optimized core reader; each completed value is decoded as it is emitted.
  */
 export const decodeStream = <S extends Schema.Top>(schema: S) => {
   const fromValue = decodeValue(schema)
-  return (source: ChunkSource): Stream.Stream<S["Type"], HausError, S["DecodingServices"]> =>
-    Stream.fromAsyncIterable(parseStream(source), toParseError).pipe(
+  const decodeChunks = <E>(chunks: ChunkSource): Stream.Stream<S["Type"], HausError | E, S["DecodingServices"]> =>
+    Stream.fromAsyncIterable(parseStream(chunks), (e): HausParseError | E =>
+      e instanceof SourceFailure ? (e.error as E) : toParseError(e)).pipe(
       Stream.zipWithIndex,
       Stream.mapEffect(([value, index]) =>
-        fromValue(value).pipe(Effect.mapError(({ message }) => new HausSchemaError({ message, index })))),
-      Stream.withSpan("Haus.decodeStream"),
+        fromValue(value).pipe(Effect.mapError(({ message, path }) => new HausSchemaError({ message, index, ...(path ? { path } : {}) })))),
     )
+  function decode(source: ChunkSource): Stream.Stream<S["Type"], HausError, S["DecodingServices"]>
+  function decode<E, R>(source: Stream.Stream<string | Uint8Array, E, R>): Stream.Stream<S["Type"], HausError | E, S["DecodingServices"] | R>
+  function decode<E, R>(source: ChunkSource | Stream.Stream<string | Uint8Array, E, R>): Stream.Stream<S["Type"], HausError | E, S["DecodingServices"] | R> {
+    const decoded = Stream.isStream(source)
+      ? Stream.unwrap(
+        Stream.toAsyncIterableEffect(
+          (source as Stream.Stream<string | Uint8Array, E, R>).pipe(Stream.mapError((e) => new SourceFailure(e))),
+        ).pipe(Effect.map((chunks) => decodeChunks<E>(chunks))),
+      )
+      : decodeChunks<never>(source as ChunkSource)
+    return decoded.pipe(Stream.withSpan("Haus.decodeStream"))
+  }
+  return decode
 }
 
 // ── encoding ─────────────────────────────────────────────────
@@ -186,3 +253,7 @@ export const encodeStream = <S extends Schema.Top>(schema: S, options: FormatOpt
       Stream.withSpan("Haus.encodeStream"),
     )
 }
+
+// ── schema files ─────────────────────────────────────────────
+
+export { compileSchemaFile, definitionDoc, fromSchemaFile, schemaDeclarations, type CompiledSchemaFile, type DeclarationOptions } from "./schema-file.js"

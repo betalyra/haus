@@ -1,0 +1,17 @@
+// std/time: dates, times and durations.
+//
+//   import std/time (Date, Instant, Duration)
+//
+// The same model as JavaScript's Temporal and java.time, and no more than
+// that. Payloads are RFC 3339 / RFC 9557 strings in the ISO (Gregorian)
+// calendar. Bindings map them to native types (Temporal.PlainDate,
+// LocalDate, …); without this module they are ordinary tagged strings.
+
+type Date          = closed < Date String >           // Date("2026-11-07")
+type Time          = closed < Time String >           // Time("14:30:00.250")
+type DateTime      = closed < DateTime String >       // DateTime("2026-11-07T14:30:00"), no zone
+type Instant       = closed < Instant String >        // Instant("2026-11-07T14:30:00Z")
+type ZonedDateTime = closed < ZonedDateTime String >  // ZonedDateTime("2027-03-29T10:00:00+01:00[Europe/Lisbon]")
+type Duration      = closed < Duration String >       // Duration("PT1H30M"), ISO 8601
+type YearMonth     = closed < YearMonth String >      // YearMonth("2026-11")
+type TimeZone      = closed < TimeZone String >       // TimeZone("Europe/Lisbon"), IANA

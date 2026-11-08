@@ -8,8 +8,10 @@
 //   type Loop = Loop            // rejected: unguarded, never consumes input
 //   type Wrapped = Maybe Wrapped // rejected for encoding: applies itself to the same value
 
+import std/time (Instant)
+
 type Comment =
-  < Comment {
+  closed < Comment {
       author: String,
       at: Instant,
       text: String,

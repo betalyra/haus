@@ -1,0 +1,101 @@
+// syntax-tour.haus: a tour of the data syntax.
+//
+// Ground rules:
+//   - Record keys are bare identifiers. Quotes are only needed for keys that
+//     aren't valid identifiers ("content-type", "2fa", ...).
+//   - Trailing commas are allowed everywhere.
+//   - Comments: `// line` and `/* block */` (block comments nest).
+//   - There is no `null`. Absence is expressed with variants (None / Some).
+//   - A capitalised identifier is always a variant tag (constructor).
+//     Lowercase identifiers are only ever keys. No keywords: booleans are
+//     the prelude variants True / False.
+//   - Number literals are exact decimals of arbitrary precision. The parser
+//     keeps them as written; the reader's schema decides whether a number
+//     becomes an Int64, a Float64 or a Decimal.
+//   - A file is a sequence of values, each followed by a comma (optional
+//     after the last one). A normal document is a sequence of one value.
+//     See events.haus.
+
+{
+  // ── Primitives ─────────────────────────────────────────────
+  name: "haus",
+  version: 1,
+  ratio: 0.75,
+  price: 19.90,            // exact: never rounded through a float
+  huge: 123_456_789_012_345_678_901_234_567_890,   // no 2^53 limit
+  big: 1_000_000,          // digit separators
+  mask: 0xFF_FF,
+  enabled: True,
+  // ── Prelude types: a tag wrapping an ISO string ────────────
+  released: Date("2026-11-07"),
+  opensAt: Time("09:00:00"),
+  updated: Instant("2026-11-07T10:00:00Z"),
+  meeting: ZonedDateTime("2027-03-29T10:00:00+01:00[Europe/Lisbon]"),
+  ttl: Duration("PT30S"),
+  fee: Money(0.00005, BTC),   // any precision, any currency tag
+
+  description: """
+    Multi-line strings use triple quotes.
+    Common leading indentation is stripped.
+    """,
+
+  // Keys that aren't identifiers still need quotes
+  headers: {
+    "content-type": "application/haus",
+    "x-request-id": "abc123",
+  },
+
+  // ── Variants without payload (enums) ───────────────────────
+  level: Info,
+  theme: Dark,
+
+  // ── Variants with positional payload ───────────────────────
+  timeout: Some(30),
+  retries: None,
+  origin: Point(0.0, 0.0),
+  result: Ok("done"),
+  failure: Err(NotFound("user/42")),   // variants nest
+
+  // ── Variants with a record payload ─────────────────────────
+  // `Tag { ... }` is sugar for `Tag({ ... })`
+  shapes: [
+    Circle { center: Point(1.0, 2.0), radius: 5.0 },
+    Rect { topLeft: Point(0.0, 0.0), width: 10.0, height: 4.0 },
+    Polygon([Point(0, 0), Point(1, 0), Point(0, 1)]),
+    Empty,
+  ],
+
+  // ── Polymorphic variants ───────────────────────────────────
+  // No declaration is needed to use a tag. Any tag can appear anywhere;
+  // whether a consumer accepts it is decided by its schema (open or closed
+  // row), not by the data. This event stream mixes tags from different
+  // "producers" in a single list.
+  events: [
+    UserCreated { id: 42, email: "jan@example.com" },
+    UserRenamed { id: 42, from: "Jan", to: "Jan S." },
+    PaymentReceived { id: 42, amount: Money(19.99, EUR), at: Instant("2026-11-07T10:00:00Z") },
+    Heartbeat,
+  ],
+
+  // ── Extensible records ─────────────────────────────────────
+  // At the data level, every record is open: extra fields are always legal.
+  // A consumer typed as `{ id: Int | r }` reads `id` and keeps the rest
+  // intact in `r`. Both entries are valid `Entity`s (see syntax-tour.schema.haus).
+  entities: [
+    { id: 1, kind: Person, name: "Ada" },
+    { id: 2, kind: Robot, model: "R2", firmware: Some("4.1.0") },
+  ],
+
+  // ── Nesting, empty values, trailing commas ─────────────────
+  matrix: [
+    [1, 2, 3,],
+    [4, 5, 6,],
+  ],
+  nothing: {},
+  noItems: [],
+
+  /* Block comments
+     /* can nest */
+     which helps when commenting out a section that already has comments.
+  */
+}

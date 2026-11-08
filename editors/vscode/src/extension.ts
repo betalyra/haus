@@ -4,16 +4,42 @@ import { LanguageClient, TransportKind, type ServerOptions } from "vscode-langua
 
 let client: LanguageClient | undefined
 
+/** Diagnostic code of "not in the schema" hints (see server.ts). */
+const NOT_IN_SCHEMA = "not-in-schema"
+
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  const hints = new Map<string, readonly vscode.Diagnostic[]>()
+  const notInSchema = vscode.window.createTextEditorDecorationType({
+    light: { textDecoration: "underline dotted rgba(0, 0, 0, 0.45)" },
+    dark: { textDecoration: "underline dotted rgba(255, 255, 255, 0.45)" },
+  })
+  const decorate = (editor: vscode.TextEditor) => {
+    const found = hints.get(editor.document.uri.toString()) ?? []
+    editor.setDecorations(notInSchema, found.map((d) => ({ range: d.range, hoverMessage: d.message })))
+  }
   const module = context.asAbsolutePath("dist/server.js")
   const serverOptions: ServerOptions = {
     run: { module, transport: TransportKind.ipc },
     debug: { module, transport: TransportKind.ipc, options: { execArgv: ["--nolazy", "--inspect=6009"] } },
   }
   client = new LanguageClient("haus", "haus language server", serverOptions, {
-    documentSelector: [{ language: "haus" }],
+    documentSelector: [{ language: "haus" }, { language: "haus-schema" }],
+    middleware: {
+      // "Not in the schema" hints are shown as a dotted underline over the
+      // whole name instead of as diagnostics (VS Code would add its own dots
+      // under the first characters and list them with the problems).
+      handleDiagnostics(uri, diagnostics, next) {
+        hints.set(uri.toString(), diagnostics.filter((d) => d.code === NOT_IN_SCHEMA))
+        next(uri, diagnostics.filter((d) => d.code !== NOT_IN_SCHEMA))
+        for (const editor of vscode.window.visibleTextEditors) if (editor.document.uri.toString() === uri.toString()) decorate(editor)
+      },
+    },
   })
   await client.start()
+
+
+  vscode.window.visibleTextEditors.forEach(decorate)
+  context.subscriptions.push(notInSchema, vscode.window.onDidChangeVisibleTextEditors((editors) => editors.forEach(decorate)))
 
   context.subscriptions.push(
     vscode.commands.registerCommand("haus.inferSchema", async () => {

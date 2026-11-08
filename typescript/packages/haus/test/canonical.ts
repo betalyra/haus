@@ -7,6 +7,8 @@ export function canonical(v: Value): unknown {
       return v.value
     case "number":
       return { num: v.text }
+    case "bytes":
+      return { bytes: Buffer.from(v.bytes).toString("hex") }
     case "array":
       return v.items.map(canonical)
     case "record":

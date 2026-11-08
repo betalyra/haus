@@ -1,0 +1,30 @@
+{
+  "name": "@betalyra/haus-fmt-content-mapper",
+  "version": "0.1.0",
+  "description": "TypeScript 7.1 content mapper: typed imports of .haus data and .schema.haus schema files",
+  "type": "module",
+  "exports": {
+    "./register": "./src/register.ts",
+    "./plain": "./src/plain.ts",
+    "./effect": "./src/effect.ts"
+  },
+  "typescript": {
+    "contentMapper": {
+      "exec": [
+        "node",
+        "src/server.ts"
+      ],
+      "compilerOptions": [],
+      "dynamicConfig": false
+    }
+  },
+  "dependencies": {
+    "@betalyra/haus-fmt": "workspace:*",
+    "@betalyra/haus-fmt-effect": "workspace:*",
+    "effect": "4.0.6",
+    "ts-content-mapper": "0.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1"
+  }
+}

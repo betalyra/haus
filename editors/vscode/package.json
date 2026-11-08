@@ -2,7 +2,7 @@
   "name": "haus",
   "displayName": "Haus",
   "description": "Syntax highlighting and language server for the haus data format",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "publisher": "haus-fmt",
   "engines": {
     "vscode": "^1.91.0"
@@ -28,7 +28,11 @@
         "extensions": [
           ".haus"
         ],
-        "configuration": "./language-configuration.json"
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/haus.svg",
+          "dark": "./icons/haus.svg"
+        }
       },
       {
         "id": "haus-schema",
@@ -38,7 +42,11 @@
         "filenamePatterns": [
           "*.schema.haus"
         ],
-        "configuration": "./language-configuration.json"
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/haus-schema.svg",
+          "dark": "./icons/haus-schema.svg"
+        }
       }
     ],
     "grammars": [

@@ -11,7 +11,7 @@ file        ::= ws ( value ws ( "," ws value ws )* ( "," ws )? )?
                    is a sequence of one. Writers of streams SHOULD put a comma
                    after every value, including the last. *)
 
-value       ::= record | array | variant | string | number
+value       ::= record | array | variant | string | bytes | number
 
 record      ::= "{" ws ( field ws ( "," ws field ws )* ( "," ws )? )? "}"
 field       ::= key ws ":" ws value
@@ -47,6 +47,14 @@ binary      ::= "0b" [01] ( "_"? [01] )*
                 (* A number must not be directly followed by [A-Za-z0-9_.].
                    So `007`, `1.`, `1_`, `0x` and `1e` are errors. *)
 
+bytes       ::= 'x"' [ \t]* ( hex_byte ( [ \t]* hex_byte )* [ \t]* )? '"'
+hex_byte    ::= hex_digit hex_digit
+                (* A byte string: two hex digits per byte, upper or lower case.
+                   Spaces and tabs may separate bytes, but not split one, and
+                   the literal stays on one line. `x""` is empty.
+                   Example: x"9f86d081 884c7d65". The prefix is a lowercase x
+                   directly followed by the quote. *)
+
 string      ::= basic_string | block_string
 
 basic_string ::= '"' ( basic_char | escape )* '"'
@@ -80,6 +88,31 @@ block_comment ::= "/*" ( block_comment | comment_char )* "*/"
                 (* block comments nest; comment_char is any character except
                    the bidirectional controls #x202A-#x202E and #x2066-#x2069
                    ("Trojan Source": reordered text hidden in comments) *)
+
+(* ─────────────────────────────────────────────────────────────────────
+   Schema files (.schema.haus). Same comments and whitespace as data.
+   Checks beyond the syntax (scoping, arity, rows, guarded recursion,
+   §9.9 and §9.10 of spec/README.md) are listed in spec/README.md §14.
+   ───────────────────────────────────────────────────────────────────── *)
+
+schema_file ::= ws ( ( import | typedef ) ws )*
+import      ::= "import" ws module ws "(" ws type_name ( ws "," ws type_name )* ws [ "," ws ] ")"
+module      ::= ident ( "/" ident )*                      (* std/time, std/money *)
+typedef     ::= "type" ws type_name ( ws param )* ws "=" ws type
+
+type        ::= type_name ( ws atom )+                    (* application: Array Point *)
+              | atom
+atom        ::= type_name | param | "(" ws type ws ")"
+              | [ "closed" ws ] record_type               (* open unless closed: other fields are ignored *)
+              | [ "closed" ws ] variant_type              (* open unless closed: other tags become Unknown *)
+record_type ::= "{" ws [ field ( ws "," ws field )* ws [ "," ws ] ] [ "..." param ws [ "," ws ] ] "}"
+field       ::= key [ "?" ] ws ":" ws type                (* key?: the field may be missing *)
+variant_type ::= "<" ws [ "|" ws ] [ case ( ws "|" ws case )* ] [ ws "|" ws "..." param ] ws ">"
+                (* < > is a variant with any tags *)
+case        ::= tag ( ws atom )*                          (* Tag { … }: named fields; Tag A B: positional *)
+type_name   ::= [A-Z] [A-Za-z0-9_]*
+param       ::= [a-z] [A-Za-z0-9_]*                       (* not "type", "import" or "closed" *)
+                (* ...r: the rest of the fields or tags comes from row parameter r *)
 
 (* ─────────────────────────────────────────────────────────────────────
    Semantic rules: see spec/README.md (data model, equality, numbers,

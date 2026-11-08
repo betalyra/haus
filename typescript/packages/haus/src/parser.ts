@@ -1,5 +1,5 @@
 import { HausSyntaxError, locate, START, type Origin } from "./errors.js"
-import { arr, num, rec, str, variant, type HRecord, type Value } from "./value.js"
+import { arr, bytes, num, rec, str, variant, type HBytes, type HRecord, type Value } from "./value.js"
 
 export const MAX_DEPTH = 256
 
@@ -109,6 +109,7 @@ export class Parser {
     }
     if (isDigit(c)) return this.parseNumber()
     if (isUpper(c)) return this.parseVariant()
+    if (c === 120 && this.src.charCodeAt(this.pos + 1) === 34) return this.parseBytes() // x"
     if (isLowerStart(c)) {
       const word = this.readIdent()
       const hint =
@@ -262,6 +263,38 @@ export class Parser {
     if (exp && Number(exp[2]!.replaceAll("_", "")) > this.limits.maxExponent) {
       this.fail(`exponent larger than ${this.limits.maxExponent}`, start)
     }
+  }
+
+  // ── bytes ──────────────────────────────────────────────────
+
+  /** `x"0b34 ff"`: two hex digits per byte; spaces and tabs between bytes. */
+  private parseBytes(): HBytes {
+    const open = this.pos
+    this.pos += 2 // x"
+    const out: number[] = []
+    for (;;) {
+      if (this.eof()) this.fail("unterminated byte string", open)
+      const c = this.src.charCodeAt(this.pos)
+      if (c === 34) break // "
+      if (c === 32 || c === 9) {
+        this.pos++
+        continue
+      }
+      const hi = hexValue(c)
+      if (hi < 0) {
+        this.fail(
+          c === 10 || c === 13 ? "line break in byte string (keep x\"…\" on one line)"
+          : `invalid character ${describe(this.src[this.pos]!)} in byte string (expected hex digits)`,
+        )
+      }
+      const lo = hexValue(this.src.charCodeAt(this.pos + 1))
+      if (lo < 0) this.fail("a byte needs two hex digits (an odd number of digits, or a space inside a byte)", this.pos)
+      out.push(hi * 16 + lo)
+      this.pos += 2
+      if (this.pos - open - 2 > this.limits.maxStringLength) this.fail(`byte string longer than ${this.limits.maxStringLength} characters`, open)
+    }
+    this.pos++ // "
+    return bytes(Uint8Array.from(out))
   }
 
   // ── strings ────────────────────────────────────────────────
@@ -476,3 +509,7 @@ export class Parser {
     throw new HausSyntaxError(reason, p.offset, p.line, p.column)
   }
 }
+
+/** The value of a hex digit, or -1. */
+const hexValue = (c: number): number =>
+  c >= 48 && c <= 57 ? c - 48 : c >= 97 && c <= 102 ? c - 87 : c >= 65 && c <= 70 ? c - 55 : -1

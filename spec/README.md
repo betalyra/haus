@@ -15,6 +15,7 @@ A **value** is one of:
 |---|---|---|
 | number | `19.90`, `-1e10`, `0xFF` | exact decimal, see §3 |
 | string | `"text"`, `"""…"""` | a sequence of Unicode code points, see §4 |
+| bytes | `x"0b34ff"`, `x"9f86d081 884c7d65"` | a sequence of bytes: two hex digits per byte, spaces and tabs between bytes, on one line |
 | array | `[1, 2]` | ordered |
 | record | `{ id: 1, "x-y": 2 }` | string keys, no duplicates |
 | variant | `None`, `Some(1)`, `Circle { r: 1 }` | a tag plus zero or more argument values |
@@ -60,6 +61,8 @@ Two values are equal when they have the same kind and:
 
 - **numbers:** the normalized literals are equal. Normalizing removes digit separators, writes the exponent marker as `e`, and converts hex and binary literals to decimal integers. So `1_000` = `1000` and `0xFF` = `255`, but `1.0` ≠ `1` and `1e2` ≠ `100`: scale and notation are part of the value. Numeric equality ("is 1.0 the same amount as 1?") belongs to the schema or the application.
 - **strings:** the code point sequences are identical. There is no Unicode normalization (§4).
+- **bytes:** the byte sequences are identical. Case and spacing in the literal don't matter (`x"0B 34"` = `x"0b34"`).
+- **bytes vs. other kinds:** a byte string is never equal to a string or an array of numbers.
 - **arrays:** the same length, and the elements are pairwise equal.
 - **records:** the same set of keys, and the values for each key are equal. Field order doesn't matter.
 - **variants:** the same tag, and the arguments are pairwise equal. `Tag { … }` and `Tag({ … })` are the same value.
@@ -83,7 +86,7 @@ Two values are equal when they have the same kind and:
 ## 5. Variants
 
 - **Payload placement:** a variant's payload MUST start on the same line as its tag; only spaces and tabs may come between them. `Circle { r: 1 }` and `Point (1, 2)` are valid. A line break or comment between the tag and its payload is an error, because a forgotten comma could otherwise silently change the meaning.
-- **Positional arguments:** `Point(1, 2)` has two positional arguments. A decoder that maps them to named fields MUST do so only where the schema declares the payload positional (for example `< Point Number Number >`, `h.Tuple`, or `Haus.Positional` in the Effect adapter). Otherwise reordering schema fields would silently swap values.
+- **Positional arguments:** `Point(1, 2)` has two positional arguments. A decoder that maps them to named fields MUST do so only where the schema declares the payload positional (for example `< Point Float64 Float64 >`, `h.Tuple`, or `Haus.Positional` in the Effect adapter). Otherwise reordering schema fields would silently swap values.
 
 ## 6. Streams
 
@@ -100,7 +103,7 @@ Implementations MUST enforce limits while parsing, MUST let users configure them
 | nesting depth (records, arrays, payloads) | 256 |
 | characters in one number literal | 1000 |
 | absolute exponent | 6144 |
-| characters in one string | 16 Mi (16,777,216) |
+| characters in one string, or between the quotes of a byte string | 16 Mi (16,777,216) |
 | characters in one top-level value of a stream | 64 Mi (67,108,864) |
 
 Parsing time MUST be linear in the input size for any input within the limits. For example, duplicate-key checks must use hashing, not a list scan.
@@ -156,6 +159,7 @@ For people.
 - **Positional payloads stay inline when they fit** the line width (`Money(7.90, EUR)`, `Point(1, 2)`). Otherwise they get one argument per line.
 - **Spacing:** one space after `:` and `,`; one space between a tag and its `{`; none between a tag and its `(`. Empty containers are written `{}` and `[]`.
 - **Keys** are bare when they can be, otherwise quoted.
+- **Byte strings** keep their source spelling when a document is reformatted. When serializing values, they are written as lowercase hex without spaces, `x"0b34ff"`.
 - **Strings** containing a line break are written as `"""` block strings. All other strings use `"…"` with the minimal escapes: `\"`, `\\`, `\n`, `\r`, `\t`, and `\u{…}` for control and bidi characters. In a block string, a quote followed by two more quotes is escaped.
 - **Numbers and strings keep their source spelling** when a document is reformatted (`0xFF` stays `0xFF`). When serializing values with no source text, numbers are written in normalized form, except that integers longer than the number limit (§7) are written in hex.
 - **Streams:** a file with more than one top-level item puts a comma after every item, with a blank line after each multi-line item. A single item is written without a comma.
@@ -194,3 +198,41 @@ A canonical serialization, so that equal values (§2) produce identical bytes:
 - `Tag { … }` for single-record payloads
 
 This enables hashing, deduplication and content addressing.
+
+## 13. Prelude and standard modules
+
+The **prelude** ([`prelude.schema.haus`](prelude.schema.haus)) is always in scope and deliberately small: `Bool`, `Maybe`, `Result`, the built-in types for each kind of value (`String`, `Bytes`, `Array a`, `Map v`, records) and the numeric representations (`Int`, `Int8`…`UInt64`, `Float32`, `Float64`, `Decimal`).
+
+Everything else is a **module**, imported by name in a schema:
+
+```
+import std/time (Date, Instant, Duration)
+import std/money (Money)
+```
+
+- **Standard modules** ship with the spec and are versioned with it: [`std/time`](std/time.schema.haus) (the Temporal / java.time model: Date, Time, DateTime, Instant, ZonedDateTime, Duration, YearMonth, TimeZone) and [`std/money`](std/money.schema.haus) (Money, Currency).
+- **Third-party modules** (identifiers, geo, units, …) are pinned by version and content hash and resolved when the schema is built, never while parsing data (§9.2).
+- **Modules change no syntax.** Their types are written with the existing kinds, usually a tag around a string: `Date("2026-11-08")` is valid haus with or without `std/time`. A module adds meaning and validation in schemas and bindings; a binding without it reads the value as an ordinary tagged string.
+- A binding MAY support only some standard modules, and MUST say which.
+
+## 14. Schema files
+
+A schema file (`.schema.haus`, grammar in [`grammar.ebnf`](grammar.ebnf)) is a list of imports and type definitions.
+
+**Open by default.** Records and variants are open: a reader ignores fields the schema doesn't list (they are not part of the decoded value) and decodes tags it doesn't list as an *unknown* value that keeps the raw data. Writers can add fields and tags without breaking older readers. `closed { … }` and `closed < … >` forbid anything not listed. `< >` is a variant with any tags.
+
+Tools that check a file against its schema (editors, `haus check`) MUST report what a closed type forbids as an error, and SHOULD mark fields and tags an open type doesn't list as a hint ("not in the schema"), without failing the check.
+
+**Rows.** `< A | ...r >` and `{ x: T, ...r }` take the rest of their tags or fields from the argument for `r`, a variant or a record. The result is closed only if both parts are closed: `type AppEvent = UserEvent (closed < Heartbeat >)` with `type UserEvent r = closed < … | ...r >` has exactly those tags; `UserEvent < >` is open.
+
+Implementations MUST reject:
+
+- unknown types, types used with the wrong number of arguments, types defined twice, and redefinitions of prelude types;
+- duplicate fields in a record and duplicate tags in a variant, also after a row is filled;
+- `closed < >`; a parameter used both as a row and as a type;
+- recursion that doesn't pass through a record field, array element or variant payload (`type A = B`, `type B = A`), §9.9;
+- a generic type that refers to itself with arguments other than its own parameters, §9.10;
+- a type with row parameters that refers to itself (it is expanded where it is used);
+- `Stream a` anywhere but as the whole type of a definition, and references to such a definition.
+
+**Which schema describes a file.** A data file `x.haus` is described by the type `Root` of the schema file `x.schema.haus` next to it. A comment on the first lines of the data file names another one: `// schema: ./order.schema.haus` or `// schema: ./api.schema.haus#Order` (a type other than `Root`). The comment is for tools; parsers ignore it, and it never changes what the data means (§9.2).

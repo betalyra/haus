@@ -61,7 +61,7 @@ The security and spec issues are now fixed (§1, §2). What's left is mostly new
 | ✅ | D1 | **The payload bound across line breaks**, so a forgotten comma silently created a payload. | A payload must start on the same line as its tag (only spaces and tabs in between). Changed in the grammar, both parsers and the suite, with 3 new invalid cases. |
 | ✅ | D2 | **Positional payloads were mapped to named fields by order** (Effect adapter). | Opt-in via `Haus.Positional(…)`. Without it, the error suggests the named form. Spec §5. (`h.Tuple` and Roc decoders were already explicit.) |
 | ✅ | D3 | **"Field absent" and `None` were conflated**, so PATCH updates couldn't be expressed. A first fix (a `Patch a = < Keep \| Set a >` field type, with "missing" read as `Keep`) brought back JSON's problem: two spellings of "nothing" whose meaning depends on the reader. | Two separate concepts, each with one spelling (spec §1): optional fields (`x?: T`, may be missing, never `None`) and `Maybe` (an ordinary variant, always written). `x?: Maybe T` gives the three states of a partial update. `Patch` was removed. TypeScript: `h.Optional`, `h.Maybe` (`None` → `null`); Effect: `optionalKey` / `Option`, never converted into each other; Roc: `Decode.optional_field` → `[Missing, Present a]`. Inference prints `x?: T` for fields only some records have. All tested. |
-| 🟡 | D4 | **Maps with non-string keys and sets.** | Prelude conventions: `Map([(k, v), …])` and `Set([…])`. **Open:** decoders for them in TypeScript, Effect and Roc. |
+| ✅ | D4 | **Maps, sets, bytes and the size of the prelude.** The old `Map([(k, v)])` example wasn't even valid haus (no untagged tuples), `Set` couldn't be unordered as an array, and the prelude had grown to time, money, UUID and base64 bytes. | Prelude cut down to `Bool`, `Maybe`, `Result` and built-in types (spec §13). `Map v` is a record used as a dictionary (`h.Map`); non-string keys are written `[Entry(k, v), …]`; `Set` was dropped. Time and money moved to standard modules (`std/time`, `std/money`); UUID was dropped. Bytes became a data kind, `x"0b34ff"`, in both parsers, the formatter, `h.Bytes`, Effect (`Uint8Array`), Roc (`Decode.bytes`) and the editor, with 8 conformance files. **Open:** a separate syntax for unordered sets and maps (`#{ }`), if it turns out to be needed. |
 | ✅ | D5 | **No `NaN` or `±Infinity`.** | Prelude tags `NaN`, `Infinity`, `NegInfinity`, accepted by `h.Float64` and by Effect's `Schema.Number`. |
 | ✅ | D6 | **Equality undefined.** | Spec §2. Scale and notation are part of a number's value (`1.0 ≠ 1`); numeric equality is left to the schema. |
 | — | D7 | **Keys must start lowercase, and tags are ASCII-only.** | Kept as a deliberate trade-off. The JSON converter (§3) must quote such keys automatically. |
@@ -120,7 +120,7 @@ Ecosystem gotchas, documented in the examples:
 | 🟡 | Scientific and ML numbers | `NaN`/`Infinity` done (D5). Large numeric arrays are inefficient as text. |
 | 🟡 | Binary blobs | `Bytes("base64")` works for small blobs. |
 | — | Graphs, shared references | Excluded by design (security). Use ids. |
-| 🟡 | Maps with non-string keys, sets | Prelude conventions exist; decoders are open (D4). |
+| ✅ | Dictionaries, binary data | `Map v` over records, bytes as `x"…"` (D4). |
 
 ---
 

@@ -1,0 +1,138 @@
+// A comment thread: comments contain replies, which are comments again.
+// Data like this is recursive, and so is its type (see thread.schema.haus).
+//
+// The discussion below is 15 levels deep. Hover `replies` in VS Code: the
+// inferred type is `Array Comment`, with one recursive `type Comment = …`.
+//
+// Before the fix in the design review (S10), the type was unrolled 15 times
+// and printing it took 4x longer with every level: 10 levels took 6 s,
+// 12 levels 92 s, and this file would have frozen the language server for
+// well over an hour. Now it takes under a millisecond.
+
+Comment {
+  author: "ada",
+  at: Instant("2026-11-01T09:00:00Z"),
+  text: "Should haus have null?",
+  likes: 0,
+  replies: [
+    Comment {
+      author: "bob",
+      at: Instant("2026-11-02T09:00:00Z"),
+      text: "JSON has it, people expect it.",
+      likes: 2,
+      replies: [
+        Comment {
+          author: "ada",
+          at: Instant("2026-11-03T09:00:00Z"),
+          text: "But then a missing field and null mean almost the same thing.",
+          likes: 4,
+          replies: [
+            Comment {
+              author: "bob",
+              at: Instant("2026-11-04T09:00:00Z"),
+              text: "Almost is fine in practice.",
+              likes: 1,
+              replies: [
+                Comment {
+                  author: "ada",
+                  at: Instant("2026-11-05T09:00:00Z"),
+                  text: "Not for PATCH: 'leave it' and 'clear it' are different requests.",
+                  likes: 3,
+                  replies: [
+                    Comment {
+                      author: "bob",
+                      at: Instant("2026-11-06T09:00:00Z"),
+                      text: "Then send a separate list of fields to clear.",
+                      likes: 0,
+                      replies: [
+                        Comment {
+                          author: "ada",
+                          at: Instant("2026-11-07T09:00:00Z"),
+                          text: "That's a second format inside the first one.",
+                          likes: 2,
+                          replies: [
+                            Comment {
+                              author: "bob",
+                              at: Instant("2026-11-08T09:00:00Z"),
+                              text: "Fine. What about Option types then?",
+                              likes: 4,
+                              replies: [
+                                Comment {
+                                  author: "ada",
+                                  at: Instant("2026-11-09T09:00:00Z"),
+                                  text: "None is just a tag, so it needs no keyword.",
+                                  likes: 1,
+                                  replies: [
+                                    Comment {
+                                      author: "bob",
+                                      at: Instant("2026-11-10T09:00:00Z"),
+                                      text: "And True and False are tags too?",
+                                      likes: 3,
+                                      replies: [
+                                        Comment {
+                                          author: "ada",
+                                          at: Instant("2026-11-11T09:00:00Z"),
+                                          text: "Yes, Bool is a variant like any other.",
+                                          likes: 0,
+                                          replies: [
+                                            Comment {
+                                              author: "bob",
+                                              at: Instant(
+                                                "2026-11-12T09:00:00Z",
+                                              ),
+                                              text: "So the prelude decides what they mean.",
+                                              likes: 2,
+                                              replies: [
+                                                Comment {
+                                                  author: "ada",
+                                                  at: Instant(
+                                                    "2026-11-13T09:00:00Z",
+                                                  ),
+                                                  text: "And the parser stays small.",
+                                                  likes: 4,
+                                                  replies: [
+                                                    Comment {
+                                                      author: "bob",
+                                                      at: Instant(
+                                                        "2026-11-14T09:00:00Z",
+                                                      ),
+                                                      text: "I'm convinced. Mostly.",
+                                                      likes: 1,
+                                                      replies: [
+                                                        Comment {
+                                                          author: "ada",
+                                                          at: Instant(
+                                                            "2026-11-15T09:00:00Z",
+                                                          ),
+                                                          text: "Mostly is fine in practice.",
+                                                          likes: 3,
+                                                          replies: [],
+                                                        },
+                                                      ],
+                                                    },
+                                                  ],
+                                                },
+                                              ],
+                                            },
+                                          ],
+                                        },
+                                      ],
+                                    },
+                                  ],
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+}

@@ -6,6 +6,7 @@
 Value := [
 	Num(Str),
 	Text(Str),
+	Bytes(List(U8)),
 	Arr(List(Value)),
 	Rec(List((Str, Value))),
 	Tag(Str, List(Value)),
@@ -44,6 +45,7 @@ Value := [
 	to_test_json = |value| match value {
 		Num(t) => "{\"num\":${json_str(t)}}"
 		Text(s) => json_str(s)
+		Bytes(bytes) => "{\"bytes\":\"${hex_lower(bytes)}\"}"
 		Arr(items) => "[${Str.join_with(items.map(to_test_json), ",")}]"
 		Rec(fields) => {
 			parts = fields.map(|(k, v)| "${json_str(k)}:${to_test_json(v)}")
@@ -107,6 +109,9 @@ parse_value = |src, pos, depth| {
 	} else if c == '"' {
 		(s, after) = (if (starts_at(src, pos, "\"\"\"")) parse_block_string(src, pos) else parse_basic_string(src, pos))?
 		Ok((Text(s), after))
+	} else if c == 'x' and at(src, pos + 1) == '"' {
+		(bytes, after) = parse_bytes_literal(src, pos)?
+		Ok((Bytes(bytes), after))
 	} else if c == '-' or is_digit(c) {
 		parse_number(src, pos)
 	} else if is_upper(c) {
@@ -580,6 +585,50 @@ decode_block_line = |src, start, end| {
 		}
 	}
 	Ok($out)
+}
+
+# ── byte strings ─────────────────────────────────────────
+
+## `x"9f86 d081"`: two hex digits per byte, spaces and tabs between bytes.
+parse_bytes_literal : List(U8), U64 -> Try((List(U8), U64), Fail)
+parse_bytes_literal = |src, start| {
+	open = start + 1
+	var $out = []
+	var $pos = open + 1
+	while at(src, $pos) != '"' {
+		c = at(src, $pos)
+		if $pos >= src.len() {
+			return Err({ reason: "unterminated byte string", pos: start })
+		} else if c == ' ' or c == '\t' {
+			$pos = $pos + 1
+		} else if c == '\n' or c == '\r' {
+			return Err({ reason: "line break in byte string", pos: $pos })
+		} else if is_hex(c) {
+			d = at(src, $pos + 1)
+			if !is_hex(d) {
+				return Err({ reason: "incomplete byte in byte string: two hex digits per byte", pos: $pos })
+			}
+			$out = $out.append((hex_value(c) * 16 + hex_value(d)).to_u8_wrap())
+			$pos = $pos + 2
+		} else {
+			return Err({ reason: "invalid character ${describe(src, $pos)} in byte string (only hex digits, spaces and tabs)", pos: $pos })
+		}
+	}
+	# Same limit as strings, counted over the literal's characters (all ASCII).
+	if $pos - (open + 1) > max_string_length {
+		return Err({ reason: "byte string longer than ${max_string_length.to_str()} characters", pos: start })
+	}
+	Ok(($out, $pos + 1))
+}
+
+hex_lower : List(U8) -> Str
+hex_lower = |bytes| {
+	digits = "0123456789abcdef".to_utf8()
+	var $out = []
+	for b in bytes {
+		$out = $out.append(at(digits, (b // 16).to_u64())).append(at(digits, (b % 16).to_u64()))
+	}
+	bytes_to_str($out)
 }
 
 # ── trivia ───────────────────────────────────────────────────

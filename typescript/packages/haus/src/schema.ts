@@ -20,7 +20,7 @@
 import { format, stringify as stringifyValue, type FormatOptions } from "./format.js"
 import { Parser } from "./parser.js"
 import { parseStream, type ChunkSource } from "./stream.js"
-import { arr, num, rec, str, variant, type HRecord, type HVariant, type Value } from "./value.js"
+import { arr, bytes as bytesValue, num, rec, str, variant, type HRecord, type HVariant, type Value } from "./value.js"
 
 // ── core ─────────────────────────────────────────────────────
 
@@ -223,6 +223,7 @@ const describe = (v: Value): string => {
   switch (v.kind) {
     case "number": return `number ${v.text.length > 30 ? v.text.slice(0, 30) + "…" : v.text}`
     case "string": return `string ${JSON.stringify(v.value.length > 30 ? v.value.slice(0, 30) + "…" : v.value)}`
+    case "bytes": return `bytes (${v.bytes.length})`
     case "array": return "array"
     case "record": return "record"
     case "variant": return `variant ${v.tag}`
@@ -319,6 +320,13 @@ const bool = make(
   (b, p) => (typeof b === "boolean" ? variant(b ? "True" : "False") : invalid("a boolean", b, p)),
 )
 
+/** A byte string, `x"0b34ff"`, as a Uint8Array. */
+const bytes_ = make(
+  "Bytes",
+  (v, p) => (v.kind === "bytes" ? v.bytes : mismatch("Bytes", v, p)),
+  (b, p) => (b instanceof Uint8Array ? bytesValue(b) : invalid("a Uint8Array", b, p)),
+)
+
 /** A prelude scalar: `Tag("text")` where the text must match `format`. */
 const taggedString = <A>(tag: string, format: RegExp, convert: (s: string) => A | undefined, toText: (a: A) => string) =>
   make(tag, (v, p) => {
@@ -354,6 +362,7 @@ const instant = taggedString(
 export {
   bigint_ as BigInt,
   bool as Bool,
+  bytes_ as Bytes,
   date as Date,
   decimal as Decimal,
   float64 as Float64,
@@ -372,6 +381,32 @@ const array_ = <A>(item: Schema<A>): Schema<readonly A[]> =>
   )
 
 export { array_ as Array }
+
+/**
+ * A record used as a dictionary: any string keys, one value type
+ * (`Map v` in the prelude). `{ en: "Hello", "pt-BR": "Olá" }` →
+ * `Map { "en" => "Hello", "pt-BR" => "Olá" }`. A JS Map, so keys like
+ * `__proto__` are plain data.
+ */
+const map_ = <A>(value: Schema<A>): Schema<ReadonlyMap<string, A>> =>
+  make<ReadonlyMap<string, A>>(
+    `Map ${value.expected}`,
+    (v, p) => {
+      if (v.kind !== "record") return mismatch(`Map ${value.expected} (a record)`, v, p)
+      const out = new Map<string, A>()
+      for (const [k, x] of v.fields) out.set(k, value.decode(x, p.child(k)))
+      return out
+    },
+    (m, p) => {
+      if (!(m instanceof Map)) return invalid("a Map", m, p)
+      return p.enter(m, () => rec(new Map([...m].map(([k, x]) => {
+        if (typeof k !== "string") return invalid("string keys", k, p)
+        return [k, value.encode(x, p.child(k))] as const
+      }))))
+    },
+  )
+
+export { map_ as Map }
 
 /**
  * `None` → null, `Some(x)` → x. Always written out in the data: `Maybe` is an
@@ -583,7 +618,7 @@ const variantSchema = <C extends Cases, A>(cases: C, open: boolean): Schema<A> =
   })
 }
 
-const VALUE_KINDS = new Set(["number", "string", "array", "record", "variant"])
+const VALUE_KINDS = new Set(["number", "string", "bytes", "array", "record", "variant"])
 
 /** A raw `Value` handed to the encoder (an Unknown's payload): check its shape, depth and size. */
 const checkedValue = (raw: unknown, at: At): Value => {

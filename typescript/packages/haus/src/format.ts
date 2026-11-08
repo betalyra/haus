@@ -109,6 +109,8 @@ class Formatter {
         return this.number(v)
       case "string":
         return this.basicString(v)
+      case "bytes":
+        return this.bytes(v)
       case "array":
         return `[${v.items.map((x) => this.line(x)).join(", ")}]`
       case "record":
@@ -144,6 +146,8 @@ class Formatter {
         return this.number(v)
       case "string":
         return v.value.includes("\n") ? undefined : this.basicString(v)
+      case "bytes":
+        return this.bytes(v)
       case "array": {
         if (v.items.length > 0) return undefined // pretty: one item per line
         const items = this.all(v.items)
@@ -198,6 +202,8 @@ class Formatter {
         return this.number(v)
       case "string":
         return v.value.includes("\n") ? blockString(v.value, ind + this.step) : this.basicString(v)
+      case "bytes":
+        return this.bytes(v)
       case "array":
         return this.container("[", "]", inside(v), v.items.map((x) => this.entryOf(x)), ind)
       case "record":
@@ -332,6 +338,11 @@ class Formatter {
     return numberText(this.original(v) ?? v.text)
   }
 
+  /** `x"…"`: the source spelling when reformatting (spaces kept), else lowercase hex. */
+  private bytes(v: Extract<Value, { kind: "bytes" }>): string {
+    return this.original(v) ?? `x"${toHex(v.bytes)}"`
+  }
+
   private basicString(v: Extract<Value, { kind: "string" }>): string {
     // The original spelling, unless it was a block string (those span lines).
     const original = this.original(v)
@@ -376,6 +387,15 @@ const key = (k: string) => (BARE_KEY.test(k) ? k : quote(k))
 
 const isBidi = (c: number) => (c >= 0x202a && c <= 0x202e) || (c >= 0x2066 && c <= 0x2069)
 const hexEscape = (c: number) => `\\u{${c.toString(16).toUpperCase()}}`
+
+const HEX = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, "0"))
+
+/** Lowercase hex, two digits per byte. */
+export function toHex(data: Uint8Array): string {
+  let out = ""
+  for (const b of data) out += HEX[b]
+  return out
+}
 
 /** A `"…"` string with the minimal escapes. */
 export function quote(s: string): string {

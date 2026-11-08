@@ -1,0 +1,20 @@
+// events.haus: a stream of events, one value after another.
+//
+// Every top-level value is followed by a comma. Writers should always emit
+// it, even after the last value. Then:
+//   - appending, `tail -f` and `cat a.haus b.haus` all produce valid streams
+//   - a reader knows a value is complete as soon as it sees the comma
+//
+// Values may span several lines. No one-value-per-line rule as in NDJSON.
+// The schema (syntax-tour.schema.haus) types this file as `Stream (UserEvent _)`.
+
+UserCreated { id: 42, email: "jan@example.com", at: Instant("2026-11-07T10:00:00Z") },
+UserRenamed {
+  id: 42,
+  from: "Jan",
+  to: "Jan S.",
+  at: Instant("2026-11-07T10:05:12Z"),
+},
+// The server's schema doesn't know this tag. It decodes as Unknown.
+PaymentReceived { id: 42, amount: Money(19.99, EUR), at: Instant("2026-11-07T10:06:00Z") },
+Heartbeat,

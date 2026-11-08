@@ -4,6 +4,7 @@ import "../../test-suite/valid/bare-values.haus" as valid_bare_values : List(U8)
 import "../../test-suite/valid/bidi-escaped.haus" as valid_bidi_escaped : List(U8)
 import "../../test-suite/valid/block-strings.haus" as valid_block_strings : List(U8)
 import "../../test-suite/valid/bom.haus" as valid_bom : List(U8)
+import "../../test-suite/valid/bytes.haus" as valid_bytes : List(U8)
 import "../../test-suite/valid/comments.haus" as valid_comments : List(U8)
 import "../../test-suite/valid/crlf-line-endings.haus" as valid_crlf_line_endings : List(U8)
 import "../../test-suite/valid/deep-nesting.haus" as valid_deep_nesting : List(U8)
@@ -35,6 +36,13 @@ import "../../test-suite/invalid/block-content-on-opening-line.haus" as invalid_
 import "../../test-suite/invalid/block-string-key.haus" as invalid_block_string_key : List(U8)
 import "../../test-suite/invalid/block-under-indented.haus" as invalid_block_under_indented : List(U8)
 import "../../test-suite/invalid/block-unterminated.haus" as invalid_block_unterminated : List(U8)
+import "../../test-suite/invalid/bytes-escape.haus" as invalid_bytes_escape : List(U8)
+import "../../test-suite/invalid/bytes-newline.haus" as invalid_bytes_newline : List(U8)
+import "../../test-suite/invalid/bytes-non-hex.haus" as invalid_bytes_non_hex : List(U8)
+import "../../test-suite/invalid/bytes-odd-digits.haus" as invalid_bytes_odd_digits : List(U8)
+import "../../test-suite/invalid/bytes-space-after-prefix.haus" as invalid_bytes_space_after_prefix : List(U8)
+import "../../test-suite/invalid/bytes-split-byte.haus" as invalid_bytes_split_byte : List(U8)
+import "../../test-suite/invalid/bytes-unterminated.haus" as invalid_bytes_unterminated : List(U8)
 import "../../test-suite/invalid/colon-in-array.haus" as invalid_colon_in_array : List(U8)
 import "../../test-suite/invalid/control-char-in-string.haus" as invalid_control_char_in_string : List(U8)
 import "../../test-suite/invalid/double-comma-top-level.haus" as invalid_double_comma_top_level : List(U8)
@@ -121,6 +129,9 @@ expect ConformanceTest.run(valid_block_strings) == "[{\"rec\":{\"simple\":\"line
 
 # valid/bom.haus
 expect ConformanceTest.run(valid_bom) == "[{\"rec\":{\"a\":{\"num\":\"1\"}}}]"
+
+# valid/bytes.haus
+expect ConformanceTest.run(valid_bytes) == "[{\"bytes\":\"\"},{\"bytes\":\"00\"},{\"bytes\":\"0b34ff\"},{\"bytes\":\"9f86d081884c7d65\"},{\"rec\":{\"key\":{\"bytes\":\"deadbeef\"}}},{\"tag\":\"Blob\",\"args\":[{\"bytes\":\"ff\"}]}]"
 
 # valid/comments.haus
 expect ConformanceTest.run(valid_comments) == "[{\"rec\":{\"a\":{\"num\":\"1\"},\"b\":{\"tag\":\"Some\",\"args\":[{\"num\":\"2\"}]},\"c\":{\"num\":\"3\"}}}]"
@@ -214,6 +225,27 @@ expect ConformanceTest.rejects(invalid_block_under_indented)
 
 # invalid/block-unterminated.haus
 expect ConformanceTest.rejects(invalid_block_unterminated)
+
+# invalid/bytes-escape.haus
+expect ConformanceTest.rejects(invalid_bytes_escape)
+
+# invalid/bytes-newline.haus
+expect ConformanceTest.rejects(invalid_bytes_newline)
+
+# invalid/bytes-non-hex.haus
+expect ConformanceTest.rejects(invalid_bytes_non_hex)
+
+# invalid/bytes-odd-digits.haus
+expect ConformanceTest.rejects(invalid_bytes_odd_digits)
+
+# invalid/bytes-space-after-prefix.haus
+expect ConformanceTest.rejects(invalid_bytes_space_after_prefix)
+
+# invalid/bytes-split-byte.haus
+expect ConformanceTest.rejects(invalid_bytes_split_byte)
+
+# invalid/bytes-unterminated.haus
+expect ConformanceTest.rejects(invalid_bytes_unterminated)
 
 # invalid/colon-in-array.haus
 expect ConformanceTest.rejects(invalid_colon_in_array)

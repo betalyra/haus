@@ -55,12 +55,15 @@ Reload VS Code (**Developer: Reload Window**) and open [`examples/person.haus`](
 - 🏷️ **Variants:** `None`, `Some(30)`, `Circle { radius: 5 }`. Booleans are just `True` / `False`.
 - 🧩 **Open records and variants:** unknown fields are ignored, unknown tags decode as "unknown" instead of failing.
 - 🔢 **Exact numbers:** `19.90` stays `19.90`; there's no silent float rounding and no 2⁵³ limit.
-- 📅 **Standard types:** `Date("2026-11-07")`, `Instant(…)`, `Money(19.99, EUR)`, `Duration("PT30S")`.
+- 📅 **Standard modules:** dates and times (`Date("2026-11-07")`, `Instant(…)`, `Duration("PT30S")`) and money (`Money(19.99, EUR)`), imported when you need them. The always-present prelude stays small.
+- 🧱 **Bytes:** binary data as hex, `x"9f86d081 884c7d65"`, instead of base64 inside a string.
 - 🚫 **No `null`:** leave out what you don't have (`nickname?: String`), or say "no value" explicitly with `None`. Each has exactly one meaning, so updates can send just the fields that change.
 - ✍️ **Pleasant to write:** unquoted keys, `//` and `/* */` comments, trailing commas, `"""` multi-line strings.
 - 🌊 **Streams built in:** a file is a sequence of values, so appending, `tail -f` and line-by-line processing just work.
 - 🎨 **One official format:** pretty (one entry per line) or compact (one item per line), like `gofmt`.
 - 🔍 **Type inference:** derive a schema from example data.
+- 🧩 **Open by default:** readers ignore fields and keep tags they don't know, so writers can add both without breaking anyone. `closed { … }` / `closed < … >` where only the listed ones are allowed.
+- ✅ **Checked in the editor:** a data file is checked against `x.schema.haus` next to it, or the schema named in a `// schema: ./api.schema.haus#Order` comment. Errors where something is wrong, a quiet hint on fields the schema doesn't know.
 - 🛡️ **Hardened:** depth, number and string limits, rejection of invisible bidi control characters, and schema decoding that stays linear in the input, even with recursive types.
 
 ## The same order in JSON
@@ -94,6 +97,20 @@ const back = h.stringify(Order, order)
 ```
 
 There is also an [Effect adapter](typescript/packages/effect) (`Haus.decode(schema)`, `Haus.encodeStream(schema)`), and a parser in [Roc](roc).
+
+### Typed imports (TypeScript 7.1, experimental)
+
+With the [content mapper](typescript/packages/content-mapper), `.haus` files are imported like modules:
+
+```ts
+import { Comment } from "./thread.schema.haus"   // the type and its Effect schema
+import thread from "./thread.haus"               // typed by thread.schema.haus (type Root), checked against it
+
+thread.replies[0].likes                          // bigint
+Haus.decode(Comment)(text)                       // the schema works for any input
+```
+
+Data that doesn't match its schema is an error in the editor, at the value that's wrong. A data file without a schema next to it gets a type inferred from its data. See the [example](typescript/examples/content-mapper).
 
 ## Repository
 

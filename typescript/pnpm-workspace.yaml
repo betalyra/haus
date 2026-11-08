@@ -4,3 +4,7 @@ packages:
 
 allowBuilds:
   esbuild: true
+
+# @effect/platform-node 4.0.6 accepts any platform-node-shared 4.x, but 4.1 needs effect 4.1.
+overrides:
+  "@effect/platform-node-shared": 4.0.6

@@ -77,6 +77,16 @@ describe("decoding", () => {
     expect(h.parse(UserUpdate, '{ nickname: Some("J") }')).toEqual({ nickname: "J" })
   })
 
+  it("Bytes and Map", () => {
+    expect(h.parse(h.Bytes, 'x"0b34 FF"')).toEqual(Uint8Array.from([0x0b, 0x34, 0xff]))
+    expect(h.stringify(h.Bytes, Uint8Array.from([0, 255]))).toBe('x"00ff"')
+    const Greetings = h.Map(h.String)
+    const m = h.parse(Greetings, '{ en: "Hello", "pt-BR": "Olá", "__proto__": "x" }')
+    expect([...m]).toEqual([["en", "Hello"], ["pt-BR", "Olá"], ["__proto__", "x"]])
+    expect(h.stringify(Greetings, m, { style: "compact" })).toBe('{ en: "Hello", "pt-BR": "Olá", __proto__: "x" }')
+    expect(() => h.parse(Greetings, "{ en: 1 }")).toThrow("expected String, found number 1 at $.en")
+  })
+
   it("Float64 accepts NaN and infinities", () => {
     expect(h.parse(h.Array(h.Float64), "[NaN, Infinity, NegInfinity, 1.5]")).toEqual([NaN, Infinity, -Infinity, 1.5])
   })

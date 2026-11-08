@@ -17,6 +17,7 @@ export class Shape {
   /** How many values were seen at this position. */
   occurrences = 0
   strings = 0
+  bytes = 0
   numbers = 0
   /** Some number had a fraction or exponent. */
   decimal = false
@@ -73,6 +74,7 @@ const union = (x: Shape, y: Shape): Shape => {
     b.link = a
     a.occurrences += b.occurrences
     a.strings += b.strings
+    a.bytes += b.bytes
     a.numbers += b.numbers
     a.decimal ||= b.decimal
     a.arrays += b.arrays
@@ -169,6 +171,9 @@ export function infer(values: readonly Value[]): Inference {
     switch (v.kind) {
       case "string":
         shape.strings++
+        return
+      case "bytes":
+        shape.bytes++
         return
       case "number":
         shape.numbers++
@@ -279,7 +284,7 @@ const reachable = (root: Shape): Set<Shape> => {
  * (`Comment`), or `Node` when they have several tags or none.
  * Depth-first with an explicit stack; each shape is visited once.
  */
-function recursiveNames(root: Shape): Map<Shape, string> {
+export function recursiveNames(root: Shape): Map<Shape, string> {
   const state = new Map<Shape, "open" | "done">()
   // The targets of back edges: every cycle contains one, so printing these
   // by name breaks every cycle.
@@ -308,7 +313,7 @@ function recursiveNames(root: Shape): Map<Shape, string> {
   const used = reserved()
   for (const s of recursive) {
     const tags = [...s.variants.keys()]
-    const onlyVariants = !s.strings && !s.numbers && !s.arrays && !s.records
+    const onlyVariants = !s.strings && !s.bytes && !s.numbers && !s.arrays && !s.records
     // A single tag names itself (`Comment`); anything else is a generic `Node`
     // (a field name like `root` or `children` says where it is, not what it is).
     let base = onlyVariants && tags.length === 1 ? tags[0]! : "Node"
@@ -327,7 +332,7 @@ const PRELUDE_MAYBE = new Set(["None", "Some"])
 const reserved = () => new Set(["String", "Int", "Decimal", "Array", "Maybe", "Bool", "Money", "Stream", "Root", "Item", ...PRELUDE_STRING_TAGS])
 
 /** Prelude scalars: a tag wrapping one string, printed by name (`Date`, not `< Date String >`). */
-const PRELUDE_STRING_TAGS = new Set(["Date", "Time", "DateTime", "Instant", "ZonedDateTime", "Duration", "Bytes", "Uuid"])
+const PRELUDE_STRING_TAGS = new Set(["Date", "Time", "DateTime", "Instant", "ZonedDateTime", "Duration"])
 
 /** A shape that only ever held strings. */
 const onlyStrings = (shape: Shape | undefined) => {
@@ -391,6 +396,7 @@ class ShapePrinter {
   private parts(s: Shape, ind: string | null): string | null {
     const parts: string[] = []
     if (s.strings) parts.push("String")
+    if (s.bytes) parts.push("Bytes")
     if (s.numbers) parts.push(s.decimal ? "Decimal" : "Int")
     if (s.arrays) {
       const element = s.element ? this.shape(s.element, ind) : "_"

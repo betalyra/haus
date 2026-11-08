@@ -2,7 +2,7 @@
  * The haus data model, exactly as written in the source. No schema has been
  * applied: numbers are kept as exact literal text, and variants are generic.
  */
-export type Value = HNumber | HString | HArray | HRecord | HVariant
+export type Value = HNumber | HString | HBytes | HArray | HRecord | HVariant
 
 /**
  * Source positions, only set when parsing with `{ locations: true }` (editor
@@ -27,6 +27,12 @@ export interface HString extends Located {
   readonly value: string
 }
 
+/** A byte string, written `x"0b34ff"`. */
+export interface HBytes extends Located {
+  readonly kind: "bytes"
+  readonly bytes: Uint8Array
+}
+
 export interface HArray extends Located {
   readonly kind: "array"
   readonly items: readonly Value[]
@@ -49,6 +55,7 @@ export interface HVariant extends Located {
 
 export const num = (text: string): HNumber => ({ kind: "number", text })
 export const str = (value: string): HString => ({ kind: "string", value })
+export const bytes = (data: Uint8Array): HBytes => ({ kind: "bytes", bytes: data })
 export const arr = (items: readonly Value[]): HArray => ({ kind: "array", items })
 export const rec = (fields: ReadonlyMap<string, Value>): HRecord => ({ kind: "record", fields })
 export const variant = (tag: string, args: readonly Value[] = []): HVariant => ({

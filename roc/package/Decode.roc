@@ -48,6 +48,13 @@ Decode := [].{
 		_ => expected("String", v)
 	}
 
+	## A byte string: `x"9f86d081"`.
+	bytes : Value -> Try(List(U8), Error)
+	bytes = |v| match v {
+		Bytes(b) => Ok(b)
+		_ => expected("Bytes", v)
+	}
+
 	## A non-negative integer.
 	u64 : Value -> Try(U64, Error)
 	u64 = |v| match v {
@@ -179,6 +186,7 @@ describe : Value -> Str
 describe = |v| match v {
 	Num(t) => "number ${t}"
 	Text(_) => "a string"
+	Bytes(_) => "bytes"
 	Arr(_) => "an array"
 	Rec(_) => "a record"
 	Tag(name, _) => "variant ${name}"
@@ -208,6 +216,10 @@ expect Decode.one("{ id: 1, note: None, coupon: None, prices: [], paid: True }",
 expect Decode.one("{ id: 1, coupon: None, prices: [Money(1, EUR), Money(2, 3)], paid: True }", order) == Err(Decode({ reason: "expected a tag without payload, found number 3", path: "$.prices[1][1]" }))
 expect Decode.one("{ id: 1, coupon: Some(1), prices: [], paid: True }", order) == Err(Decode({ reason: "expected String, found number 1", path: "$.coupon[0]" }))
 expect Decode.one("{ id: 1, coupon: None, prices: [], paid: Yes }", order) == Err(Decode({ reason: "expected True | False, found variant Yes", path: "$.paid" }))
+expect Decode.one("{ hash: x\"9f86 D0\" }", |v| Decode.field(Decode.record(v)?, "hash", Decode.bytes)) == Ok([0x9f, 0x86, 0xd0])
+expect Decode.one("x\"\"", Decode.bytes) == Ok([])
+expect Decode.one("x\"00\"", Decode.str) == Err(Decode({ reason: "expected String, found bytes", path: "$" }))
+expect Decode.one("\"00\"", Decode.bytes) == Err(Decode({ reason: "expected Bytes, found a string", path: "$" }))
 expect Decode.all("1, 2, x", Decode.u64) == Err(Syntax({ reason: "unexpected identifier 'x': lowercase identifiers can only be record keys", line: 1, column: 7 }))
 
 # A partial update: `name?: String, nickname?: Maybe String`.

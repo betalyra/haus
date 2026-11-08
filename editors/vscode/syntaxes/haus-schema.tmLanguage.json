@@ -7,6 +7,9 @@
       "include": "source.haus#comments"
     },
     {
+      "include": "#keywords"
+    },
+    {
       "include": "source.haus#string-triple"
     },
     {
@@ -73,6 +76,10 @@
           "name": "keyword.operator.optional.haus"
         }
       }
+    },
+    "keywords": {
+      "match": "\\b(closed|import)\\b|\\.\\.\\.",
+      "name": "keyword.other.haus"
     }
   }
 }

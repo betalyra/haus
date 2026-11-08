@@ -7,7 +7,7 @@ export { DEFAULT_LIMITS, MAX_DEPTH, type Limits } from "./parser.js"
 export { parseStream, StreamReader, type ChunkSource, type StreamOptions } from "./stream.js"
 export * from "./value.js"
 export { format, quote, stringify, type FormatOptions } from "./format.js"
-export { infer, inferSchema, printShape, RecordShape, resolve, Shape, VariantShape, type Inference, type PrintOptions } from "./infer.js"
+export { infer, inferSchema, printShape, recursiveNames, RecordShape, resolve, Shape, VariantShape, type Inference, type PrintOptions } from "./infer.js"
 
 /** Parse a complete text into its sequence of top-level values. */
 export function parseAll(text: string, limits: Partial<Limits> = {}): Value[] {
@@ -37,3 +37,9 @@ export function parse(text: string, limits: Partial<Limits> = {}): Value {
   }
   return values[0]!
 }
+export {
+  BUILTINS, HausSchemaFileError, Instance, instanceOf, parseSchemaFile, STD_MODULES,
+  type Builtin, type Case, type Definition, type Field, type Payload, type RecordType, type SchemaFile, type StdType, type Type, type VariantType,
+} from "./schema-file.js"
+export { checkData, schemaReference, type CheckIssue, type SchemaReference } from "./check.js"
+export { completeAt, type Completion } from "./complete.js"

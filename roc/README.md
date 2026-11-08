@@ -5,7 +5,7 @@ Built against the Roc nightly compiler (2026-11-03).
 | Path | Contents |
 |---|---|
 | `package/` | The haus package: `Value.roc` holds the data model and a hand-written parser (`Value.parse_all`, `Value.parse`, `Value.parse_bytes`) |
-| `package/Decode.roc` | Building blocks for decoding a `Value` into your own types (`Decode.all`, `Decode.record`, `Decode.field`, `Decode.optional_field`, `Decode.maybe`, `Decode.list`, `Decode.u64`, `Decode.money`, …). Error paths like `$[1].amount[0]` are built automatically |
+| `package/Decode.roc` | Building blocks for decoding a `Value` into your own types (`Decode.all`, `Decode.record`, `Decode.field`, `Decode.optional_field`, `Decode.maybe`, `Decode.list`, `Decode.u64`, `Decode.bytes`, `Decode.money`, …). Error paths like `$[1].amount[0]` are built automatically |
 | `package/ConformanceTest.roc` | Generated from `../test-suite` by `scripts/gen_conformance.py`. Re-run the script after changing the suite |
 | `examples/shop/` | Showcase: decoding haus into Roc's structural tag unions and records, with handlers that work on any union or record containing certain tags or fields (row polymorphism) |
 
