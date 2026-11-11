@@ -29,8 +29,9 @@ const notes: { term: string; rest: string; color: Pigment }[] = [
   <div class="max-w-[42rem]">
     <h2 id="code-heading" class="text-[2.2rem] leading-[1.08] sm:text-[2.8rem]">At home in your code.</h2>
     <p class="mt-5 text-[1.12rem] text-ink-2">
-      A schema is a <code class="inline-code">.schema.haus</code> file next to your data. Your build reads it and
-      gives you <strong>real types</strong>. Today in <a href={links.typescript} class="prose-link">TypeScript</a>,
+      Any haus file parses on its own, just like JSON. When you want types, put a
+      <code class="inline-code">.schema.haus</code> file next to your data: your build reads it and gives you
+      <strong>real types</strong>. Today in <a href={links.typescript} class="prose-link">TypeScript</a>,
       <a href={links.rust} class="prose-link">Rust</a> and <a href={links.roc} class="prose-link">Roc</a>, with
       more languages to come.
     </p>

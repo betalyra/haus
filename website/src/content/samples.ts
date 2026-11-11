@@ -15,13 +15,6 @@ export const heroHaus = `
 }
 `;
 
-export const quickstartSh = `
-git clone https://github.com/betalyra/haus && cd haus/editors/vscode
-pnpm install
-pnpm run package                        # builds haus.vsix
-code --install-extension haus.vsix --force
-`;
-
 export const compareHaus = `
 {
   order: 1042,
@@ -225,7 +218,7 @@ import ./common (Address)    // your own`,
     file: "order.haus",
     wash: ["cerulean", "ultramarine"],
     title: "Checked as you type",
-    text: "Put a schema file next to your data. Your editor checks the data as you write it, and your build turns the schema into real types.",
+    text: "A schema is optional: every haus file can be read without one. Add a schema next to your data, and your editor checks the data as you write it while your build turns the schema into real types.",
     code: `// schema: ./order.schema.haus
 { order: 1042, placed: Date("2026-11-08") }`,
   },

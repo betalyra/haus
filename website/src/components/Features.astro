@@ -48,8 +48,10 @@ const icons = {
               delay={(i % 2) * 140}
               class="-inset-5 -z-10 h-[calc(100%+2.5rem)] w-[calc(100%+2.5rem)]"
               strokes={[
-                { x: 0.44, y: 0.46, rx: 0.3, ry: 0.28, color: main, strength: 1.25 },
-                { x: 0.64, y: 0.64, rx: 0.17, ry: 0.15, color: bleed, strength: 1.1 },
+                // Offset down and right, so the icon sits on one pigment and
+                // the darker overlap of the two lands clear of its lines.
+                { x: 0.52, y: 0.54, rx: 0.3, ry: 0.28, color: main, strength: 1.15 },
+                { x: 0.76, y: 0.77, rx: 0.15, ry: 0.13, color: bleed, strength: 1.05 },
               ]}
             />
             <Icon size={38} aria-hidden="true" className="text-ink" />
