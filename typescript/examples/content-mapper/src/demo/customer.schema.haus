@@ -1,0 +1,3 @@
+type Contact = < Slack { id: String, name: String } | Email { address: String } >
+type Status = < Active | Inactive >
+type Root = { id: Int, name: String, contacts: Array Contact, status: Status }

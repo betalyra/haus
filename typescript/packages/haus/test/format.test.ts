@@ -148,13 +148,13 @@ describe("infer", () => {
     expect(printShape(root)).toBe("< Person { name: String, age: Int, type: < Engineer | Designer > } >")
   })
 
-  it("handles deep nesting and names prelude types", () => {
+  it("handles deep nesting and names std/time types", () => {
     const values = parseAll(`
       A { jobs: [Job { from: Date("2020-01-01"), to: None, pay: Money(1.50, EUR), role: Dev { langs: [Rust] } }] },
       A { jobs: [Job { from: Date("2021-01-01"), to: Some(Date("2022-01-01")), pay: Money(2, GBP), role: Ops { oncall: True } }] },
     `)
     expect(printShape(infer(values).root, { width: 200 })).toBe(
-      "< A { jobs: Array < Job { from: Date, to: Maybe Date, pay: Money, role: < Dev { langs: Array < Rust > } | Ops { oncall: Bool } > } > } >",
+      "< A { jobs: Array < Job { from: Date, to: Maybe Date, pay: < Money Decimal < EUR | GBP > >, role: < Dev { langs: Array < Rust > } | Ops { oncall: Bool } > } > } >",
     )
   })
 

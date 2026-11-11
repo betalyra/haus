@@ -8,7 +8,9 @@
     "predemo": "pnpm --filter @betalyra/haus-fmt --filter @betalyra/haus-fmt-effect build",
     "demo": "tsx --import @betalyra/haus-fmt-content-mapper/register src/demo/demo.ts",
     "demo:watch": "tsx watch --include 'src/**/*.haus' --import @betalyra/haus-fmt-content-mapper/register src/demo/demo.ts",
-    "typecheck": "tsc --noEmit --runExternalCode"
+    "typecheck": "tsc --noEmit --runExternalCode",
+    "video": "tsx --import @betalyra/haus-fmt-content-mapper/register src/video/main.ts",
+    "codecs": "tsx --import @betalyra/haus-fmt-content-mapper/register src/codecs/main.ts"
   },
   "devDependencies": {
     "@betalyra/haus-fmt-content-mapper": "workspace:*",
@@ -19,6 +21,8 @@
   "dependencies": {
     "@betalyra/haus-fmt-effect": "workspace:*",
     "@effect/platform-node": "4.0.6",
+    "@haus/geo": "workspace:*",
+    "@haus/money": "workspace:*",
     "effect": "4.0.6"
   }
 }

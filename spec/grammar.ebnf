@@ -97,7 +97,11 @@ block_comment ::= "/*" ( block_comment | comment_char )* "*/"
 
 schema_file ::= ws ( ( import | typedef ) ws )*
 import      ::= "import" ws module ws "(" ws type_name ( ws "," ws type_name )* ws [ "," ws ] ")"
-module      ::= ident ( "/" ident )*                      (* std/time, std/money *)
+module      ::= "std/" ident                              (* a standard module: std/time *)
+              | "@" segment "/" segment [ "@" digit+ ]    (* a schema package: @haus/money, @haus/money@1 *)
+              | ( "./" | "../" ) path                     (* a schema file, without .schema.haus: ./common *)
+segment     ::= [A-Za-z0-9_.-]+
+path        ::= [A-Za-z0-9_./-]*
 typedef     ::= "type" ws type_name ( ws param )* ws "=" ws type
 
 type        ::= type_name ( ws atom )+                    (* application: Array Point *)

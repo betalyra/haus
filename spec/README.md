@@ -2,7 +2,7 @@
 
 The syntax is defined in [`grammar.ebnf`](grammar.ebnf). This document defines
 what the syntax means and the rules every implementation must follow. The
-standard types are in [`prelude.schema.haus`](prelude.schema.haus), and
+standard types are in [`prelude.schema.haus`](prelude.schema.haus) and [`std/`](std) (§13), and
 [`../test-suite`](../test-suite) holds the conformance tests.
 
 "MUST", "SHOULD" and "MAY" are used as in RFC 2119.
@@ -129,11 +129,11 @@ Errors report a 1-based line and column. Columns count **Unicode code points**, 
    - check a raw value kept for an unknown variant (item 5) with the same limits before writing it again;
    - build error messages in constant time: no printing of whole schemas or values.
 9. **Recursive types** (a type that contains itself, like a tree) are allowed but MUST be explicit (e.g. `h.Recursive`). Every cycle MUST pass through a record field, array element or variant payload, so that each level of recursion consumes a level of input. A schema that applies itself to the same value again MUST fail. Each recursive type SHOULD have its own, smaller depth limit (default 64).
-10. **Schemas are declarative.** The schema language describes structure only: records, arrays, variants, prelude types and recursion. Generic types MAY refer to themselves only with the same parameters (`type List a = < Nil | Cons a (List a) >`; not `T (Pair a a)`). There are no type-level functions, conditions on values, references between values, or user code in schemas. Constraints are limited to built-in predicates that run in linear time (no backtracking regular expressions). Checking a value against a schema then always terminates in linear time; anything more belongs in application code, where the work budget (item 8) still applies.
+10. **Schemas are declarative.** The schema language describes structure only: records, arrays, variants, prelude types and recursion. Generic types MAY refer to themselves only with the same parameters (`type List a = < Nil | Cons a (List a) >`; not `T (Pair a a)`). There are no type-level functions, conditions on values, references between values, or user code in schemas, and no syntax for rules about values: the only such rules are those of built-in types (§13.1), which run in linear time. Checking a value against a schema then always terminates in linear time; anything more belongs in application code, where the work budget (item 8) still applies.
 
 ## 10. Evolution
 
-There is no version header. Any syntax added later MUST be a syntax error in every earlier version, so an old parser fails loudly instead of misreading newer data. Changes in meaning that leave the syntax unchanged are not allowed.
+There is no version header. Any syntax added later MUST be a syntax error in every earlier version, so an old parser fails loudly instead of misreading newer data. Changes in meaning that leave the syntax unchanged are not allowed. The rules of built-in types (§13.1) are part of this: they never change once published. Schema packages are versioned separately, with the rules of §13.3.
 
 ## 11. Standard format
 
@@ -199,25 +199,116 @@ A canonical serialization, so that equal values (§2) produce identical bytes:
 
 This enables hashing, deduplication and content addressing.
 
-## 13. Prelude and standard modules
+## 13. Prelude, standard modules and schema packages
 
-The **prelude** ([`prelude.schema.haus`](prelude.schema.haus)) is always in scope and deliberately small: `Bool`, `Maybe`, `Result`, the built-in types for each kind of value (`String`, `Bytes`, `Array a`, `Map v`, records) and the numeric representations (`Int`, `Int8`…`UInt64`, `Float32`, `Float64`, `Decimal`).
+Types come from four places:
 
-Everything else is a **module**, imported by name in a schema:
+| Tier | Contents | Rules about values | Bindings |
+|---|---|---|---|
+| **Prelude** ([`prelude.schema.haus`](prelude.schema.haus)) | the data model: `Bool`, `Maybe`, `Result`, `String`, `Bytes`, `Array a`, `Map v`, records, `Int`, `Int8`…`UInt64`, `Float32`, `Float64`, `Decimal` | built in (ranges of `Int8`…) | MUST support |
+| **Standard modules** ([`std/`](std)) | [`std/time`](std/time.schema.haus) only | built in: the [std/time profile](std/time.md) | MUST support |
+| **Official extensions** ([`../extensions`](../extensions)) | schema packages `@haus/…`, e.g. `@haus/money`, `@haus/geo` | none; profiles for codecs | MAY offer codecs |
+| **Community packages** | schema packages of any other organisation | none | MAY offer codecs |
+
+The prelude is always in scope. Everything else is imported:
 
 ```
-import std/time (Date, Instant, Duration)
-import std/money (Money)
+import std/time (Date, Instant)     // a standard module
+import @haus/money (Money)          // a schema package
+import @haus/money@1 (Money)        // the same, asserting major version 1
+import ./common (Address)           // a schema file next to this one (./common.schema.haus)
 ```
 
-- **Standard modules** ship with the spec and are versioned with it: [`std/time`](std/time.schema.haus) (the Temporal / java.time model: Date, Time, DateTime, Instant, ZonedDateTime, Duration, YearMonth, TimeZone) and [`std/money`](std/money.schema.haus) (Money, Currency).
-- **Third-party modules** (identifiers, geo, units, …) are pinned by version and content hash and resolved when the schema is built, never while parsing data (§9.2).
-- **Modules change no syntax.** Their types are written with the existing kinds, usually a tag around a string: `Date("2026-11-08")` is valid haus with or without `std/time`. A module adds meaning and validation in schemas and bindings; a binding without it reads the value as an ordinary tagged string.
-- A binding MAY support only some standard modules, and MUST say which.
+A domain goes in a module even when it is built in: the prelude reserves its names (§14), and `Time` or `Duration` are names schemas want for their own types.
+
+### 13.1 Rules about values
+
+**The schema language has no syntax for rules about values.** A schema describes structure (§9.10). The only rules about values are those of built-in types: the range of `UInt8`, the digits of a `Decimal`, the std/time profile. They are fixed by this specification, run in linear time, and mean the same in every implementation.
+
+There are two conformance classes:
+
+- A **parser** reads the syntax (§1–§8). It knows no types: `Date("2026-02-30")` and `Int8`-sized numbers are just a tag with a string and a number. A parser MUST NOT apply rules about values.
+- A **schema binding** decodes values with a schema. It MUST support the prelude and every standard module completely, and MUST check their rules: `Int8(300)` and `Date("2026-02-30")` are errors. Applications MAY choose other host types for standard types (§13.4), but never change what is valid.
+
+### 13.2 Standard modules
+
+Standard modules ship with this specification and are versioned with it. A module only gains types; its rules never change (§10), so imports of standard modules carry no version.
+
+- [`std/time`](std/time.schema.haus): `Date`, `Time`, `DateTime`, `Instant`, `ZonedDateTime`, `Duration`, `YearMonth`, `TimeZone`, the model of JavaScript's Temporal and java.time. Values are a tag around a string; the strings a schema binding accepts are defined by the [std/time profile](std/time.md), a strict subset of RFC 3339, RFC 9557 and ISO 8601. Nothing in it depends on a registry: zone names are checked for their syntax, never looked up.
+
+A type belongs in a standard module only if it passes all three tests: the prelude can't express it (a plain string or number loses or blurs its meaning), nearly every domain needs it, and a fixed, published grammar defines it. Today only time passes. Money passes the second test only partly, and `Decimal` already prevents the loss of precision: it is the package `@haus/money`. Identifiers (UUIDs, ULIDs, …) lose nothing as strings. Units, currencies, countries and languages are registries that change.
+
+Implementations SHOULD tell users of the former module `std/money` to import `@haus/money` instead.
+
+### 13.3 Schema packages
+
+A **schema package** is a directory with a manifest, `haus.package.haus`, next to its schema:
+
+```
+{ name: "@haus/money", version: "1.2.0", schema: "money.schema.haus" }
+```
+
+- `name` is `@organisation/name`. `@haus/` is reserved for the official extensions maintained with haus.
+- `version` is a semantic version (below).
+- Package schemas are ordinary schema files: shape only, like every schema. They change no syntax: `Money(19.99, EUR)` is valid haus with or without `@haus/money`.
+
+**Resolution.** An implementation finds packages where its language's package manager puts them (`node_modules` for JavaScript, …) and relative files next to the importing file. Resolution happens when a schema is built, never while data is parsed, and never over the network (§9.2). The exact version and content hash are pinned by the application's package manager (its lock file), not by the schema.
+
+- Where the package manager has scoped names (npm), `@org/name` resolves with its own name resolution, from the importing file. Elsewhere, an implementation looks only among the project's direct dependencies.
+- The manifest's `name` MUST equal the imported name, and the package manager's name where it is scoped (npm `@haus/money` holds `@haus/money`).
+
+**Distribution.** There is no haus registry. Authors publish schema packages however their users install dependencies: language registries (npm, crates.io, PyPI, …), private registries, git dependencies, workspaces, or copies in the project imported as relative files. Codec libraries for registries that reject git dependencies (crates.io, PyPI) can carry the schema text they target.
+
+The reasons:
+
+- Package managers already provide hosting, mirrors, lock files, hashes, authentication and private registries.
+- A haus registry would be one more service to run and one more point of failure for every build.
+- Types are identified by manifest names (`@haus/money@1#Money`), not by a registry, so a registry or a catalog can be added later without breaking anything; removing one could not be done the same way.
+
+What this means for users:
+
+- **Names are claims.** A manifest name doesn't prove who wrote a package: trust comes from the dependency the application chose to add. Scopes make names reliable on npm, and less so on registries with unscoped names. `@haus/` is reserved by convention; on npm the `@haus` scope enforces it. Organisations SHOULD use a name they own: their domain or their code hosting organisation.
+- **No install scripts.** A schema package is data and MUST NOT need code to install, such as npm `postinstall`. Codecs are code, and are trusted like any other library.
+- **Copies in several languages.** A package published to several registries SHOULD be published from one source, so that equal versions have equal files.
+- **Discovery.** There is no index. The official extensions are listed in [`../extensions`](../extensions).
+
+**Identity.** Every named type has an id, the same in every language: `@haus/money@1#Money` is the type `Money` of the package `@haus/money`, major version 1. Other files of a package are `@haus/money@1/path#Type`. Files outside a package get an id from the binding (the JavaScript binding uses the nearest `package.json` name and the file's path). Codecs (§13.4) and tools refer to types by their id.
+
+**Imports.** `import M (A, B)` makes the types `A` and `B` defined in `M` available under their names; a file can't re-export types it imports. Implementations MUST reject:
+
+- a module that can't be found, or a type it doesn't define;
+- a name imported twice, or imported and also defined;
+- two different files with the same id in one schema, such as two copies of `@acme/ids@3` found in different places, or two packages that both call themselves `@acme/ids`;
+- `@org/name@N` when the package found has another major version;
+- import cycles: a file that imports itself, directly or not.
+
+Errors inside an imported file are reported at the import, with their place in that file.
+
+**Versions.** A package's version says what a change does to data:
+
+| Version | Allowed changes | Guarantee |
+|---|---|---|
+| major | removing or renaming types, fields or tags; changing a field's type; making a type `closed` | none |
+| minor | new types; new optional fields in open records; new tags in open variants | data valid before stays valid and decodes to the same shape |
+| patch | comments and documentation | nothing changes |
+
+An import names at most a major version. A minimum minor version would be redundant: the types it imports already fail against an older package that lacks them.
+
+**Profiles.** A package MAY define profiles: rules beyond its shape that codecs can implement, named like `@haus/money/iso`. A profile is defined by test vectors (`profiles/<name>.vectors.haus`): values a codec implementing it accepts, values it rejects, and values that encode back to the same text. Profiles are how the official extensions say what "valid money" means without putting rules into the schema language.
+
+### 13.4 Codecs
+
+A schema binding MAY let applications choose the host type of a named type without arguments: a **codec**, selected by the type's id. A codec:
+
+- runs after the type's schema: it can reject more values, never fewer;
+- encodes back to the type's values, so that encoding what it decoded gives an equal value;
+- never changes the data: the same text means the same thing with and without it.
+
+Codecs are part of the application, not of the schema. Two applications reading the same file with different codecs agree on what the file says, and may disagree only on what they accept. A codec for a standard type changes the host type only (§13.1).
 
 ## 14. Schema files
 
-A schema file (`.schema.haus`, grammar in [`grammar.ebnf`](grammar.ebnf)) is a list of imports and type definitions.
+A schema file (`.schema.haus`, grammar in [`grammar.ebnf`](grammar.ebnf)) is a list of imports (§13) and type definitions.
 
 **Open by default.** Records and variants are open: a reader ignores fields the schema doesn't list (they are not part of the decoded value) and decodes tags it doesn't list as an *unknown* value that keeps the raw data. Writers can add fields and tags without breaking older readers. `closed { … }` and `closed < … >` forbid anything not listed. `< >` is a variant with any tags.
 
@@ -233,6 +324,7 @@ Implementations MUST reject:
 - recursion that doesn't pass through a record field, array element or variant payload (`type A = B`, `type B = A`), §9.9;
 - a generic type that refers to itself with arguments other than its own parameters, §9.10;
 - a type with row parameters that refers to itself (it is expanded where it is used);
-- `Stream a` anywhere but as the whole type of a definition, and references to such a definition.
+- `Stream a` anywhere but as the whole type of a definition, and references to such a definition;
+- the import errors of §13.3.
 
 **Which schema describes a file.** A data file `x.haus` is described by the type `Root` of the schema file `x.schema.haus` next to it. A comment on the first lines of the data file names another one: `// schema: ./order.schema.haus` or `// schema: ./api.schema.haus#Order` (a type other than `Root`). The comment is for tools; parsers ignore it, and it never changes what the data means (§9.2).

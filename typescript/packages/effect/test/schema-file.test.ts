@@ -1,10 +1,17 @@
 import { HausSchemaFileError, parseSchemaFile } from "@betalyra/haus-fmt"
 import { describe, expect, it } from "@effect/vitest"
 import { BigDecimal, DateTime, Effect, Exit, Option } from "effect"
+import { schemaOptions } from "@betalyra/haus-fmt/node"
 import { readFileSync } from "node:fs"
+import { fileURLToPath } from "node:url"
 import * as Haus from "../src/index.js"
 
-const read = (path: string) => readFileSync(new URL(`../../../../${path}`, import.meta.url), "utf8")
+const repo = (path: string) => fileURLToPath(new URL(`../../../../${path}`, import.meta.url))
+const read = (path: string) => readFileSync(repo(path), "utf8")
+/** Parse options for a schema file of the repo; official extensions come from extensions/. */
+const options = (path: string) =>
+  schemaOptions(repo(path), { packages: { "@haus/money": repo("extensions/money"), "@haus/geo": repo("extensions/geo") } })
+const compileFile = (path: string) => Haus.compileSchemaFile(read(path), options(path))
 
 const compile = (text: string) => Haus.compileSchemaFile(text).schemas
 const decodeWith = (text: string, name: string, data: string) => Effect.runSyncExit(Haus.decode(compile(text)[name]!)(data))
@@ -31,7 +38,7 @@ describe("schema files", () => {
     expect(DateTime.isDateTime(thread.at)).toBe(true)
     expect(thread.replies[0]._tag).toBe("Comment")
 
-    const tour = decoded(read("examples/syntax-tour.schema.haus"), "Root", read("examples/syntax-tour.haus"))
+    const tour = Effect.runSync(Haus.decode(compileFile("examples/syntax-tour.schema.haus").schemas.Root!)(read("examples/syntax-tour.haus"))) as any
     expect(BigDecimal.isBigDecimal(tour.price)).toBe(true)
     expect(Option.isOption(tour.timeout)).toBe(true)
     expect(tour).not.toHaveProperty("owner")
@@ -40,7 +47,8 @@ describe("schema files", () => {
   it("maps the prelude and std modules", () => {
     const schema = `
       import std/time (Date, Instant)
-      import std/money (Money)
+      type Money = closed < Money Decimal Currency >
+      type Currency = < >
       type Root = {
         name: String, n: Int, small: UInt8, f: Float64, d: Decimal, ok: Bool, raw: Bytes,
         day: Date, at: Instant, price: Money, nick: Maybe String, tags: Map Int, note?: String,
@@ -55,7 +63,7 @@ describe("schema files", () => {
     expect(BigDecimal.format(v.d)).toBe("19.9")
     expect(v.raw).toEqual(new Uint8Array([255, 0]))
     expect(v.day).toBe("2026-11-08")
-    expect(v.price).toMatchObject({ _tag: "Money", currency: "EUR" })
+    expect(v.price).toMatchObject({ _tag: "Money", values: [expect.anything(), "EUR"] })
     expect(v.nick).toEqual(Option.some("x"))
     expect(v.tags).toEqual({ a: 1n, b: 2n })
     expect(Exit.isFailure(decodeWith(schema.replace("small: UInt8", "small: Int8"), "Root", "{ small: 255 }"))).toBe(true)
@@ -76,7 +84,7 @@ describe("schema files", () => {
 
   it("encodes back to the same text", () => {
     const schema = `
-      import std/money (Money)
+      type Money = closed < Money Decimal < > >
       type Shape = closed < Circle { r: Float64 } | Point Float64 Float64 | Empty >
       type Root = { shapes: Array Shape, price: Money, tags: Map Decimal }`
     const s = compile(schema).Root!
@@ -92,8 +100,7 @@ describe("schema files", () => {
   })
 
   it("rows: composing variants and records", () => {
-    const schema = read("examples/syntax-tour.schema.haus")
-    const { schemas, streams } = Haus.compileSchemaFile(schema)
+    const { schemas, streams } = compileFile("examples/syntax-tour.schema.haus")
     expect(streams.has("ServerEvents")).toBe(true)
     const app = Effect.runSync(Haus.decode(schemas.AppEvent!)("Heartbeat"))
     expect(app).toEqual({ _tag: "Heartbeat" })
@@ -143,7 +150,9 @@ describe("schema files", () => {
     expect(schemaError("type E r = < A (E r) | ...r >")).toContain("can't be recursive")
     expect(schemaError("type S = Stream Int\ntype R = { s: S }")).toContain("a stream can only be the whole file")
     expect(schemaError("import std/time (Dat)")).toContain("std/time has no type Dat")
-    expect(schemaError("import other/x (A)")).toContain("only standard modules")
+    expect(schemaError("import other/x (A)")).toContain("unknown module other/x")
+    expect(schemaError("import @haus/money (Money)")).toContain("no module resolver")
+    expect(schemaError("type A = { d: Date(1) }")).toContain("expected")
     expect(schemaError("type A = { x: _ }")).toContain("open by default")
     expect(schemaError("type A = < X | ... >")).toContain("open by default")
     expect(schemaError("type A = closed < >")).toContain("needs at least one tag")
@@ -152,13 +161,19 @@ describe("schema files", () => {
   })
 
   it("prints TypeScript declarations", () => {
-    const d = Haus.schemaDeclarations(parseSchemaFile(read("examples/syntax-tour.schema.haus")))
-    expect(d).toContain(`export type Level = "Debug" | "Info" | "Warn" | "Error";`)
-    expect(d).toContain(`export declare const Root: Schema$.Codec<Root>;`)
+    const path = "examples/syntax-tour.schema.haus"
+    const d = Haus.schemaDeclarations(parseSchemaFile(read(path), options(path)))
+    expect(d).toContain(`export type Level<C$ = {}> = Haus$.Lookup<C$, "syntax-tour#Level", "Debug" | "Info" | "Warn" | "Error">;`)
+    expect(d).toContain(`export declare const Root: Haus$.Named<Schema$.Codec<Root>, "syntax-tour#Root", Root$F, `)
+    expect(d).toContain(`interface Root$F extends Haus$.TypeLambda { readonly type: Root<this["C"]> }`)
     expect(d).toContain(`readonly timeout: Option$.Option<bigint>`)
     expect(d).toContain(`readonly owner?: string`)
+    // Imported types are declared too, with their ids.
+    expect(d).toContain(`type Money<C$ = {}> = Haus$.Lookup<C$, "@haus/money@1#Money", { readonly _tag: "Money"; readonly values: readonly [BigDecimal$.BigDecimal, Currency<C$>] }>;`)
+    expect(d).toContain(`"@haus/money@1#Money"`)
+    expect(d).toContain(`Haus$.Lookup<C$, "std/time#Date", string>`)
     const g = Haus.schemaDeclarations(parseSchemaFile("type List a = closed < Nil | Cons a (List a) >"))
-    expect(g).toContain(`export type List<A> = { readonly _tag: "Nil" } | { readonly _tag: "Cons"; readonly values: readonly [A, List<A>] };`)
+    expect(g).toContain(`export type List<A, C$ = {}> = { readonly _tag: "Nil" } | { readonly _tag: "Cons"; readonly values: readonly [A, List<A, C$>] };`)
   })
 })
 
@@ -183,6 +198,16 @@ describe("error locations", () => {
 })
 
 describe("standard modules", () => {
+  it("std/time follows the profile, whatever the host type accepts", () => {
+    const schema = `import std/time (Date, Instant, Duration)\ntype Root = { d: Date, i: Instant, p: Duration }`
+    const ok = decoded(schema, "Root", `{ d: Date("2024-02-29"), i: Instant("2026-11-09T14:30:00+01:00"), p: Duration("PT1H30M") }`)
+    expect(DateTime.isDateTime(ok.i)).toBe(true)
+    for (const bad of [`d: Date("2026-02-29")`, `i: Instant("2016-12-31T23:59:60Z")`, `i: Instant("2026-11-09 14:30:00Z")`, `p: Duration("PT")`]) {
+      const data = `{ d: Date("2024-02-29"), i: Instant("2026-11-09T14:30:00Z"), p: Duration("PT1S"), ${bad} }`
+      expect(Exit.isFailure(decodeWith(schema, "Root", data))).toBe(true)
+    }
+  })
+
   it("the checker knows exactly the types of spec/std", async () => {
     const { STD_MODULES } = await import("@betalyra/haus-fmt")
     for (const [module, names] of Object.entries(STD_MODULES)) {

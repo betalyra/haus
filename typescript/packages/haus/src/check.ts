@@ -9,7 +9,8 @@
  * open type doesn't list: allowed (a reader ignores them, or reads the tag as
  * unknown), but maybe a typo, so editors mark them gently.
  */
-import type { Case, Field, Instance, RecordType, SchemaFile, Type, VariantType } from "./schema-file.js"
+import type { Case, Field, Instance, RecordType, SchemaFile, StdType, Type, VariantType } from "./schema-file.js"
+import { checkStdTime } from "./std-time.js"
 import type { HRecord, HVariant, Value } from "./value.js"
 
 export interface CheckIssue {
@@ -52,16 +53,6 @@ export function schemaReference(text: string): SchemaReference | undefined {
 
 const MAX_ISSUES = 200
 
-const PATTERNS: Record<string, RegExp> = {
-  Date: /^\d{4}-\d{2}-\d{2}$/,
-  Time: /^\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/,
-  DateTime: /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/,
-  Instant: /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/,
-  ZonedDateTime: /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})\[[^\]]+\]$/,
-  Duration: /^-?P(?!$)(\d+Y)?(\d+M)?(\d+W)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+(\.\d+)?S)?)?$/,
-  YearMonth: /^\d{4}-\d{2}$/,
-  TimeZone: /^[A-Za-z][A-Za-z0-9_+\-/]*$/,
-}
 
 const RANGES: Record<string, readonly [bigint, bigint]> = {
   Int8: [-(2n ** 7n), 2n ** 7n - 1n],
@@ -247,24 +238,13 @@ export function checkData(file: SchemaFile, typeName: string, values: readonly V
     }
   }
 
-  const std = (v: Value, name: string, type: Type): void => {
-    if (name === "Currency") {
-      if (v.kind !== "variant" || v.args.length > 0) return mismatch(v, type)
-      if (!/^[A-Z]{3}$/.test(v.tag)) report("error", `a currency is three capital letters (EUR, USD), found ${v.tag}`, ...tagSpan(v))
-      return
-    }
+  const std = (v: Value, name: StdType, type: Type): void => {
     if (v.kind !== "variant" || v.tag !== name) return mismatch(v, type)
-    if (name === "Money") {
-      const [amount, currency] = v.args
-      if (v.args.length !== 2) return report("error", "write Money(amount, currency), e.g. Money(19.90, EUR)", ...at(v))
-      builtin(amount!, "Decimal", { kind: "builtin", name: "Decimal" })
-      std(currency!, "Currency", { kind: "std", name: "Currency" })
-      return
-    }
     const [arg] = v.args
     if (v.args.length !== 1 || arg!.kind !== "string") return report("error", `write ${name}("…") with one string`, ...at(v))
-    const pattern = PATTERNS[name]
-    if (pattern && !pattern.test(arg!.value)) report("error", `${JSON.stringify(arg!.value)} is not a valid ${name}`, ...at(arg!))
+    // The std/time profile (spec/std/time.md): built-in rules, like the ranges of Int8.
+    const reason = checkStdTime(name, arg!.value)
+    if (reason !== undefined) report("error", reason, ...at(arg!))
   }
 
   const record = (v: HRecord, t: RecordType): void => {

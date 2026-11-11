@@ -8,7 +8,6 @@
  *   whole numbers     → number            decimals       → string (exact: "19.90")
  *   True / False      → boolean           None / Some(x) → T | null
  *   bare tags only    → "A" | "B"         Date("…") etc. → string
- *   Money(19.99, EUR) → { amount: string; currency: string }
  *   other variants    → { _tag: "Circle"; radius: number } | { _tag: "Point"; values: [number, number] }
  *   fields missing from some records → key?: T
  *   types nested in themselves       → named type aliases (type Comment = …)
@@ -23,7 +22,6 @@ type VariantMode =
   | { readonly kind: "bool" }
   | { readonly kind: "maybe"; readonly some: Shape | undefined }
   | { readonly kind: "string-tag" }
-  | { readonly kind: "money" }
   | { readonly kind: "enum" }
   | { readonly kind: "tagged" }
 
@@ -44,7 +42,6 @@ function variantMode(shape: Shape): VariantMode {
     const v = shape.variants.get(tag)!
     const positionalOnly = !v.bare && !v.record
     if (positionalOnly && TIME_TAGS.has(tag) && v.positional.length === 1 && onlyKind(v.positional[0], "strings")) return { kind: "string-tag" }
-    if (positionalOnly && tag === "Money" && v.positional.length === 2 && onlyKind(v.positional[0], "numbers")) return { kind: "money" }
   }
   if (cases.every(isBare)) return { kind: "enum" }
   return { kind: "tagged" }
@@ -91,7 +88,6 @@ class TypePrinter {
       case "bool": return "boolean"
       case "maybe": return `${mode.some ? this.type(mode.some) : "never"} | null`
       case "string-tag": return "string"
-      case "money": return "{ readonly amount: string; readonly currency: string }"
       case "enum": return [...s.variants.keys()].map((t) => JSON.stringify(t)).join(" | ")
       case "tagged": {
         const cases: string[] = []
@@ -161,10 +157,6 @@ function plain(v: Value, shape: Shape): unknown {
         case "bool": return v.tag === "True"
         case "maybe": return v.tag === "None" ? null : plain(v.args[0]!, vs.positional[0]!)
         case "string-tag": return (v.args[0] as Extract<Value, { kind: "string" }>).value
-        case "money": {
-          const [amount, currency] = v.args as [Extract<Value, { kind: "number" }>, Value]
-          return { amount: amount.text, currency: currency.kind === "variant" ? currency.tag : String(currency) }
-        }
         case "enum": return v.tag
         case "tagged": {
           const [first] = v.args

@@ -4,6 +4,7 @@ import * as esbuild from "esbuild"
 import { fileURLToPath } from "node:url"
 
 const haus = fileURLToPath(new URL("../../typescript/packages/haus/src/index.ts", import.meta.url))
+const hausNode = fileURLToPath(new URL("../../typescript/packages/haus/src/node.ts", import.meta.url))
 const options = {
   bundle: true,
   platform: "node",
@@ -11,7 +12,7 @@ const options = {
   format: "cjs",
   sourcemap: true,
   external: ["vscode"],
-  alias: { "@betalyra/haus-fmt": haus },
+  alias: { "@betalyra/haus-fmt/node": hausNode, "@betalyra/haus-fmt": haus },
   logLevel: "info",
 }
 const builds = [

@@ -1,0 +1,18 @@
+// An order that uses all three kinds of types: std/time (built in), the
+// official extensions @haus/money and @haus/geo (schema packages), and its own.
+import std/time (Date)
+import @haus/money (Money)
+import @haus/geo (LatLng)
+
+type UserId = closed < UserId String >
+
+type Status = closed < Pending | Shipped { tracking: String } | Cancelled >
+
+type Root = {
+  id: Int,
+  customer: UserId,
+  placed: Date,
+  total: Money,
+  deliverTo: LatLng,
+  status: Status,
+}

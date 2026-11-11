@@ -329,7 +329,7 @@ export function recursiveNames(root: Shape): Map<Shape, string> {
 const PRELUDE_BOOL = new Set(["True", "False"])
 const PRELUDE_MAYBE = new Set(["None", "Some"])
 /** Names a recursive type must not take: built-in types and the names `inferSchema` uses. */
-const reserved = () => new Set(["String", "Int", "Decimal", "Array", "Maybe", "Bool", "Money", "Stream", "Root", "Item", ...PRELUDE_STRING_TAGS])
+const reserved = () => new Set(["String", "Int", "Decimal", "Array", "Maybe", "Bool", "Stream", "Root", "Item", ...PRELUDE_STRING_TAGS])
 
 /** Prelude scalars: a tag wrapping one string, printed by name (`Date`, not `< Date String >`). */
 const PRELUDE_STRING_TAGS = new Set(["Date", "Time", "DateTime", "Instant", "ZonedDateTime", "Duration"])
@@ -338,12 +338,6 @@ const PRELUDE_STRING_TAGS = new Set(["Date", "Time", "DateTime", "Instant", "Zon
 const onlyStrings = (shape: Shape | undefined) => {
   const s = shape && resolve(shape)
   return s !== undefined && s.strings === s.occurrences && s.occurrences > 0
-}
-
-/** A shape that only ever held numbers. */
-const onlyNumbers = (shape: Shape | undefined) => {
-  const s = shape && resolve(shape)
-  return s !== undefined && s.numbers === s.occurrences && s.occurrences > 0
 }
 
 /**
@@ -457,7 +451,6 @@ class ShapePrinter {
       const v = variants.get(tag)!
       const positionalOnly = !v.bare && !v.record
       if (positionalOnly && PRELUDE_STRING_TAGS.has(tag) && v.positional.length === 1 && onlyStrings(v.positional[0])) return tag
-      if (positionalOnly && tag === "Money" && v.positional.length === 2 && onlyNumbers(v.positional[0])) return "Money"
     }
     const renderCase = (tag: string, v: VariantShape, at: string | null): string | null => {
       const payloads: string[] = []

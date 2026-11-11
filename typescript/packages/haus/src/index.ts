@@ -39,7 +39,9 @@ export function parse(text: string, limits: Partial<Limits> = {}): Value {
 }
 export {
   BUILTINS, HausSchemaFileError, Instance, instanceOf, parseSchemaFile, STD_MODULES,
-  type Builtin, type Case, type Definition, type Field, type Payload, type RecordType, type SchemaFile, type StdType, type Type, type VariantType,
+  type Builtin, type Case, type Definition, type Field, type ModuleResolver, type ParseSchemaOptions, type Payload, type RecordType,
+  type ResolvedModule, type SchemaFile, type StdType, type Type, type VariantType,
 } from "./schema-file.js"
+export { checkStdTime, isStdTimeType, STD_TIME_TYPES, type StdTimeType } from "./std-time.js"
 export { checkData, schemaReference, type CheckIssue, type SchemaReference } from "./check.js"
 export { completeAt, type Completion } from "./complete.js"

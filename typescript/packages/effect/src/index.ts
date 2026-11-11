@@ -23,8 +23,11 @@
  *   unknown tag in OpenUnion → { _tag: "@unknown", tag, value }
  */
 import { HausSyntaxError, parseAll, parseStream, stringify, type ChunkSource, type FormatOptions, type Value } from "@betalyra/haus-fmt"
+import { checkStdTime, type StdTimeType } from "@betalyra/haus-fmt"
 import { Effect, Schema, SchemaAST, Stream } from "effect"
-import { BARE_TAG, checkSchema, compile, compileEncoder, ConversionError, decodeBudget, DEFAULT_ENCODE_STEPS, guarded, POSITIONAL, PRELUDE_TAG, UNKNOWN_TAG } from "./convert.js"
+import { entries, isCodec, setId, type AnyCodec, type Checked, type Decoded, type Named } from "./codec.js"
+import { withCodecs } from "./schema-file.js"
+import { checkSchema, compile, compileEncoder, ConversionError, decodeBudget, DEFAULT_ENCODE_STEPS, guarded, POSITIONAL, PRELUDE_TAG, UNKNOWN_TAG } from "./convert.js"
 
 // ── errors ───────────────────────────────────────────────────
 
@@ -111,41 +114,56 @@ export const OpenUnion = <const Members extends ReadonlyArray<Schema.Top>>(membe
 export const Positional = <S extends Schema.Top>(schema: S): S["Rebuild"] =>
   schema.annotate({ [POSITIONAL]: true } as never)
 
-// ── prelude scalars ──────────────────────────────────────────
+// ── std/time ─────────────────────────────────────────────────
 
-const preludeString = (tag: string, pattern: RegExp) =>
-  Schema.String.annotate({ [PRELUDE_TAG]: tag } as never).check(Schema.isPattern(pattern))
+const stdTime = <S extends Schema.Top>(name: StdTimeType, schema: S) => setId(schema, `std/time#${name}`)
+
+/** A std/time type written as `Tag("…")`, kept as its validated string (the std/time profile, spec/std/time.md). */
+const timeString = <const Name extends StdTimeType>(name: Name) =>
+  stdTime(
+    name,
+    Schema.String.annotate({ [PRELUDE_TAG]: name } as never).check(Schema.makeFilter((s: string) => checkStdTime(name, s) ?? true)),
+  ) as Named<Schema.String, `std/time#${Name}`>
 
 /** `Date("2026-11-07")` as the ISO date string; encodes back to `Date("…")`. */
-export const Date = preludeString("Date", /^\d{4}-\d{2}-\d{2}$/)
+export const Date = timeString("Date")
 /** `Time("14:30:00")` as the ISO time string. */
-export const Time = preludeString("Time", /^\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/)
-/** `Duration("PT30S")` as the ISO 8601 duration string. */
-export const Duration = preludeString("Duration", /^-?P(?!$)(\d+Y)?(\d+M)?(\d+W)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+(\.\d+)?S)?)?$/)
+export const Time = timeString("Time")
 /** `DateTime("2026-11-07T14:30:00")` (no zone) as the ISO string. */
-export const DateTime = preludeString("DateTime", /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/)
+export const DateTime = timeString("DateTime")
+/** `Duration("PT30S")` as the ISO 8601 duration string. */
+export const Duration = timeString("Duration")
 /** `YearMonth("2026-11")` as the ISO string. */
-export const YearMonth = preludeString("YearMonth", /^\d{4}-\d{2}$/)
-/** `TimeZone("Europe/Lisbon")` as the IANA name. */
-export const TimeZone = preludeString("TimeZone", /^[A-Za-z][A-Za-z0-9_+\-/]*$/)
-/** A currency, written as a bare tag of three capital letters: `EUR` ↔ "EUR" (std/money). */
-export const Currency = Schema.String.annotate({ [BARE_TAG]: true } as never).check(Schema.isPattern(/^[A-Z]{3}$/))
-/** `Money(19.99, EUR)` ↔ `{ _tag: "Money", amount: BigDecimal, currency: "EUR" }` (std/money). */
-export const Money = Positional(Schema.TaggedStruct("Money", { amount: Schema.BigDecimal, currency: Currency }))
-/** `Uuid("…")` as the UUID string. */
-export const Uuid = preludeString("Uuid", /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/)
+export const YearMonth = timeString("YearMonth")
+/** `TimeZone("Europe/Lisbon")` as the IANA name (not looked up). */
+export const TimeZone = timeString("TimeZone")
+/** `Instant("2026-11-07T10:00:00Z")` as an Effect `DateTime.Utc`. */
+export const Instant = stdTime("Instant", Schema.DateTimeUtc.annotate({})) as Named<Schema.DateTimeUtc, "std/time#Instant">
+/** `ZonedDateTime("2026-11-07T10:00:00+01:00[Europe/Lisbon]")` as an Effect `DateTime.Zoned`. */
+export const ZonedDateTime = stdTime("ZonedDateTime", Schema.DateTimeZoned.annotate({})) as Named<Schema.DateTimeZoned, "std/time#ZonedDateTime">
 
 // ── decoding ─────────────────────────────────────────────────
 
 const decodeOptions = { onExcessProperty: "ignore", errors: "first" } as const
 
-/** Decode an already-parsed haus value. */
-export const decodeValue = <S extends Schema.Top>(schema: S) => {
-  const ast = SchemaAST.toEncoded(schema.ast)
+/** The schema with codecs applied (cached); the schema itself without codecs. */
+const target = <S extends Schema.Top>(schema: S, codecs: ReadonlyArray<AnyCodec>): S => {
+  if (codecs.length === 0) return schema
+  entries(codecs) // two codecs for one type fail here, before anything is built
+  return withCodecs(schema, codecs) as S
+}
+
+/**
+ * Decode an already-parsed haus value. With codecs, their types replace the
+ * named types they target (`Haus.decodeValue(Root, cents)`).
+ */
+export const decodeValue = <S extends Schema.Top, const C extends ReadonlyArray<AnyCodec> = []>(schema: S, ...codecs: C & Checked<S, C>) => {
+  const s = target(schema, codecs)
+  const ast = SchemaAST.toEncoded(s.ast)
   checkSchema(ast)
   const convert = compile(ast)
-  const decode = Schema.decodeUnknownEffect(schema)
-  return (value: Value): Effect.Effect<S["Type"], HausSchemaError, S["DecodingServices"]> =>
+  const decode = Schema.decodeUnknownEffect(s)
+  return (value: Value): Effect.Effect<Decoded<S, C>, HausSchemaError, S["DecodingServices"]> =>
     Effect.try({
       // Conversion work is bounded by the size of the input (see convert.ts).
       try: () => guarded(decodeBudget(value), () => convert(value)),
@@ -156,12 +174,17 @@ export const decodeValue = <S extends Schema.Top>(schema: S) => {
     }).pipe(
       Effect.flatMap((encoded) => decode(encoded, decodeOptions)),
       Effect.mapError((e) => (e instanceof HausSchemaError ? e : new HausSchemaError({ message: e.message, path: issuePath(e.issue) }))),
-    )
+    ) as Effect.Effect<Decoded<S, C>, HausSchemaError, S["DecodingServices"]>
 }
 
-/** Parse a text holding exactly one value and decode it. */
-export const decode = <S extends Schema.Top>(schema: S) => {
-  const fromValue = decodeValue(schema)
+/**
+ * Parse a text holding exactly one value and decode it:
+ *
+ *   Haus.decode(Root)(text)                  // the types of the schema
+ *   Haus.decode(Root, cents, geojson)(text)  // with the codecs' types for Money and LatLng
+ */
+export const decode = <S extends Schema.Top, const C extends ReadonlyArray<AnyCodec> = []>(schema: S, ...codecs: C & Checked<S, C>) => {
+  const fromValue = (decodeValue as (s: S, ...c: ReadonlyArray<AnyCodec>) => (v: Value) => Effect.Effect<Decoded<S, C>, HausSchemaError, S["DecodingServices"]>)(schema, ...codecs)
   return Effect.fn("Haus.decode")(function* (text: string) {
     const values = yield* Effect.try({ try: () => parseAll(text), catch: toParseError })
     if (values.length !== 1) {
@@ -169,6 +192,20 @@ export const decode = <S extends Schema.Top>(schema: S) => {
     }
     return yield* fromValue(values[0]!)
   })
+}
+
+/**
+ * Apply codecs to a value already decoded without them, e.g. a typed data
+ * import (`import order from "./order.haus"`): `Haus.convert(Root, cents)(order)`.
+ */
+export const convert = <S extends Schema.Top, const C extends ReadonlyArray<AnyCodec> = []>(schema: S, ...codecs: C & Checked<S, C>) => {
+  const encode = Schema.encodeEffect(schema as unknown as Schema.Codec<S["Type"], S["Encoded"]>)
+  const decode = Schema.decodeUnknownEffect(target(schema, codecs))
+  return (value: S["Type"]): Effect.Effect<Decoded<S, C>, HausSchemaError> =>
+    encode(value).pipe(
+      Effect.flatMap((encoded) => decode(encoded, decodeOptions)),
+      Effect.mapError((e) => new HausSchemaError({ message: e.message, path: issuePath(e.issue) })),
+    ) as Effect.Effect<Decoded<S, C>, HausSchemaError>
 }
 
 /** An error of the source stream, carried through the parser unchanged. */
@@ -182,18 +219,19 @@ class SourceFailure<E> {
  * through), an async iterable or a web ReadableStream. Parsing stays in the
  * optimized core reader; each completed value is decoded as it is emitted.
  */
-export const decodeStream = <S extends Schema.Top>(schema: S) => {
-  const fromValue = decodeValue(schema)
-  const decodeChunks = <E>(chunks: ChunkSource): Stream.Stream<S["Type"], HausError | E, S["DecodingServices"]> =>
+export const decodeStream = <S extends Schema.Top, const C extends ReadonlyArray<AnyCodec> = []>(schema: S, ...codecs: C & Checked<S, C>) => {
+  type A = Decoded<S, C>
+  const fromValue = (decodeValue as (s: S, ...c: ReadonlyArray<AnyCodec>) => (v: Value) => Effect.Effect<A, HausSchemaError, S["DecodingServices"]>)(schema, ...codecs)
+  const decodeChunks = <E>(chunks: ChunkSource): Stream.Stream<A, HausError | E, S["DecodingServices"]> =>
     Stream.fromAsyncIterable(parseStream(chunks), (e): HausParseError | E =>
       e instanceof SourceFailure ? (e.error as E) : toParseError(e)).pipe(
       Stream.zipWithIndex,
       Stream.mapEffect(([value, index]) =>
         fromValue(value).pipe(Effect.mapError(({ message, path }) => new HausSchemaError({ message, index, ...(path ? { path } : {}) })))),
     )
-  function decode(source: ChunkSource): Stream.Stream<S["Type"], HausError, S["DecodingServices"]>
-  function decode<E, R>(source: Stream.Stream<string | Uint8Array, E, R>): Stream.Stream<S["Type"], HausError | E, S["DecodingServices"] | R>
-  function decode<E, R>(source: ChunkSource | Stream.Stream<string | Uint8Array, E, R>): Stream.Stream<S["Type"], HausError | E, S["DecodingServices"] | R> {
+  function decode(source: ChunkSource): Stream.Stream<A, HausError, S["DecodingServices"]>
+  function decode<E, R>(source: Stream.Stream<string | Uint8Array, E, R>): Stream.Stream<A, HausError | E, S["DecodingServices"] | R>
+  function decode<E, R>(source: ChunkSource | Stream.Stream<string | Uint8Array, E, R>): Stream.Stream<A, HausError | E, S["DecodingServices"] | R> {
     const decoded = Stream.isStream(source)
       ? Stream.unwrap(
         Stream.toAsyncIterableEffect(
@@ -209,12 +247,13 @@ export const decodeStream = <S extends Schema.Top>(schema: S) => {
 // ── encoding ─────────────────────────────────────────────────
 
 /** Encode a typed value into a haus `Value` (Effect's encoder runs first: transformations, filters…). */
-export const encodeValue = <S extends Schema.Top>(schema: S) => {
-  const ast = SchemaAST.toEncoded(schema.ast)
+export const encodeValue = <S extends Schema.Top, const C extends ReadonlyArray<AnyCodec> = []>(schema: S, ...codecs: C & Checked<S, C>) => {
+  const s = target(schema, codecs)
+  const ast = SchemaAST.toEncoded(s.ast)
   checkSchema(ast)
   const toValue = compileEncoder(ast)
-  const encode = Schema.encodeUnknownEffect(schema)
-  return (value: S["Type"]): Effect.Effect<Value, HausSchemaError, S["EncodingServices"]> =>
+  const encode = Schema.encodeUnknownEffect(s)
+  return (value: Decoded<S, C>): Effect.Effect<Value, HausSchemaError, S["EncodingServices"]> =>
     encode(value, { errors: "first" }).pipe(
       Effect.mapError((e) => new HausSchemaError({ message: e.message })),
       Effect.flatMap((encoded) =>
@@ -225,14 +264,28 @@ export const encodeValue = <S extends Schema.Top>(schema: S) => {
             throw e
           },
         })),
-    )
+    ) as Effect.Effect<Value, HausSchemaError, S["EncodingServices"]>
 }
 
-/** Encode a typed value as haus text in the standard format (no trailing newline). */
-export const encode = <S extends Schema.Top>(schema: S, options: FormatOptions = {}) => {
-  const toValue = encodeValue(schema)
-  return Effect.fn("Haus.encode")(function* (value: S["Type"]) {
-    return stringify(yield* toValue(value), options)
+/** Codecs, or format options (the older form `encode(schema, options)`). */
+const splitArgs = (args: ReadonlyArray<AnyCodec | FormatOptions | undefined>): [ReadonlyArray<AnyCodec>, FormatOptions] => {
+  const codecs = args.filter(isCodec)
+  const options = args.find((a): a is FormatOptions => a !== undefined && !isCodec(a)) ?? {}
+  return [codecs, options]
+}
+
+/**
+ * Encode a typed value as haus text in the standard format (no trailing
+ * newline). Pass the same codecs as for decoding; format options go with the
+ * value: `Haus.encode(Root, cents)(order, { style: "compact" })`.
+ */
+export function encode<S extends Schema.Top>(schema: S, options?: FormatOptions): (value: S["Type"], options?: FormatOptions) => Effect.Effect<string, HausSchemaError, S["EncodingServices"]>
+export function encode<S extends Schema.Top, const C extends ReadonlyArray<AnyCodec>>(schema: S, ...codecs: C & Checked<S, C>): (value: Decoded<S, C>, options?: FormatOptions) => Effect.Effect<string, HausSchemaError, S["EncodingServices"]>
+export function encode<S extends Schema.Top>(schema: S, ...args: ReadonlyArray<AnyCodec | FormatOptions | undefined>) {
+  const [codecs, defaults] = splitArgs(args)
+  const toValue = (encodeValue as (s: S, ...c: ReadonlyArray<AnyCodec>) => (v: unknown) => Effect.Effect<Value, HausSchemaError, S["EncodingServices"]>)(schema, ...codecs)
+  return Effect.fn("Haus.encode")(function* (value: unknown, options?: FormatOptions) {
+    return stringify(yield* toValue(value), { ...defaults, ...options })
   })
 }
 
@@ -240,9 +293,12 @@ export const encode = <S extends Schema.Top>(schema: S, options: FormatOptions =
  * Encode a stream of values as haus stream chunks, each ending in ",\n".
  * Compact by default (one item per line); pass `{ style: "pretty" }` for multi-line items.
  */
-export const encodeStream = <S extends Schema.Top>(schema: S, options: FormatOptions = {}) => {
-  const toValue = encodeValue(schema)
-  return <E, R>(values: Stream.Stream<S["Type"], E, R>): Stream.Stream<string, E | HausSchemaError, R | S["EncodingServices"]> =>
+export function encodeStream<S extends Schema.Top>(schema: S, options?: FormatOptions): <E, R>(values: Stream.Stream<S["Type"], E, R>) => Stream.Stream<string, E | HausSchemaError, R | S["EncodingServices"]>
+export function encodeStream<S extends Schema.Top, const C extends ReadonlyArray<AnyCodec>>(schema: S, ...codecs: C & Checked<S, C>): <E, R>(values: Stream.Stream<Decoded<S, C>, E, R>) => Stream.Stream<string, E | HausSchemaError, R | S["EncodingServices"]>
+export function encodeStream<S extends Schema.Top>(schema: S, ...args: ReadonlyArray<AnyCodec | FormatOptions | undefined>) {
+  const [codecs, options] = splitArgs(args)
+  const toValue = (encodeValue as (s: S, ...c: ReadonlyArray<AnyCodec>) => (v: unknown) => Effect.Effect<Value, HausSchemaError, S["EncodingServices"]>)(schema, ...codecs)
+  return <E, R>(values: Stream.Stream<unknown, E, R>): Stream.Stream<string, E | HausSchemaError, R | S["EncodingServices"]> =>
     values.pipe(
       Stream.zipWithIndex,
       Stream.mapEffect(([value, index]) =>
@@ -254,6 +310,13 @@ export const encodeStream = <S extends Schema.Top>(schema: S, options: FormatOpt
     )
 }
 
+// ── codecs ───────────────────────────────────────────────────
+
+export {
+  codec, codecs, CodecTypeId, idOf, isCodec, type AnyCodec, type Codec, type CodecMap, type Checked, type Decoded, type Kind, type Lookup,
+  type Named, type NamedInfo, type NotInSchema, type TypeLambda,
+} from "./codec.js"
+
 // ── schema files ─────────────────────────────────────────────
 
-export { compileSchemaFile, definitionDoc, fromSchemaFile, schemaDeclarations, type CompiledSchemaFile, type DeclarationOptions } from "./schema-file.js"
+export { compileSchemaFile, definitionDoc, fromSchemaFile, schemaDeclarations, withCodecs, type CompiledSchemaFile, type DeclarationOptions, type FromSchemaFileOptions } from "./schema-file.js"

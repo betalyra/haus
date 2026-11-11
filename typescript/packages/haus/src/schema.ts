@@ -20,6 +20,7 @@
 import { format, stringify as stringifyValue, type FormatOptions } from "./format.js"
 import { Parser } from "./parser.js"
 import { parseStream, type ChunkSource } from "./stream.js"
+import { checkStdTime } from "./std-time.js"
 import { arr, bytes as bytesValue, num, rec, str, variant, type HRecord, type HVariant, type Value } from "./value.js"
 
 // ── core ─────────────────────────────────────────────────────
@@ -343,19 +344,13 @@ const taggedString = <A>(tag: string, format: RegExp, convert: (s: string) => A 
   })
 
 /** `Date("2026-11-07")`, returned as the validated ISO string. */
-const date = taggedString("Date", /^\d{4}-\d{2}-\d{2}$/, (s) => {
-  const d = new globalThis.Date(s + "T00:00:00Z")
-  return !isNaN(d.getTime()) && d.toISOString().startsWith(s) ? s : undefined
-}, (s) => s)
+const date = taggedString("Date", /^\d{4}-\d{2}-\d{2}$/, (s) => (checkStdTime("Date", s) === undefined ? s : undefined), (s) => s)
 
 /** `Instant("2026-11-07T10:00:00Z")`, returned as a JS Date. */
 const instant = taggedString(
   "Instant",
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/,
-  (s) => {
-    const d = new globalThis.Date(s)
-    return isNaN(d.getTime()) ? undefined : d
-  },
+  (s) => (checkStdTime("Instant", s) === undefined ? new globalThis.Date(s) : undefined),
   (d) => (d instanceof globalThis.Date && !isNaN(d.getTime()) ? d.toISOString() : String(d)),
 )
 

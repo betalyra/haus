@@ -8,7 +8,7 @@
  * mismatch it falls back to a schema-less conversion and lets Effect report
  * the error with its path.
  */
-import { arr as vArr, bytes as vBytes, num as vNum, rec as vRec, str as vStr, variant as vVariant, type HVariant, type Value } from "@betalyra/haus-fmt"
+import { arr as vArr, bytes as vBytes, checkStdTime, num as vNum, rec as vRec, str as vStr, variant as vVariant, type HVariant, type StdTimeType, type Value } from "@betalyra/haus-fmt"
 import { Array as Arr, BigDecimal, DateTime, Match, Option, Predicate, SchemaAST } from "effect"
 
 export type Converter = (value: Value) => unknown
@@ -292,8 +292,10 @@ function compileUnion(ast: SchemaAST.Union): Converter {
     })
   }
   const open = byTag.has(UNKNOWN_TAG)
+  // `< >`: any bare tag, as its name.
+  const anyTag = types.find((m) => m._tag === "String" && m.annotations?.[BARE_TAG] === true)
   // Other members (Option, Boolean, string-encoded scalars, …), by value kind.
-  const others = types.filter((m) => Option.isNone(tagOf(m)) && m._tag !== "Literal")
+  const others = types.filter((m) => Option.isNone(tagOf(m)) && m._tag !== "Literal" && m !== anyTag)
   const forKind = (kinds: ReadonlyArray<AST["_tag"]>) =>
     Arr.findFirst(others, (m) => kinds.includes(resolve(m)._tag)).pipe(Option.map(compile))
   const byKind = {
@@ -308,11 +310,19 @@ function compileUnion(ast: SchemaAST.Union): Converter {
     if (v.kind === "variant") {
       const exact = byTag.get(v.tag)
       if (exact) return exact(v)
+      if (anyTag && v.args.length === 0) return v.tag
       if (Option.isSome(byKind.variant)) return byKind.variant.value(v)
       return open ? { _tag: UNKNOWN_TAG, tag: v.tag, value: v } : generic(v)
     }
     return Option.match(byKind[v.kind], { onSome: (convert) => convert(v), onNone: () => generic(v) })
   }
+}
+
+/** A std/time string that follows the profile (spec/std/time.md); anything else is an error, whatever the host type accepts. */
+const stdTime = (type: StdTimeType, s: string): string => {
+  const reason = checkStdTime(type, s)
+  if (reason !== undefined) throw new ConversionError(reason)
+  return s
 }
 
 function compileDeclaration(ast: SchemaAST.Declaration): Converter {
@@ -327,13 +337,13 @@ function compileDeclaration(ast: SchemaAST.Declaration): Converter {
       return (v) =>
         Option.match(scalarString(v, "Instant"), {
           onNone: () => generic(v),
-          onSome: (s) => Option.getOrElse(DateTime.make(s), () => s),
+          onSome: (s) => Option.getOrElse(DateTime.make(stdTime("Instant", s)), () => s),
         })
     case "effect/schema/DateTimeZoned":
       return (v) =>
         Option.match(scalarString(v, "ZonedDateTime"), {
           onNone: () => generic(v),
-          onSome: (s) => Option.getOrElse(DateTime.makeZonedFromString(s), () => s),
+          onSome: (s) => Option.getOrElse(DateTime.makeZonedFromString(stdTime("ZonedDateTime", s)), () => s),
         })
     case "effect/schema/Option": {
       const inner = Arr.head(ast.typeParameters).pipe(Option.map(compile), Option.getOrElse(() => generic))

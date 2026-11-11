@@ -1,7 +1,9 @@
 /**
  * Schema files (`.schema.haus`): parse, resolve and check them.
  *
- *   import std/time (Instant)
+ *   import std/time (Instant)            built in (spec §13)
+ *   import @haus/money (Money)           a schema package, found by a ModuleResolver
+ *   import ./common (Address)            a schema file next to this one
  *   type Comment = < Comment { author: String, at: Instant, replies: Array Comment } >
  *   type Root = Comment
  *
@@ -33,11 +35,13 @@ export const BUILTINS = [
 ] as const
 export type Builtin = (typeof BUILTINS)[number]
 
-/** Types of the standard modules (spec §13), by module. */
+/** Types of the standard modules (spec §13), by module. Only std/time: everything else is an ordinary schema package. */
 export const STD_MODULES = {
   "std/time": ["Date", "Time", "DateTime", "Instant", "ZonedDateTime", "Duration", "YearMonth", "TimeZone"],
-  "std/money": ["Money", "Currency"],
 } as const
+
+/** Modules that used to be standard, and where they went. */
+const MOVED_MODULES: Record<string, string> = { "std/money": "@haus/money" }
 export type StdType = (typeof STD_MODULES)[keyof typeof STD_MODULES][number]
 
 export type Type =
@@ -110,6 +114,14 @@ export class Instance {
 
 export interface Definition {
   readonly name: string
+  /**
+   * The type's identity, the same in every language: `@haus/money@1#Money`
+   * for a type of a schema package, `<id>#Name` for a file with an id, or
+   * just the name.
+   */
+  readonly id: string
+  /** The identity of the file that defines it; undefined for the file being parsed when it has no id. */
+  readonly module: string | undefined
   readonly params: readonly string[]
   /** Parameters used as rows (`| r`); the others are type parameters. */
   readonly rowParams: ReadonlySet<string>
@@ -126,9 +138,14 @@ export interface Definition {
 }
 
 export interface SchemaFile {
-  /** Definitions in source order. */
+  /** The file's own definitions, in source order. */
   readonly definitions: readonly Definition[]
+  /** Types imported from std modules. */
   readonly imports: ReadonlyMap<string, StdType>
+  /** Types imported from other schema files and packages, by the name they have here. */
+  readonly imported: ReadonlyMap<string, Definition>
+  /** The file's identity (ParseSchemaOptions.id), if it has one. */
+  readonly id: string | undefined
   /** The definition named `name`, if any. */
   definition(name: string): Definition | undefined
 }
@@ -136,7 +153,7 @@ export interface SchemaFile {
 // ── lexer ────────────────────────────────────────────────────
 
 type Token =
-  | { readonly t: "upper" | "lower" | "string"; readonly value: string; readonly pos: number }
+  | { readonly t: "upper" | "lower" | "string" | "module"; readonly value: string; readonly pos: number }
   | { readonly t: "punct"; readonly value: string; readonly pos: number }
   | { readonly t: "eof"; readonly value: ""; readonly pos: number }
 
@@ -178,6 +195,16 @@ class Lexer {
     if (m) {
       this.pos += m[0].length
       return { t: /^[A-Z]/.test(m[0]) ? "upper" : "lower", value: m[0], pos }
+    }
+    // A package or file after `import`: @org/name, @org/name@1, ./file, ../dir/file.
+    const module = /@[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:@[0-9]+)?|\.\.?\/[A-Za-z0-9_./-]*/y
+    if (s[pos] === "@" || s.startsWith("./", pos) || s.startsWith("../", pos)) {
+      module.lastIndex = pos
+      const mm = module.exec(s)
+      if (mm) {
+        this.pos += mm[0].length
+        return { t: "module", value: mm[0], pos }
+      }
     }
     if (s[pos] === '"') {
       const str = /"(?:[^"\\\n]|\\.)*"/y
@@ -317,10 +344,13 @@ class SchemaParser {
   private parseImport(): ImportDecl {
     const pos = this.advance().pos
     const parts: string[] = []
-    do {
-      if (this.tok.t !== "lower") this.unexpected("a module name like std/time")
-      parts.push(this.advance().value)
-    } while (this.is("/") && this.advance())
+    if (this.cur().t === "module") parts.push(this.advance().value)
+    else {
+      do {
+        if (this.tok.t !== "lower") this.unexpected("a module like std/time, @org/name or ./file")
+        parts.push(this.advance().value)
+      } while (this.is("/") && this.advance())
+    }
     this.expect("(")
     const names: { name: string; pos: number }[] = []
     while (!this.is(")")) {
@@ -481,10 +511,46 @@ function docComment(text: string, pos: number): { start: number; doc: string } {
   return { start, doc: lines.join("\n") }
 }
 
+// ── imports ──────────────────────────────────────────────────
+
+/** A schema file found for an import. */
+export interface ResolvedModule {
+  /** Unique for each file (e.g. its absolute path); passed back as `from` for the file's own imports. */
+  readonly key: string
+  /**
+   * The file's identity, the same in every language: `@haus/money@1` for a
+   * package's schema (from its manifest), `<package>/<path>` for other files.
+   */
+  readonly id: string
+  readonly text: string
+  /** The package version (semver), checked against an `@major` in the import. */
+  readonly version?: string
+}
+
+/**
+ * Finds the schema files that imports name. Resolution happens when the
+ * schema is built, never while data is parsed (spec §9.2). Throw an Error
+ * with a readable message when a module can't be found.
+ */
+export interface ModuleResolver {
+  /** `module` as written (`@haus/money`, `@haus/money@1`, `./common`), imported by the file `from` (undefined: the root file without a key). */
+  resolve(module: string, from: string | undefined): ResolvedModule
+}
+
+export interface ParseSchemaOptions {
+  /** Finds imported packages and files. Without one, only std modules can be imported. */
+  readonly resolver?: ModuleResolver
+  /** The root file's key for the resolver (e.g. its path), so relative imports resolve from it. */
+  readonly key?: string
+  /** The root file's identity, for the ids of its types (see ResolvedModule.id). */
+  readonly id?: string
+}
+
 // ── resolution ───────────────────────────────────────────────
 
 const PRELUDE_GENERIC: Record<string, number> = { Array: 1, Map: 1, Maybe: 1, Result: 2, Stream: 1 }
 const MAX_INSTANCES = 10_000
+const MAX_FILES = 256
 
 type RowValue =
   | { readonly kind: "cases"; readonly cases: readonly Case[]; readonly open: boolean; readonly row?: string }
@@ -493,51 +559,123 @@ type RowValue =
 
 type Binding = { readonly kind: "type"; readonly type: Type } | { readonly kind: "row"; readonly row: RowValue }
 
+type Fail = (reason: string, pos: number) => never
+
+/** One schema file: the root, or one it imports (directly or not). */
+interface Unit {
+  readonly root: boolean
+  readonly id: string | undefined
+  readonly text: string
+  readonly fail: Fail
+  /** Its own definitions, by name: what other files can import. */
+  readonly own: Map<string, Def>
+  /** Every named type in scope: its own definitions and imported ones. */
+  readonly scope: Map<string, Def>
+  readonly std: Map<string, StdType>
+}
+
 interface Def {
   readonly decl: TypeDecl
   readonly params: readonly string[]
   readonly rowParams: Set<string>
+  readonly unit: Unit
   definition?: Definition
 }
 
-/** Parse and check a schema file. Throws HausSchemaFileError. */
-export function parseSchemaFile(text: string): SchemaFile {
-  const fail = (reason: string, pos: number): never => {
+const majorOf = (version: string) => /^v?(\d+)/.exec(version)?.[1]
+
+/** Parse and check a schema file and the files it imports. Throws HausSchemaFileError. */
+export function parseSchemaFile(text: string, options: ParseSchemaOptions = {}): SchemaFile {
+  const rootFail: Fail = (reason, pos) => {
     const at = locate(text, pos, { offset: 0, line: 1, column: 1 })
     throw new HausSchemaFileError(reason, at.offset, at.line, at.column)
   }
-  const { imports, types } = new SchemaParser(text, fail).parseFile()
+  const units = new Map<string, Unit>()
+  const loading: string[] = []
+  const allDefs: Def[] = []
 
-  // ── scope ──
-  const imported = new Map<string, StdType>()
-  for (const imp of imports) {
-    const names = (STD_MODULES as Record<string, readonly StdType[]>)[imp.module]
-    if (!names) {
-      fail(imp.module.startsWith("std/")
-        ? `unknown standard module ${imp.module} (there are ${Object.keys(STD_MODULES).join(", ")})`
-        : `only standard modules (std/…) can be imported so far`, imp.pos)
+  // ── loading: parse each file once, build its scope ──
+  const load = (text: string, key: string | undefined, id: string | undefined, fail: Fail, root: boolean): Unit => {
+    if (units.size >= MAX_FILES) fail(`more than ${MAX_FILES} schema files are imported`, 0)
+    const { imports, types } = new SchemaParser(text, fail).parseFile()
+    const unit: Unit = { root, id, text, fail, own: new Map(), scope: new Map(), std: new Map() }
+    if (key !== undefined) units.set(key, unit)
+    loading.push(key ?? "")
+    try {
+      for (const imp of imports) {
+        if (imp.module.startsWith("std/")) {
+          const names = (STD_MODULES as Record<string, readonly StdType[]>)[imp.module]
+          if (!names) {
+            const moved = MOVED_MODULES[imp.module]
+            fail(moved
+              ? `${imp.module} is no longer a standard module; it is the package ${moved}: import ${moved} (${imp.names.map((n) => n.name).join(", ")})`
+              : `unknown standard module ${imp.module} (there is ${Object.keys(STD_MODULES).join(", ")})`, imp.pos)
+          }
+          for (const n of imp.names) {
+            if (!names!.includes(n.name as StdType)) fail(`${imp.module} has no type ${n.name} (it has ${names!.join(", ")})`, n.pos)
+            if (unit.std.has(n.name) || unit.scope.has(n.name)) fail(`${n.name} is imported twice`, n.pos)
+            unit.std.set(n.name, n.name as StdType)
+          }
+          continue
+        }
+        if (!/^(@[^/]+\/|\.\.?\/)/.test(imp.module)) fail(`unknown module ${imp.module}: import std/…, a package @org/name or a file ./name`, imp.pos)
+        const dep = loadImport(imp, key, fail)
+        for (const n of imp.names) {
+          const def = dep.own.get(n.name)
+          if (!def) fail(`${imp.module} has no type ${n.name}${dep.own.size ? ` (it has ${[...dep.own.keys()].join(", ")})` : ""}`, n.pos)
+          if (unit.std.has(n.name) || unit.scope.has(n.name)) fail(`${n.name} is imported twice`, n.pos)
+          unit.scope.set(n.name, def!)
+        }
+      }
+      for (const decl of types) {
+        if (unit.own.has(decl.name)) fail(`type ${decl.name} is defined twice`, decl.pos)
+        if (unit.scope.has(decl.name) || unit.std.has(decl.name)) fail(`type ${decl.name} is already imported`, decl.pos)
+        if ((BUILTINS as readonly string[]).includes(decl.name) || decl.name in PRELUDE_GENERIC) {
+          fail(`${decl.name} is a prelude type and can't be redefined`, decl.pos)
+        }
+        const seen = new Set<string>()
+        for (const p of decl.params) {
+          if (p.name === "_") fail("_ can't be a parameter name", p.pos)
+          if (seen.has(p.name)) fail(`parameter ${p.name} appears twice`, p.pos)
+          seen.add(p.name)
+        }
+        const def: Def = { decl, params: decl.params.map((p) => p.name), rowParams: new Set(), unit }
+        unit.own.set(decl.name, def)
+        unit.scope.set(decl.name, def)
+        allDefs.push(def)
+      }
+    } finally {
+      loading.pop()
     }
-    for (const n of imp.names) {
-      if (!names!.includes(n.name as StdType)) fail(`${imp.module} has no type ${n.name} (it has ${names!.join(", ")})`, n.pos)
-      if (imported.has(n.name)) fail(`${n.name} is imported twice`, n.pos)
-      imported.set(n.name, n.name as StdType)
-    }
+    return unit
   }
-  const defs = new Map<string, Def>()
-  for (const decl of types) {
-    if (defs.has(decl.name)) fail(`type ${decl.name} is defined twice`, decl.pos)
-    if (imported.has(decl.name)) fail(`type ${decl.name} is already imported`, decl.pos)
-    if ((BUILTINS as readonly string[]).includes(decl.name) || decl.name in PRELUDE_GENERIC) {
-      fail(`${decl.name} is a prelude type and can't be redefined`, decl.pos)
+
+  const loadImport = (imp: ImportDecl, from: string | undefined, fail: Fail): Unit => {
+    const resolver = options.resolver
+    if (!resolver) return fail(`can't import ${imp.module}: no module resolver (only std modules can be imported here)`, imp.pos)
+    let r: ResolvedModule
+    try {
+      r = resolver.resolve(imp.module.replace(/@[0-9]+$/, ""), from)
+    } catch (e) {
+      return fail(`can't import ${imp.module}: ${e instanceof Error ? e.message : String(e)}`, imp.pos)
     }
-    const seen = new Set<string>()
-    for (const p of decl.params) {
-      if (p.name === "_") fail("_ can't be a parameter name", p.pos)
-      if (seen.has(p.name)) fail(`parameter ${p.name} appears twice`, p.pos)
-      seen.add(p.name)
+    const wanted = /^@.+@([0-9]+)$/.exec(imp.module)?.[1]
+    if (wanted !== undefined && r.version !== undefined && majorOf(r.version) !== wanted) {
+      fail(`${imp.module} wants major version ${wanted}, but version ${r.version} was found`, imp.pos)
     }
-    defs.set(decl.name, { decl, params: decl.params.map((p) => p.name), rowParams: new Set() })
+    if (loading.includes(r.key)) fail(`import cycle: ${imp.module} imports this file again`, imp.pos)
+    const cached = units.get(r.key)
+    if (cached) return cached
+    // Errors inside an imported file are reported at the import, with their place in that file.
+    const nested: Fail = (reason, pos) => {
+      const at = locate(r.text, pos, { offset: 0, line: 1, column: 1 })
+      return fail(`${imp.module} (${at.line}:${at.column}): ${reason}`, imp.pos)
+    }
+    return load(r.text, r.key, r.id, nested, false)
   }
+
+  const root = load(text, options.key, options.id, rootFail, true)
+  const scopeOf = (def: Def, name: string) => def.unit.scope.get(name)
 
   // ── parameter kinds: a parameter used as a row (directly or passed to a row parameter) is a row parameter ──
   const kindUses = (def: Def): { rows: Set<string>; types: Set<string> } => {
@@ -547,11 +685,11 @@ export function parseSchemaFile(text: string): SchemaFile {
     const visit = (n: Node, asRow: boolean): void => {
       switch (n.t) {
         case "var":
-          if (!params.has(n.name)) fail(`unknown type parameter ${n.name}`, n.pos)
+          if (!params.has(n.name)) def.unit.fail(`unknown type parameter ${n.name}`, n.pos)
           ;(asRow ? rows : typesUsed).add(n.name)
           return
         case "app": {
-          const target = defs.get(n.head)
+          const target = scopeOf(def, n.head)
           n.args.forEach((a, i) => visit(a, target !== undefined && target.rowParams.has(target.params[i] ?? "")))
           return
         }
@@ -572,14 +710,15 @@ export function parseSchemaFile(text: string): SchemaFile {
   }
   for (let changed = true, rounds = 0; changed; rounds++) {
     changed = false
-    if (rounds > defs.size + 1) break
-    for (const def of defs.values()) {
+    if (rounds > allDefs.length + 1) break
+    for (const def of allDefs) {
       for (const r of kindUses(def).rows) {
         if (!def.rowParams.has(r)) def.rowParams.add(r), (changed = true)
       }
     }
   }
-  for (const def of defs.values()) {
+  for (const def of allDefs) {
+    const fail = def.unit.fail
     const { types: used } = kindUses(def)
     for (const p of def.decl.params) {
       if (def.rowParams.has(p.name) && used.has(p.name)) fail(`${p.name} is used both as a row and as a type`, p.pos)
@@ -587,7 +726,7 @@ export function parseSchemaFile(text: string): SchemaFile {
     // §9.10: a generic type refers to itself only with its own parameters.
     const check = (n: Node): void => {
       if (n.t === "app") {
-        if (n.head === def.decl.name && !(n.args.length === def.params.length && n.args.every((a, i) => a.t === "var" && a.name === def.params[i]))) {
+        if (scopeOf(def, n.head) === def && !(n.args.length === def.params.length && n.args.every((a, i) => a.t === "var" && a.name === def.params[i]))) {
           fail(`${def.decl.name} must refer to itself with its own parameters (${[def.decl.name, ...def.params].join(" ")}); other arguments could grow without bound`, n.pos)
         }
         n.args.forEach(check)
@@ -599,7 +738,20 @@ export function parseSchemaFile(text: string): SchemaFile {
 
   // ── evaluation ──
   const instances = new Map<string, Instance>()
-  const expanding: string[] = []
+  const defOf = new Map<Instance, Def>()
+  const expanding: Def[] = []
+  /** The file whose nodes are being evaluated: names resolve in its scope, errors point into it. */
+  let current: Unit = root
+  const fail: Fail = (reason, pos) => current.fail(reason, pos)
+  const within = <R>(unit: Unit, f: () => R): R => {
+    const saved = current
+    current = unit
+    try {
+      return f()
+    } finally {
+      current = saved
+    }
+  }
 
   const keyOf = (t: Type): string => {
     switch (t.kind) {
@@ -625,40 +777,44 @@ export function parseSchemaFile(text: string): SchemaFile {
   const payloadKey = (p: Payload): string =>
     p.kind === "none" ? "" : p.kind === "record" ? keyOf(p.record) : `(${p.items.map(keyOf).join(",")})`
 
+  /** Types of other files are keyed by their id, so equal names in two files stay apart. */
+  const nameKey = (def: Def) => (def.unit.root ? def.decl.name : definitionOf(def).id)
+
   const instance = (def: Def, args: readonly Type[], pos: number): Instance => {
-    const key = args.length === 0 ? def.decl.name : `${def.decl.name}(${args.map(keyOf).join(",")})`
+    const key = args.length === 0 ? nameKey(def) : `${nameKey(def)}(${args.map(keyOf).join(",")})`
     let inst = instances.get(key)
     if (inst) return inst
     if (instances.size >= MAX_INSTANCES) fail(`more than ${MAX_INSTANCES} type instances: a generic type grows without bound`, pos)
     inst = new Instance(definitionOf(def), args, key)
     instances.set(key, inst)
+    defOf.set(inst, def)
     queue.push([inst, def])
     return inst
   }
   const queue: [Instance, Def][] = []
 
-  const evaluateInstance = (inst: Instance, def: Def): void => {
-    if (inst.state === "done") return
-    if (inst.state === "evaluating") fail(`type ${def.decl.name} is used as a row of itself`, def.decl.pos)
-    inst.state = "evaluating"
-    const env = new Map<string, Binding>()
-    def.params.forEach((p, i) => {
-      const arg = inst.args[i]!
-      env.set(p, def.rowParams.has(p) ? { kind: "row", row: { kind: "unfilled", name: p } } : { kind: "type", type: arg })
+  const evaluateInstance = (inst: Instance, def: Def): void =>
+    within(def.unit, () => {
+      if (inst.state === "done") return
+      if (inst.state === "evaluating") fail(`type ${def.decl.name} is used as a row of itself`, def.decl.pos)
+      inst.state = "evaluating"
+      const env = new Map<string, Binding>()
+      def.params.forEach((p, i) => {
+        const arg = inst.args[i]!
+        env.set(p, def.rowParams.has(p) ? { kind: "row", row: { kind: "unfilled", name: p } } : { kind: "type", type: arg })
+      })
+      const body = def.decl.body
+      if ((body.t === "app" && body.head === "Stream") || (body.t === "name" && body.name === "Stream")) {
+        if (body.t !== "app" || body.args.length !== 1) return fail("Stream needs 1 argument", body.pos)
+        inst.stream = true
+        inst.body = evaluate(body.args[0]!, env)
+      } else inst.body = evaluate(body, env)
+      inst.state = "done"
     })
-    const body = def.decl.body
-    if ((body.t === "app" && body.head === "Stream") || (body.t === "name" && body.name === "Stream")) {
-      if (body.t !== "app" || body.args.length !== 1) return fail("Stream needs 1 argument", body.pos)
-      inst.stream = true
-      inst.body = evaluate(body.args[0]!, env)
-    } else inst.body = evaluate(body, env)
-    inst.state = "done"
-  }
 
   /** The body of a type, evaluating it now if necessary. */
   const bodyOf = (inst: Instance): Type => {
-    const def = defs.get(inst.name)!
-    evaluateInstance(inst, def)
+    evaluateInstance(inst, defOf.get(inst)!)
     return inst.body
   }
 
@@ -673,25 +829,26 @@ export function parseSchemaFile(text: string): SchemaFile {
   }
 
   const lookupName = (name: string, pos: number): Type => {
-    const def = defs.get(name)
+    const def = current.scope.get(name)
     if (def) {
       if (def.params.length > 0) fail(`${name} needs ${def.params.length} argument${def.params.length > 1 ? "s" : ""} (${[name, ...def.params].join(" ")})`, pos)
       return refTo(instance(def, [], pos), pos)
     }
-    const std = imported.get(name)
+    const std = current.std.get(name)
     if (std) return { kind: "std", name: std }
     if ((BUILTINS as readonly string[]).includes(name)) return { kind: "builtin", name: name as Builtin }
     if (name in PRELUDE_GENERIC) fail(`${name} needs ${PRELUDE_GENERIC[name]} argument${PRELUDE_GENERIC[name]! > 1 ? "s" : ""}`, pos)
     const module = Object.entries(STD_MODULES).find(([, names]) => (names as readonly string[]).includes(name))?.[0]
+      ?? (name === "Money" || name === "Currency" ? "@haus/money" : undefined)
     return fail(module ? `unknown type ${name}; import it with: import ${module} (${name})` : `unknown type ${name}`, pos)
   }
 
   const refTo = (inst: Instance, pos: number): Type => {
     if (inst.state === "done" && inst.stream) fail(`${inst.name} is a Stream; a stream can only be the whole file, not part of a type`, pos)
-    pendingStreamChecks.push([inst, pos])
+    pendingStreamChecks.push([inst, pos, current])
     return { kind: "ref", instance: inst }
   }
-  const pendingStreamChecks: [Instance, number][] = []
+  const pendingStreamChecks: [Instance, number, Unit][] = []
 
   const evaluate = (n: Node, env: ReadonlyMap<string, Binding>): Type => {
     switch (n.t) {
@@ -737,9 +894,9 @@ export function parseSchemaFile(text: string): SchemaFile {
           return fail("Stream can only be the whole type of a definition: type Events = Stream Event", n.pos)
       }
     }
-    const def = defs.get(n.head)
+    const def = current.scope.get(n.head)
     if (!def) {
-      if (imported.has(n.head) || (BUILTINS as readonly string[]).includes(n.head)) fail(`${n.head} takes no arguments`, n.pos)
+      if (current.std.has(n.head) || (BUILTINS as readonly string[]).includes(n.head)) fail(`${n.head} takes no arguments`, n.pos)
       return lookupName(n.head, n.pos)
     }
     if (n.args.length !== def.params.length) {
@@ -749,17 +906,17 @@ export function parseSchemaFile(text: string): SchemaFile {
       return refTo(instance(def, n.args.map((a) => evaluate(a, env)), n.pos), n.pos)
     }
     // Types with rows are expanded where they are used.
-    if (expanding.includes(def.decl.name)) fail(`${def.decl.name} has row parameters and so can't be recursive`, n.pos)
+    if (expanding.includes(def)) fail(`${def.decl.name} has row parameters and so can't be recursive`, n.pos)
     const inner = new Map<string, Binding>()
     def.params.forEach((p, i) => {
       const arg = n.args[i]!
       inner.set(p, def.rowParams.has(p) ? { kind: "row", row: rowArg(arg, env) } : { kind: "type", type: evaluate(arg, env) })
     })
-    expanding.push(def.decl.name)
+    expanding.push(def)
     try {
       const body = def.decl.body
       if (body.t === "app" && body.head === "Stream") fail("Stream can only be the whole type of a definition", n.pos)
-      return evaluate(body, inner)
+      return within(def.unit, () => evaluate(body, inner))
     } finally {
       expanding.pop()
     }
@@ -843,36 +1000,39 @@ export function parseSchemaFile(text: string): SchemaFile {
     const d = def.decl
     def.definition = {
       name: d.name,
+      id: def.unit.id === undefined ? d.name : `${def.unit.id}#${d.name}`,
+      module: def.unit.id,
       params: def.params,
       rowParams: def.rowParams,
       doc: d.doc,
-      source: text.slice(d.docStart, d.end).trim(),
+      source: def.unit.text.slice(d.docStart, d.end).trim(),
       offset: d.pos,
       template: undefined as unknown as Instance, // set below, once the definition exists
     }
     return def.definition
   }
 
-  // Evaluate every definition (templates for generic ones), so all errors surface.
-  for (const def of defs.values()) {
+  // Evaluate every definition of every file (templates for generic ones), so all errors surface.
+  for (const def of allDefs) {
     const definition = definitionOf(def)
     const args = def.params.map((p): Type => ({ kind: "param", name: p }))
-    const inst = instance(def, args, def.decl.pos)
+    const inst = within(def.unit, () => instance(def, args, def.decl.pos))
     ;(definition as { template: Instance }).template = inst
     while (queue.length > 0) {
       const [i, d] = queue.shift()!
       evaluateInstance(i, d)
     }
   }
-  for (const [inst, pos] of pendingStreamChecks) {
-    if (inst.stream) fail(`${inst.name} is a Stream; a stream can only be the whole file, not part of a type`, pos)
+  for (const [inst, pos, unit] of pendingStreamChecks) {
+    if (inst.stream) unit.fail(`${inst.name} is a Stream; a stream can only be the whole file, not part of a type`, pos)
   }
   // §9.9: every cycle passes through a record, array or variant.
-  for (const inst of instances.values()) resolveRef({ kind: "ref", instance: inst }, inst.definition.offset)
+  for (const inst of instances.values()) within(defOf.get(inst)!.unit, () => resolveRef({ kind: "ref", instance: inst }, inst.definition.offset))
 
-  const definitions = [...defs.values()].map((d) => d.definition!)
+  const definitions = [...root.own.values()].map((d) => d.definition!)
   const byName = new Map(definitions.map((d) => [d.name, d]))
-  return { definitions, imports: imported, definition: (name) => byName.get(name) }
+  const imported = new Map([...root.scope].filter(([, d]) => d.unit !== root).map(([name, d]) => [name, d.definition!]))
+  return { definitions, imports: root.std, imported, id: options.id, definition: (name) => byName.get(name) ?? imported.get(name) }
 }
 
 /**

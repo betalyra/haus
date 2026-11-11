@@ -1,0 +1,6 @@
+{
+  "name": "@haus/geo",
+  "version": "1.0.0",
+  "description": "haus schema package: points and boxes on the earth",
+  "files": ["haus.package.haus", "geo.schema.haus", "profiles"]
+}

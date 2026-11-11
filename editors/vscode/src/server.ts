@@ -20,6 +20,7 @@ import {
   type Inference,
   type Value,
 } from "@betalyra/haus-fmt"
+import { schemaOptions } from "@betalyra/haus-fmt/node"
 import {
   CompletionItemKind,
   createConnection,
@@ -91,12 +92,14 @@ function schemaText(path: string): string | undefined {
 }
 
 const schemaCache = new Map<string, SchemaFile>()
-function compileSchema(text: string): SchemaFile {
-  let file = schemaCache.get(text)
+/** A schema file and its imports (packages from node_modules, files next to it), cached by path and text. */
+function compileSchema(text: string, path: string): SchemaFile {
+  const key = `${path}\0${text}`
+  let file = schemaCache.get(key)
   if (!file) {
     if (schemaCache.size > 32) schemaCache.clear()
-    file = parseSchemaFile(text)
-    schemaCache.set(text, file)
+    file = parseSchemaFile(text, schemaOptions(path))
+    schemaCache.set(key, file)
   }
   return file
 }
@@ -112,7 +115,7 @@ function schemaDiagnostics(document: TextDocument, values: Value[]): Diagnostic[
   if (text === undefined) return [{ range: at, severity: DiagnosticSeverity.Error, source: "haus", message: `schema file not found: ${link.path}` }]
   let file: SchemaFile
   try {
-    file = compileSchema(text)
+    file = compileSchema(text, link.path)
   } catch (e) {
     if (!(e instanceof HausSyntaxError)) throw e
     return [{ range: at, severity: DiagnosticSeverity.Error, source: "haus", message: `${name}: ${e.message}` }]
@@ -136,7 +139,7 @@ connection.onCompletion(({ textDocument, position }): CompletionItem[] => {
   if (!link || text === undefined) return []
   let file: SchemaFile
   try {
-    file = compileSchema(text)
+    file = compileSchema(text, link.path)
   } catch {
     return []
   }
@@ -156,7 +159,10 @@ connection.onCompletion(({ textDocument, position }): CompletionItem[] => {
 function validate(document: TextDocument): void {
   const diagnostics: Diagnostic[] = []
   try {
-    if (document.languageId === "haus-schema") schemas.set(document.uri, parseSchemaFile(document.getText()))
+    if (document.languageId === "haus-schema") {
+      const options = document.uri.startsWith("file:") ? schemaOptions(fileURLToPath(document.uri)) : {}
+      schemas.set(document.uri, parseSchemaFile(document.getText(), options))
+    }
     else {
       const { values, comments } = parseDocument(document.getText())
       parsed.set(document.uri, { values, comments, inference: infer(values) })
@@ -279,7 +285,8 @@ connection.onHover(({ textDocument, position }): Hover | null => {
     const hit = find(top, offset)
     if (hit) {
       return {
-        contents: { kind: "markdown", value: describe(hit.value, hit.key) + inferred(state.inference, hit.value) },
+        // The type first: long hovers scroll, and the type is what people look for.
+        contents: { kind: "markdown", value: inferred(state.inference, hit.value) + describe(hit.value, hit.key) },
         range: { start: doc.positionAt(hit.span[0]), end: doc.positionAt(hit.span[1]) },
       }
     }
@@ -327,7 +334,7 @@ function inferred(inference: Inference, v: Value): string {
   const shape = inference.shapeOf.get(v)
   if (!shape) return ""
   const seen = shape.occurrences === 1 ? "1 value" : `${shape.occurrences} values`
-  return `\n\n---\n\nInferred from this file (${seen} at this position):\n\n\`\`\`haus-schema\n${printShape(shape, { width: 60, context: inference.root })}\n\`\`\``
+  return `\`\`\`haus-schema\n${printShape(shape, { width: 80, context: inference.root })}\n\`\`\`\n\n_Inferred from this file (${seen} at this position)._\n\n---\n\n`
 }
 
 // ── formatting ───────────────────────────────────────────────
@@ -375,7 +382,6 @@ const PRELUDE: Record<string, string> = {
   Some: "`Maybe a` (prelude): a value",
   Ok: "`Result e a` (prelude): success",
   Err: "`Result e a` (prelude): failure",
-  Money: "`Money` (std/money): `Money(Decimal, Currency)`",
   Date: "`Date` (std/time): RFC 3339 full-date",
   Time: "`Time` (std/time): RFC 3339 partial-time",
   DateTime: "`DateTime` (std/time): date and time, no zone",

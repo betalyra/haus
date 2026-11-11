@@ -1,0 +1,8 @@
+{
+  id: 7,
+  customer: UserId("usr_ada"),
+  placed: Date("2026-11-09"),
+  total: Money(44.40, EUR),
+  deliverTo: LatLng(38.7223, -9.1393),
+  status: Shipped { tracking: "DE-4711" },
+}

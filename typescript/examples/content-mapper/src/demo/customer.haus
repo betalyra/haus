@@ -1,0 +1,9 @@
+{
+  id: 0,
+  name: "Ada Lovelace",
+  contacts: [
+    Slack { id: "U123456", name: "Ada" },
+    Email { address: "ada@lovelace.com" },
+  ],
+  status: Active,
+}

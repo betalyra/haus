@@ -1,0 +1,14 @@
+import @haus/money (Money)
+
+type Status = closed < Pending | Shipped { tracking: String } | Cancelled >
+
+type Line = { product: String, quantity: UInt8, price: Money }
+
+type Root = {
+  id: Int,
+  customer: String,
+  paid: Bool,
+  status: Status,
+  lines: Array Line,
+  note?: String,
+}

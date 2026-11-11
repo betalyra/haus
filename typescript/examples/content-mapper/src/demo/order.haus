@@ -12,15 +12,7 @@
       quantity: 1,
       price: Money(39.90, EUR),
     },
-    {
-      product: "Coffe mug",
-      quantity: 1,
-      price: Money(0.00, EUR),
-    },
   ],
-
-  status: Shipped {
-    tracking: "DE-4711",
-  },
+  status: Pending,
   note: "Please deliver to the back door.",
 }

@@ -1,0 +1,14 @@
+// Profile @haus/money/iso, version 1: Currency is three letters A–Z, the
+// shape of an ISO 4217 code. Whether the code is assigned is not checked
+// (the list changes; that is the application's business).
+//
+// A codec that implements this profile accepts every Accept value, rejects
+// every Reject value, and encodes what it decoded back to the same text.
+// The values are haus text for the type Money.
+Accept { value: "Money(19.99, EUR)" },
+Accept { value: "Money(19.90, USD)", note: "the scale is kept: encodes back to 19.90" },
+Accept { value: "Money(0.00005, BTC)", note: "the shape of a code, not membership in ISO 4217" },
+Accept { value: "Money(-3, JPY)" },
+Reject { value: "Money(19.99, Eur)", note: "not all capitals" },
+Reject { value: "Money(19.99, EURO)", note: "four letters" },
+Reject { value: "Money(19.99, E1R)", note: "a digit" },

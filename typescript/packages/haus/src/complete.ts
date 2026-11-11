@@ -143,10 +143,7 @@ function recordIn(type: Type, tag: string | undefined): RecordType | { kind: "ma
 function argIn(type: Type, tag: string, index: number): Type | undefined {
   const t = resolve(type)
   if (t.kind === "maybe") return tag === "Some" && index === 0 ? t.item : undefined
-  if (t.kind === "std" && t.name === tag) {
-    if (tag === "Money") return index === 0 ? { kind: "builtin", name: "Decimal" } : index === 1 ? { kind: "std", name: "Currency" } : undefined
-    return index === 0 ? { kind: "builtin", name: "String" } : undefined
-  }
+  if (t.kind === "std" && t.name === tag) return index === 0 ? { kind: "builtin", name: "String" } : undefined
   if (t.kind !== "variant") return undefined
   const c = t.cases.find((x) => x.tag === tag)
   return c?.payload.kind === "positional" ? c.payload.items[index] : undefined
@@ -166,7 +163,6 @@ const STD_SNIPPETS: Record<string, string> = {
   Duration: 'Duration("${1:PT30M}")',
   YearMonth: 'YearMonth("${1:2026-01}")',
   TimeZone: 'TimeZone("${1:Europe/Lisbon}")',
-  Money: "Money(${1:0.00}, ${2:EUR})",
 }
 
 /** A snippet for a record with its required fields. */
@@ -194,8 +190,7 @@ function values(type: Type): Completion[] {
       }
     case "std": {
       const snippet = STD_SNIPPETS[t.name]
-      if (snippet) return [value(`${t.name}(…)`, snippet, "tag")]
-      return t.name === "Currency" ? ["EUR", "USD", "GBP", "CHF", "JPY"].map((c) => value(c, c, "tag")) : []
+      return snippet ? [value(`${t.name}(…)`, snippet, "tag")] : []
     }
     case "maybe":
       return [value("None", "None", "tag"), value("Some(…)", "Some($1)", "tag")]

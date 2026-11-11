@@ -11,6 +11,10 @@ importers:
 
   .: {}
 
+  ../extensions/geo: {}
+
+  ../extensions/money: {}
+
   examples/basic:
     dependencies:
       '@betalyra/haus-fmt':
@@ -32,6 +36,12 @@ importers:
       '@effect/platform-node':
         specifier: 4.0.6
         version: 4.0.6(effect@4.0.6)(redis@6.3.1)
+      '@haus/geo':
+        specifier: workspace:*
+        version: link:../../../extensions/geo
+      '@haus/money':
+        specifier: workspace:*
+        version: link:../../../extensions/money
       effect:
         specifier: 4.0.6
         version: 4.0.6

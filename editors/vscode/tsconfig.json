@@ -8,7 +8,10 @@
     "noEmit": true,
     "skipLibCheck": true,
     "types": ["node"],
-    "paths": { "@betalyra/haus-fmt": ["../../typescript/packages/haus/src/index.ts"] }
+    "paths": {
+      "@betalyra/haus-fmt": ["../../typescript/packages/haus/src/index.ts"],
+      "@betalyra/haus-fmt/node": ["../../typescript/packages/haus/src/node.ts"]
+    }
   },
   "include": ["src"]
 }

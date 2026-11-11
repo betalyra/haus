@@ -3,14 +3,15 @@
 // in data a field's right-hand side is a value, here it's a type.
 //
 // Prelude types (Bool, Maybe, Result, String, Int, Decimal, ...) are always in
-// scope; time and money come from standard modules.
+// scope; time comes from the standard module std/time, money from the schema
+// package @haus/money.
 //
 // Records and variants are OPEN by default: a reader ignores fields it doesn't
 // know and keeps unknown tags as Unknown values, so writers can add both
 // without breaking older readers. `closed` forbids anything not listed.
 
 import std/time (Date, ZonedDateTime)
-import std/money (Money)
+import @haus/money (Money)
 
 // ── Closed variant: exactly these tags, anything else is rejected ──
 type Level = closed < Debug | Info | Warn | Error >
@@ -36,7 +37,7 @@ type UserEvent r = closed
 type PaymentEvent r = closed
   < PaymentReceived { id: Int, amount: Money } | ...r >
 
-// Money comes from std/money (imported above).
+// Money comes from the package @haus/money (imported above).
 // Open (the default): a newer writer's Sepia arrives as an Unknown value.
 type Theme = < Light | Dark >
 

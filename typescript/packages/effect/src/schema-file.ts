@@ -1,7 +1,7 @@
 /**
  * Effect schemas from haus schema files (`.schema.haus`).
  *
- *   const { schemas } = Haus.compileSchemaFile(text)
+ *   const { schemas } = Haus.compileSchemaFile(text, schemaOptions(path))
  *   const order = yield* Haus.decode(schemas.Order)(data)
  *
  * and the matching TypeScript declarations, for typed imports of schema files
@@ -10,17 +10,22 @@
  *   String → string            Int, Int64, UInt64 → bigint     other Int*, Float* → number
  *   Decimal → BigDecimal       Bool → boolean                   Bytes → Uint8Array
  *   Maybe a → Option<A>        Array a → readonly A[]           Map v → { [key: string]: V }
- *   { a: T, b?: T }            → { readonly a: T; readonly b?: T }   ({| … |} rejects other fields)
+ *   { a: T, b?: T }            → { readonly a: T; readonly b?: T }   (closed { … } rejects other fields)
  *   < Debug | Info >           → "Debug" | "Info"                     (only tags without payload)
  *   < Circle { r: Float64 } | Empty > → { _tag: "Circle"; r: number } | { _tag: "Empty" }
  *   < Point Float64 Float64 > → { _tag: "Point"; values: readonly [number, number] }
- *   < … | _ >                  → … | Unknown                          (other tags kept as raw values)
+ *   open variants              → … | Unknown                          (other tags kept as raw values)
+ *   < >                        → string | Unknown                     (any tag: bare tags as their name)
  *   std/time: Instant → DateTime.Utc, ZonedDateTime → DateTime.Zoned, the others → string
- *   std/money: Money → { _tag: "Money"; amount: BigDecimal; currency: string }, Currency → string
+ *
+ * Codecs (codec.ts) replace named types: `fromSchemaFile(file, { codecs })`
+ * builds the schemas with their types, and the declarations make every type
+ * a function of the codecs' types (`Root<C>`, through `Lookup`).
  */
-import { parseSchemaFile, type Builtin, type Case, type Definition, type Field, type Instance, type SchemaFile, type StdType, type Type } from "@betalyra/haus-fmt"
+import { parseSchemaFile, type Builtin, type Case, type Definition, type Field, type Instance, type ParseSchemaOptions, type SchemaFile, type StdType, type Type } from "@betalyra/haus-fmt"
 import { Schema } from "effect"
-import { CLOSED, UNKNOWN_TAG, VALUES } from "./convert.js"
+import { entries, idOf, setId, type AnyCodec, type CodecEntry } from "./codec.js"
+import { BARE_TAG, CLOSED, VALUES } from "./convert.js"
 // Circular import: only used when a schema file is compiled, after both modules have loaded.
 import * as Haus from "./index.js"
 
@@ -32,8 +37,18 @@ export interface CompiledSchemaFile {
   readonly streams: ReadonlySet<string>
 }
 
-/** Parse a schema file and build Effect schemas for its types. Throws HausSchemaFileError. */
-export const compileSchemaFile = (text: string): CompiledSchemaFile => fromSchemaFile(parseSchemaFile(text))
+export interface FromSchemaFileOptions {
+  /** Codecs whose types replace the named types they target. */
+  readonly codecs?: ReadonlyArray<AnyCodec>
+}
+
+/**
+ * Parse a schema file and build Effect schemas for its types. Pass the
+ * options of `schemaOptions(path)` (from `@betalyra/haus-fmt/node`) to import
+ * packages and files. Throws HausSchemaFileError.
+ */
+export const compileSchemaFile = (text: string, options: ParseSchemaOptions = {}): CompiledSchemaFile =>
+  fromSchemaFile(parseSchemaFile(text, options))
 
 const isEnum = (cases: readonly Case[]) => cases.length > 0 && cases.every((c) => c.payload.kind === "none")
 
@@ -69,23 +84,57 @@ const builtin = (name: Builtin): Schema.Top => {
   }
 }
 
-const std = (name: StdType): Schema.Top => {
-  switch (name) {
-    case "Instant":
-      return Schema.DateTimeUtc
-    case "ZonedDateTime":
-      return Schema.DateTimeZoned
-    case "Money":
-      return Haus.Money
-    default:
-      return Haus[name]
+/** `< >`, any tag: a bare tag decodes to its name, other tags to Unknown. */
+const AnyTag = Schema.String.annotate({ [BARE_TAG]: true } as never)
+
+/** Where a schema came from: so that `withCodecs` can build it again with codecs. */
+const sources = new WeakMap<object, { readonly file: SchemaFile; readonly name: string }>()
+const rebuilt = new WeakMap<SchemaFile, Map<string, CompiledSchemaFile>>()
+const entryIds = new WeakMap<CodecEntry, number>()
+let nextEntry = 0
+
+/**
+ * `schema` with codecs: built again from its schema file, with the codecs'
+ * types for the named types they target (cached). A named type's own schema
+ * (`Haus.Date`, a type of a schema file) takes its codec directly.
+ */
+export const withCodecs = (schema: Schema.Top, codecs: ReadonlyArray<AnyCodec>): Schema.Top => {
+  const byId = entries(codecs)
+  const source = sources.get(schema)
+  if (!source) {
+    const own = byId.get(idOf(schema) ?? "")
+    if (own) return own.apply(schema)
+    throw new Error("Haus: codecs apply to schemas of .schema.haus files (and Haus.Date & co.); this schema has no schema file")
   }
+  const key = [...byId.values()].map((e) => {
+    let n = entryIds.get(e)
+    if (n === undefined) entryIds.set(e, (n = nextEntry++))
+    return n
+  }).sort().join(",")
+  let cache = rebuilt.get(source.file)
+  if (!cache) rebuilt.set(source.file, (cache = new Map()))
+  let compiled = cache.get(key)
+  if (!compiled) {
+    if (cache.size > 64) cache.clear()
+    compiled = fromSchemaFile(source.file, { codecs })
+    cache.set(key, compiled)
+  }
+  return compiled.schemas[source.name]!
 }
 
 /** Build Effect schemas for an already checked schema file. */
-export const fromSchemaFile = (file: SchemaFile): CompiledSchemaFile => {
+export const fromSchemaFile = (file: SchemaFile, options: FromSchemaFileOptions = {}): CompiledSchemaFile => {
+  const byId = options.codecs ? entries(options.codecs) : new Map<string, CodecEntry>()
   const built = new Map<Instance, Schema.Top>()
   const building = new Set<Instance>()
+
+  /** A named type with its codec, if there is one. */
+  const named = (id: string, base: Schema.Top): Schema.Top => {
+    const c = byId.get(id)
+    return c ? c.apply(base) : base
+  }
+
+  const std = (name: StdType): Schema.Top => named(`std/time#${name}`, Haus[name])
 
   const ref = (inst: Instance): Schema.Top => {
     const done = built.get(inst)
@@ -93,7 +142,9 @@ export const fromSchemaFile = (file: SchemaFile): CompiledSchemaFile => {
     // A back edge of a recursive type.
     if (building.has(inst)) return Schema.suspend(() => built.get(inst)!)
     building.add(inst)
-    const schema = build(inst.body).annotate({ identifier: inst.key })
+    let schema = build(inst.body).annotate({ identifier: inst.key })
+    // Codecs target named types without arguments, by id.
+    if (inst.args.length === 0) schema = named(inst.definition.id, setId(schema, inst.definition.id))
     building.delete(inst)
     built.set(inst, schema)
     return schema
@@ -136,7 +187,7 @@ export const fromSchemaFile = (file: SchemaFile): CompiledSchemaFile => {
               return Schema.TaggedStruct(c.tag, { values: Schema.Tuple(c.payload.items.map(build)) }).annotate({ [VALUES]: true } as never)
           }
         })
-        if (t.open) return Haus.OpenUnion(members)
+        if (t.open) return Haus.OpenUnion(members.length === 0 ? [AnyTag] : members)
         return members.length === 1 ? members[0]! : Schema.Union(members)
       }
       case "ref":
@@ -150,7 +201,9 @@ export const fromSchemaFile = (file: SchemaFile): CompiledSchemaFile => {
   const streams = new Set<string>()
   for (const d of file.definitions) {
     if (d.params.length > 0) continue // generic types have no schema of their own
-    Object.defineProperty(schemas, d.name, { value: ref(d.template) as Schema.Codec<unknown>, enumerable: true })
+    const schema = ref(d.template)
+    if (!options.codecs) sources.set(schema, { file, name: d.name })
+    Object.defineProperty(schemas, d.name, { value: schema as Schema.Codec<unknown>, enumerable: true })
     if (d.template.stream) streams.add(d.name)
   }
   return { file, schemas, streams }
@@ -161,6 +214,8 @@ export const fromSchemaFile = (file: SchemaFile): CompiledSchemaFile => {
 export interface DeclarationOptions {
   /** Module specifier to import Effect's types from (default "effect"). */
   readonly effect?: string
+  /** Module specifier to import this package's types from (default "@betalyra/haus-fmt-effect"). */
+  readonly haus?: string
 }
 
 const KEY = /^[A-Za-z_$][A-Za-z0-9_$]*$/
@@ -171,19 +226,79 @@ const comment = (body: string) => `/**\n * ${body.replaceAll("*/", "*\\/").split
 export const definitionDoc = (d: Definition, extra = ""): string =>
   comment(`${extra}${"```haus-schema\n"}${d.source}\n${"```"}`)
 
+/** The codec map parameter of every declared type. `$` can't appear in haus names, so it never clashes. */
+const C = "C$"
+
+/** Named types inside `t`; `onRef` says whether to look inside a reference's body too. */
+const visitTypes = (t: Type, onRef: (inst: Instance) => boolean, onStd: (name: StdType) => void): void => {
+  switch (t.kind) {
+    case "std":
+      return onStd(t.name)
+    case "array":
+    case "maybe":
+      return visitTypes(t.item, onRef, onStd)
+    case "map":
+      return visitTypes(t.value, onRef, onStd)
+    case "record":
+      return t.fields.forEach((f) => visitTypes(f.type, onRef, onStd))
+    case "variant":
+      return t.cases.forEach((c) =>
+        c.payload.kind === "record" ? visitTypes(c.payload.record, onRef, onStd)
+        : c.payload.kind === "positional" ? c.payload.items.forEach((x) => visitTypes(x, onRef, onStd))
+        : undefined)
+    case "ref":
+      t.instance.args.forEach((a) => visitTypes(a, onRef, onStd))
+      if (onRef(t.instance)) visitTypes(t.instance.body, onRef, onStd)
+      return
+    default:
+      return
+  }
+}
+
 /**
- * A TypeScript module declaring the file's types (`export type Order = …`)
- * and their Effect schemas (`export declare const Order: Schema.Codec<Order>`).
- * Generic types are declared as generic type aliases; types with rows are
- * expanded where they are used.
+ * A TypeScript module declaring the file's types (`export type Order<C$ = {}> = …`)
+ * and their Effect schemas (`export declare const Order: Haus.Named<…>`).
+ *
+ * Every type takes the map of codec types `C$` (id → type, see
+ * `Haus.Lookup`); without codecs it is `{}`: the types of the schema.
+ * Imported types are declared here too (not exported), so the module needs
+ * no other schema module. Generic types are declared as generic type
+ * aliases; types with rows are expanded where they are used.
  */
 export const schemaDeclarations = (file: SchemaFile, options: DeclarationOptions = {}): string => {
   const used = new Set<string>()
-  const names = new Set(file.definitions.map((d) => d.name))
+
+  // Every definition the file's types refer to, its own first.
+  const defs: Definition[] = []
+  const seen = new Set<Definition>()
+  const visitDef = (d: Definition) => {
+    if (seen.has(d)) return
+    seen.add(d)
+    defs.push(d)
+    visitTypes(d.template.body, (inst) => (visitDef(inst.definition), false), () => undefined)
+  }
+  file.definitions.forEach(visitDef)
+
+  // Names: the file's own and imported types keep theirs; other files' types get a suffix if needed.
+  const names = new Map<Definition, string>()
+  const taken = new Set<string>()
+  for (const d of file.definitions) names.set(d, d.name), taken.add(d.name)
+  for (const [name, d] of file.imported) names.set(d, name), taken.add(name)
+  for (const d of defs) {
+    if (names.has(d)) continue
+    let n = d.name
+    for (let i = 1; taken.has(n); i++) n = `${d.name}$${i}`
+    names.set(d, n)
+    taken.add(n)
+  }
+
   const paramName = (p: string) => {
     const n = p[0]!.toUpperCase() + p.slice(1)
-    return names.has(n) ? `${n}_` : n
+    return taken.has(n) ? `${n}_` : n
   }
+
+  const STD_TYPES: Partial<Record<StdType, string>> = { Instant: "DateTime$.Utc", ZonedDateTime: "DateTime$.Zoned" }
+  const unknownType = "Haus$.Unknown"
 
   const print = (t: Type): string => {
     switch (t.kind) {
@@ -204,17 +319,11 @@ export const schemaDeclarations = (file: SchemaFile, options: DeclarationOptions
           default:
             return "number"
         }
-      case "std":
-        switch (t.name) {
-          case "Instant":
-            return used.add("DateTime"), "DateTime$.Utc"
-          case "ZonedDateTime":
-            return used.add("DateTime"), "DateTime$.Zoned"
-          case "Money":
-            return used.add("BigDecimal"), `{ readonly _tag: "Money"; readonly amount: BigDecimal$.BigDecimal; readonly currency: string }`
-          default:
-            return "string"
-        }
+      case "std": {
+        const ts = STD_TYPES[t.name] ?? "string"
+        if (ts.startsWith("DateTime$")) used.add("DateTime")
+        return `Haus$.Lookup<${C}, "std/time#${t.name}", ${ts}>`
+      }
       case "array":
         return `ReadonlyArray<${print(t.item)}>`
       case "map":
@@ -224,7 +333,7 @@ export const schemaDeclarations = (file: SchemaFile, options: DeclarationOptions
       case "record":
         return record(t.fields)
       case "variant": {
-        const unknown = `{ readonly _tag: ${JSON.stringify(UNKNOWN_TAG)}; readonly tag: string; readonly value: unknown }`
+        if (t.cases.length === 0 && t.open) return `string | ${unknownType}`
         const cases = isEnum(t.cases)
           ? t.cases.map((c) => JSON.stringify(c.tag))
           : t.cases.map((c) => {
@@ -238,11 +347,12 @@ export const schemaDeclarations = (file: SchemaFile, options: DeclarationOptions
                 return `{ ${tag}; readonly values: readonly [${c.payload.items.map(print).join(", ")}] }`
             }
           })
-        return [...cases, ...(t.open ? [unknown] : [])].join(" | ") || "never"
+        return [...cases, ...(t.open ? [unknownType] : [])].join(" | ") || "never"
       }
       case "ref": {
         const d = t.instance.definition
-        return d.params.length === 0 ? d.name : `${d.name}<${t.instance.args.map(print).join(", ")}>`
+        const name = names.get(d) ?? d.name
+        return `${name}<${[...t.instance.args.map(print), C].join(", ")}>`
       }
       case "param":
         return paramName(t.name)
@@ -251,21 +361,44 @@ export const schemaDeclarations = (file: SchemaFile, options: DeclarationOptions
   const fieldList = (fs: readonly Field[]) => fs.map((f) => `readonly ${prop(f.key)}${f.optional ? "?" : ""}: ${print(f.type)}`)
   const record = (fs: readonly Field[]) => (fs.length === 0 ? "{}" : `{ ${fieldList(fs).join("; ")} }`)
 
+  /** Ids of the named types a type contains (codecs may replace them), its own included. */
+  const idsOf = (d: Definition): string[] => {
+    const ids = new Set<string>([d.id])
+    const visited = new Set<Instance>()
+    visitTypes(d.template.body, (inst) => {
+      if (visited.has(inst)) return false
+      visited.add(inst)
+      if (inst.args.length === 0) ids.add(inst.definition.id)
+      return true
+    }, (name) => ids.add(`std/time#${name}`))
+    return [...ids]
+  }
+
+  const own = new Set(file.definitions)
   const out: string[] = []
-  for (const d of file.definitions) {
+  for (const d of defs) {
+    const name = names.get(d)!
     if (d.rowParams.size > 0) {
-      out.push(`// ${d.name} has row parameters; it is expanded where it is used.\n`)
+      if (own.has(d)) out.push(`// ${d.name} has row parameters; it is expanded where it is used.\n`)
       continue
     }
+    const exported = own.has(d) ? "export " : ""
     const stream = d.template.stream ? "A stream: a file of values of this type.\n\n" : ""
-    const params = d.params.length ? `<${d.params.map(paramName).join(", ")}>` : ""
-    out.push(`${definitionDoc(d, stream)}export type ${d.name}${params} = ${print(d.template.body)};\n`)
-    if (d.params.length === 0) {
+    const from = own.has(d) ? "" : `From ${d.module ?? "another file"} (${d.id}).\n\n`
+    const params = [...d.params.map(paramName), `${C} = {}`].join(", ")
+    const body = print(d.template.body)
+    // Codecs replace named types without arguments.
+    const type = d.params.length === 0 ? `Haus$.Lookup<${C}, ${JSON.stringify(d.id)}, ${body}>` : body
+    out.push(`${definitionDoc(d, from + stream)}${exported}type ${name}<${params}> = ${type};\n`)
+    if (own.has(d) && d.params.length === 0) {
       used.add("Schema")
-      out.push(`${definitionDoc(d, `The Effect schema of ${d.name}.\n\n`)}export declare const ${d.name}: Schema$.Codec<${d.name}>;\n`)
+      const ids = idsOf(d).map((id) => JSON.stringify(id)).join(" | ")
+      out.push(`interface ${name}$F extends Haus$.TypeLambda { readonly type: ${name}<this["C"]> }\n`)
+      out.push(`${definitionDoc(d, `The Effect schema of ${d.name}.\n\n`)}export declare const ${name}: Haus$.Named<Schema$.Codec<${name}>, ${JSON.stringify(d.id)}, ${name}$F, ${ids}>;\n`)
     }
   }
   const imports = [...used].sort().map((n) => `${n} as ${n}$`)
-  const head = imports.length ? `import type { ${imports.join(", ")} } from ${JSON.stringify(options.effect ?? "effect")};\n` : ""
-  return head + out.join("") + (out.length === 0 ? "export {};\n" : "")
+  const head = (imports.length ? `import type { ${imports.join(", ")} } from ${JSON.stringify(options.effect ?? "effect")};\n` : "") +
+    `import type * as Haus$ from ${JSON.stringify(options.haus ?? "@betalyra/haus-fmt-effect")};\n`
+  return head + out.join("")
 }

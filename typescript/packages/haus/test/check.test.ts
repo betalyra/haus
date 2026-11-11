@@ -1,8 +1,13 @@
 import { readFileSync } from "node:fs"
 import { describe, expect, it } from "vitest"
+import { fileURLToPath } from "node:url"
 import { checkData, parseSchemaFile, parseWithLocations, schemaReference } from "../src/index.js"
+import { schemaOptions } from "../src/node.js"
 
-const read = (path: string) => readFileSync(new URL(`../../../../${path}`, import.meta.url), "utf8")
+const repo = (path: string) => fileURLToPath(new URL(`../../../../${path}`, import.meta.url))
+const read = (path: string) => readFileSync(repo(path), "utf8")
+/** Options for a schema file of the repo: official extensions come from extensions/. */
+const options = (path: string) => schemaOptions(repo(path), { packages: { "@haus/money": repo("extensions/money") } })
 
 /** Issues as "severity text-at-location: message". */
 const issues = (schema: string, data: string, type = "Root") =>
@@ -11,24 +16,25 @@ const issues = (schema: string, data: string, type = "Root") =>
 describe("checkData", () => {
   it("accepts the examples", () => {
     for (const name of ["thread", "syntax-tour"]) {
-      const found = checkData(parseSchemaFile(read(`examples/${name}.schema.haus`)), "Root", parseWithLocations(read(`examples/${name}.haus`)))
+      const path = `examples/${name}.schema.haus`
+      const found = checkData(parseSchemaFile(read(path), options(path)), "Root", parseWithLocations(read(`examples/${name}.haus`)))
       expect(found.filter((i) => i.severity === "error")).toEqual([])
     }
   })
 
   it("reports errors at the wrong value", () => {
     const schema = `
-      import std/money (Money)
+      import std/time (Date)
       type Status = closed < Pending | Shipped { tracking: String } >
-      type Root = { id: Int, qty: UInt8, price: Money, status: Status, tags: Array String }`
-    expect(issues(schema, `{ id: "7", qty: 300, price: Money(1, Eur), status: Shiped, tags: ["a", 1] }`)).toEqual([
+      type Root = { id: Int, qty: UInt8, day: Date, status: Status, tags: Array String }`
+    expect(issues(schema, `{ id: "7", qty: 300, day: Date("2026-02-30"), status: Shiped, tags: ["a", 1] }`)).toEqual([
       `error "7": expected Int, found the string "7"`,
       `error 300: 300 is out of range for UInt8 (0 to 255)`,
-      `error Eur: a currency is three capital letters (EUR, USD), found Eur`,
+      `error "2026-02-30": "2026-02-30" is not a valid Date: 2026-02 has no day 30`,
       `error Shiped: Shiped is not allowed here: expected one of Pending, Shipped. Did you mean Shipped?`,
       `error 1: expected String, found the number 1`,
     ])
-    expect(issues(schema, `{ id: 1 }`)[0]).toBe("error {: missing fields qty, price, status, tags")
+    expect(issues(schema, `{ id: 1 }`)[0]).toBe("error {: missing fields qty, day, status, tags")
   })
 
   it("open types: unknown fields and tags are hints; closed ones are errors", () => {

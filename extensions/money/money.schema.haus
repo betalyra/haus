@@ -1,0 +1,14 @@
+// @haus/money: exact amounts with a currency.
+//
+//   import @haus/money (Money, Currency)
+//
+// An official extension: an ordinary schema, maintained with haus. It fixes
+// the shape only. Which currencies an application accepts (ISO 4217 codes, a
+// shop's own list, BTC) is its own choice, made with a codec; the iso
+// profile (profiles/iso.vectors.haus) is the recommended one.
+
+// An exact amount: Money(19.99, EUR). The scale is kept (19.90 is not 19.9).
+type Money = closed < Money Decimal Currency >
+
+// A currency, written as a bare tag: EUR, USD, BTC.
+type Currency = < >

@@ -92,7 +92,7 @@ const tourSummary = Effect.gen(function* () {
 /** person.haus has no schema: its type is inferred from the data (decimals as exact strings). */
 const peopleSummary = Effect.forEach(people, (person) =>
   Console.log(
-    `${person.name}: ${person.profession._tag}, earns ${person.salary.amount} ${person.salary.currency}`,
+    `${person.name}: ${person.profession._tag}, earns ${person.salary.values[0]} ${person.salary.values[1]}`,
   ),
 );
 

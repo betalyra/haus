@@ -20,7 +20,7 @@ registerHooks({
     const path = fileURLToPath(url)
     const text = readFileSync(path, "utf8")
     const link = schemaFor(path, text)
-    const source = path.endsWith(".schema.haus") ? schemaModuleSource(text)
+    const source = path.endsWith(".schema.haus") ? schemaModuleSource(text, path)
       : link ? dataModuleSource(text, path, link)
       : moduleSource(text)
     return { format: "module", source, shortCircuit: true }

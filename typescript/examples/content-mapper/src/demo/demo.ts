@@ -1,13 +1,13 @@
-// Live demo. The finished version is in demo-finished.ts.
+// Live demo: haus data, typed by its schema.
 import * as Haus from "@betalyra/haus-fmt-effect";
-import { BigDecimal, Console, Effect } from "effect";
-import { Root } from "./order.schema.haus";
-import order from "./order.haus";
+import { BigDecimal, Console, Effect, Match } from "effect";
 
-const text = `{ id: 1, customer: "Ada", lines: [], status: Pending }`;
+
+
+const text = `{ id: 7, customer: "Grace Hopper", lines: [], status: Pending }`;
 
 const program = Effect.gen(function* () {
-  yield* Effect.log(order);
+
 });
 
 Effect.runSync(program);

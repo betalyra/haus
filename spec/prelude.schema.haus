@@ -1,6 +1,6 @@
 // prelude.schema.haus: the types that are always in scope. Deliberately
-// small: only what nearly every schema needs. Everything else lives in
-// standard modules (std/time, std/money) or third-party modules, imported
+// small: only what nearly every schema needs. Everything else lives in the
+// standard module std/time or in schema packages (@haus/money, …), imported
 // explicitly by the schema (spec §13).
 //
 // None of these are keywords. `True` is an ordinary tag, and the data grammar

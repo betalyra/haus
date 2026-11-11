@@ -1,0 +1,1680 @@
+{
+  "$schema": "https://demotime.show/demo-time.schema.json",
+  "title": "haus in 2 minutes",
+  "description": "From an empty file to typed data in Effect",
+  "version": 3,
+  "scenes": [
+    {
+      "title": "0. Reset",
+      "moves": [
+        {
+          "action": "create",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "content": "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+        },
+        {
+          "action": "open",
+          "path": "typescript/examples/content-mapper/src/video/order.haus"
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "workbench.action.files.revert"
+        },
+        {
+          "action": "create",
+          "path": "typescript/examples/content-mapper/src/video/order.schema.haus",
+          "content": "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+        },
+        {
+          "action": "open",
+          "path": "typescript/examples/content-mapper/src/video/order.schema.haus"
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "workbench.action.files.revert"
+        },
+        {
+          "action": "create",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "content": "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+        },
+        {
+          "action": "open",
+          "path": "typescript/examples/content-mapper/src/video/main.ts"
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "workbench.action.files.revert"
+        }
+      ],
+      "id": "haus-reset"
+    },
+    {
+      "title": "▶ Play all (resets first)",
+      "moves": [
+        {
+          "action": "create",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "content": "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+        },
+        {
+          "action": "open",
+          "path": "typescript/examples/content-mapper/src/video/order.haus"
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "workbench.action.files.revert"
+        },
+        {
+          "action": "create",
+          "path": "typescript/examples/content-mapper/src/video/order.schema.haus",
+          "content": "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+        },
+        {
+          "action": "open",
+          "path": "typescript/examples/content-mapper/src/video/order.schema.haus"
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "workbench.action.files.revert"
+        },
+        {
+          "action": "create",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "content": "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+        },
+        {
+          "action": "open",
+          "path": "typescript/examples/content-mapper/src/video/main.ts"
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "workbench.action.files.revert"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 500
+        },
+        {
+          "action": "open",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "focusTop": false
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1000
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "1",
+          "content": "{\n}",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "2",
+          "content": "  id: 1042,\n  customer: \"Ada Lovelace\",\n  paid: True,\n}",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "save"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1200
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "5",
+          "content": "  status: Shipped { tracking: \"DE-4711\" },\n}",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "save"
+        },
+        {
+          "action": "highlight",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "5:5"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1300
+        },
+        {
+          "action": "unselect",
+          "path": "typescript/examples/content-mapper/src/video/order.haus"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 700
+        },
+        {
+          "action": "positionCursor",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "1,1"
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.showHover"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 2600
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.hideHover"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1200
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "6",
+          "content": "  lines: [\n  ],\n}",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "7",
+          "content": "    { product: \"Notebook\", quantity: 2, price: Money(4.50, EUR) },\n    { product: \"Fountain pen\", quantity: 1, price: Money(39.90, EUR) },\n  ],",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "save"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 700
+        },
+        {
+          "action": "positionCursor",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "1,1"
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.showHover"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 3000
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.hideHover"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1200
+        },
+        {
+          "action": "open",
+          "path": "typescript/examples/content-mapper/src/video/order.schema.haus",
+          "focusTop": false
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1000
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/order.schema.haus",
+          "position": "1",
+          "content": "import @haus/money (Money)\n\ntype Status = < Pending | Shipped { tracking: String } | Cancelled >\n\ntype Line = { product: String, quantity: UInt8, price: Money }\n\ntype Root = {\n}",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/order.schema.haus",
+          "position": "8",
+          "content": "  id: Int,\n  customer: String,\n  paid: Bool,\n  status: Status,\n  lines: Array Line,\n  note?: String,\n}",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "save"
+        },
+        {
+          "action": "highlight",
+          "path": "typescript/examples/content-mapper/src/video/order.schema.haus",
+          "position": "3:3"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1300
+        },
+        {
+          "action": "unselect",
+          "path": "typescript/examples/content-mapper/src/video/order.schema.haus"
+        },
+        {
+          "action": "highlight",
+          "path": "typescript/examples/content-mapper/src/video/order.schema.haus",
+          "position": "7:14"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1800
+        },
+        {
+          "action": "unselect",
+          "path": "typescript/examples/content-mapper/src/video/order.schema.haus"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1200
+        },
+        {
+          "action": "open",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "focusTop": false
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1000
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "7",
+          "content": "    { product: \"Notebook\", quantity: 300, price: Money(4.50, EUR) },",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 700
+        },
+        {
+          "action": "positionCursor",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "7,39"
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.showHover"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 2200
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.hideHover"
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "7",
+          "content": "    { product: \"Notebook\", quantity: 2, price: Money(4.50, EUR) },"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1200
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "5",
+          "content": "  status: Shiped { tracking: \"DE-4711\" },",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 700
+        },
+        {
+          "action": "positionCursor",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "5,12"
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.showHover"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 2200
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.hideHover"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1200
+        },
+        {
+          "action": "open",
+          "path": "typescript/examples/content-mapper/src/video/order.schema.haus",
+          "focusTop": false
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1000
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/order.schema.haus",
+          "position": "3",
+          "content": "type Status = closed < Pending | Shipped { tracking: String } | Cancelled >",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "save"
+        },
+        {
+          "action": "highlight",
+          "path": "typescript/examples/content-mapper/src/video/order.schema.haus",
+          "position": "3:3"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1300
+        },
+        {
+          "action": "unselect",
+          "path": "typescript/examples/content-mapper/src/video/order.schema.haus"
+        },
+        {
+          "action": "open",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "focusTop": false
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1000
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 700
+        },
+        {
+          "action": "positionCursor",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "5,12"
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.showHover"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 2200
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.hideHover"
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "5",
+          "content": "  status: Shipped { tracking: \"DE-4711\" },"
+        },
+        {
+          "action": "save"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1200
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "10",
+          "content": "  \n}",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "positionCursor",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "10,3"
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.triggerSuggest"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1500
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "acceptSelectedSuggestion"
+        },
+        {
+          "action": "write",
+          "content": "\"Leave it at the back door\","
+        },
+        {
+          "action": "save"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1000
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1200
+        },
+        {
+          "action": "executeTerminalCommand",
+          "command": "cd typescript/examples/content-mapper && clear",
+          "waitTimeout": 3000
+        },
+        {
+          "action": "open",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "focusTop": false
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1000
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "1",
+          "content": "import * as Haus from \"@betalyra/haus-fmt-effect\";\nimport { Console, Effect, Match } from \"effect\";\nimport order from \"./order.haus\";\nimport { Root } from \"./order.schema.haus\";",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 700
+        },
+        {
+          "action": "positionCursor",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "3,9"
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.showHover"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 3000
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.hideHover"
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "6",
+          "content": "const program = Effect.gen(function* () {\n});\n\nEffect.runPromise(program);",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "7",
+          "content": "  yield* Console.log(order);\n});",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "save"
+        },
+        {
+          "action": "executeTerminalCommand",
+          "command": "clear && pnpm video",
+          "waitTimeout": 8000
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1500
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "workbench.action.focusActiveEditorGroup"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1200
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "7",
+          "content": "  yield* Console.log(order.",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "positionCursor",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "7,28"
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.triggerSuggest"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1500
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "hideSuggestWidget"
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "7",
+          "content": "  yield* Console.log(order.custmer);",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 700
+        },
+        {
+          "action": "positionCursor",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "7,29"
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.showHover"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 2200
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.hideHover"
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "7",
+          "content": "  yield* Console.log(order.customer, order.lines[0].product);",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "save"
+        },
+        {
+          "action": "executeTerminalCommand",
+          "command": "clear && pnpm video",
+          "waitTimeout": 8000
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1500
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "workbench.action.focusActiveEditorGroup"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1200
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "8",
+          "content": "  const status = Match.value(order.status).pipe(\n    Match.tagsExhaustive({\n    }),\n  );\n});",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "10",
+          "content": "      Pending: () => \"waiting\",\n      Shipped: (s) => `on its way: ${s.tracking}`,\n    }),",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 700
+        },
+        {
+          "action": "positionCursor",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "9,27"
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.showHover"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 2600
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.hideHover"
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "12",
+          "content": "      Cancelled: () => \"cancelled\",\n    }),",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "highlight",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "9:13"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1300
+        },
+        {
+          "action": "unselect",
+          "path": "typescript/examples/content-mapper/src/video/main.ts"
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "15",
+          "content": "  yield* Console.log(status);\n});",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "save"
+        },
+        {
+          "action": "executeTerminalCommand",
+          "command": "clear && pnpm video",
+          "waitTimeout": 8000
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1500
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "workbench.action.focusActiveEditorGroup"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1200
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "16",
+          "content": "\n  const incoming = Haus.decode(Root)(`{ id: 7, customer: \"Grace Hopper\", paid: False, status: Pending, lines: [] }`);\n});",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "highlight",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "17:17"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1300
+        },
+        {
+          "action": "unselect",
+          "path": "typescript/examples/content-mapper/src/video/main.ts"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 700
+        },
+        {
+          "action": "positionCursor",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "17,10"
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.showHover"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 2800
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.hideHover"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1200
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "18",
+          "content": "  const fresh = yield* incoming;\n  yield* Console.log(fresh.customer, fresh.status);\n});",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "highlight",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "18:18"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1300
+        },
+        {
+          "action": "unselect",
+          "path": "typescript/examples/content-mapper/src/video/main.ts"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 700
+        },
+        {
+          "action": "positionCursor",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "18,10"
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.showHover"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 2200
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.hideHover"
+        },
+        {
+          "action": "save"
+        },
+        {
+          "action": "executeTerminalCommand",
+          "command": "clear && pnpm video",
+          "waitTimeout": 8000
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1500
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "workbench.action.focusActiveEditorGroup"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1200
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "17",
+          "content": "  const incoming = Haus.decode(Root)(`{ id: 7, customer: \"Grace Hopper\", paid: \"no\", status: Pending, lines: [] }`);",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "22",
+          "content": "program.pipe(\n  Effect.catchTag(\"HausSchemaError\", (e) => Console.log(`invalid order: ${e.message}`)),\n  Effect.runPromise,\n);",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "save"
+        },
+        {
+          "action": "executeTerminalCommand",
+          "command": "clear && pnpm video",
+          "waitTimeout": 8000
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1500
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "workbench.action.focusActiveEditorGroup"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 2500
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1200
+        }
+      ],
+      "id": "haus-play"
+    },
+    {
+      "title": "   1. A haus file: records, no quotes on keys, no null",
+      "moves": [
+        {
+          "action": "open",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "focusTop": false
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1000
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "1",
+          "content": "{\n}",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "2",
+          "content": "  id: 1042,\n  customer: \"Ada Lovelace\",\n  paid: True,\n}",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "save"
+        }
+      ],
+      "id": "haus-1"
+    },
+    {
+      "title": "   2. Variants",
+      "moves": [
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "5",
+          "content": "  status: Shipped { tracking: \"DE-4711\" },\n}",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "save"
+        },
+        {
+          "action": "highlight",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "5:5"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1300
+        },
+        {
+          "action": "unselect",
+          "path": "typescript/examples/content-mapper/src/video/order.haus"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 700
+        },
+        {
+          "action": "positionCursor",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "1,1"
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.showHover"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 2600
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.hideHover"
+        }
+      ],
+      "id": "haus-2"
+    },
+    {
+      "title": "   3. Nested data, exact decimals, money",
+      "moves": [
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "6",
+          "content": "  lines: [\n  ],\n}",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "7",
+          "content": "    { product: \"Notebook\", quantity: 2, price: Money(4.50, EUR) },\n    { product: \"Fountain pen\", quantity: 1, price: Money(39.90, EUR) },\n  ],",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "save"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 700
+        },
+        {
+          "action": "positionCursor",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "1,1"
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.showHover"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 3000
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.hideHover"
+        }
+      ],
+      "id": "haus-3"
+    },
+    {
+      "title": "   4. Write the schema next to it",
+      "moves": [
+        {
+          "action": "open",
+          "path": "typescript/examples/content-mapper/src/video/order.schema.haus",
+          "focusTop": false
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1000
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/order.schema.haus",
+          "position": "1",
+          "content": "import @haus/money (Money)\n\ntype Status = < Pending | Shipped { tracking: String } | Cancelled >\n\ntype Line = { product: String, quantity: UInt8, price: Money }\n\ntype Root = {\n}",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/order.schema.haus",
+          "position": "8",
+          "content": "  id: Int,\n  customer: String,\n  paid: Bool,\n  status: Status,\n  lines: Array Line,\n  note?: String,\n}",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "save"
+        },
+        {
+          "action": "highlight",
+          "path": "typescript/examples/content-mapper/src/video/order.schema.haus",
+          "position": "3:3"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1300
+        },
+        {
+          "action": "unselect",
+          "path": "typescript/examples/content-mapper/src/video/order.schema.haus"
+        },
+        {
+          "action": "highlight",
+          "path": "typescript/examples/content-mapper/src/video/order.schema.haus",
+          "position": "7:14"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1800
+        },
+        {
+          "action": "unselect",
+          "path": "typescript/examples/content-mapper/src/video/order.schema.haus"
+        }
+      ],
+      "id": "haus-4"
+    },
+    {
+      "title": "   5. The data is checked: errors where they are",
+      "moves": [
+        {
+          "action": "open",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "focusTop": false
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1000
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "7",
+          "content": "    { product: \"Notebook\", quantity: 300, price: Money(4.50, EUR) },",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 700
+        },
+        {
+          "action": "positionCursor",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "7,39"
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.showHover"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 2200
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.hideHover"
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "7",
+          "content": "    { product: \"Notebook\", quantity: 2, price: Money(4.50, EUR) },"
+        }
+      ],
+      "id": "haus-5"
+    },
+    {
+      "title": "   6. Open variants: a typo is only a hint",
+      "moves": [
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "5",
+          "content": "  status: Shiped { tracking: \"DE-4711\" },",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 700
+        },
+        {
+          "action": "positionCursor",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "5,12"
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.showHover"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 2200
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.hideHover"
+        }
+      ],
+      "id": "haus-6"
+    },
+    {
+      "title": "   7. closed: now it's an error",
+      "moves": [
+        {
+          "action": "open",
+          "path": "typescript/examples/content-mapper/src/video/order.schema.haus",
+          "focusTop": false
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1000
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/order.schema.haus",
+          "position": "3",
+          "content": "type Status = closed < Pending | Shipped { tracking: String } | Cancelled >",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "save"
+        },
+        {
+          "action": "highlight",
+          "path": "typescript/examples/content-mapper/src/video/order.schema.haus",
+          "position": "3:3"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1300
+        },
+        {
+          "action": "unselect",
+          "path": "typescript/examples/content-mapper/src/video/order.schema.haus"
+        },
+        {
+          "action": "open",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "focusTop": false
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1000
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 700
+        },
+        {
+          "action": "positionCursor",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "5,12"
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.showHover"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 2200
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.hideHover"
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "5",
+          "content": "  status: Shipped { tracking: \"DE-4711\" },"
+        },
+        {
+          "action": "save"
+        }
+      ],
+      "id": "haus-7"
+    },
+    {
+      "title": "   8. Completion from the schema",
+      "moves": [
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "10",
+          "content": "  \n}",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "positionCursor",
+          "path": "typescript/examples/content-mapper/src/video/order.haus",
+          "position": "10,3"
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.triggerSuggest"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1500
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "acceptSelectedSuggestion"
+        },
+        {
+          "action": "write",
+          "content": "\"Leave it at the back door\","
+        },
+        {
+          "action": "save"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1000
+        }
+      ],
+      "id": "haus-8"
+    },
+    {
+      "title": "   9. TypeScript: import the haus files",
+      "moves": [
+        {
+          "action": "executeTerminalCommand",
+          "command": "cd typescript/examples/content-mapper && clear",
+          "waitTimeout": 3000
+        },
+        {
+          "action": "open",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "focusTop": false
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1000
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "1",
+          "content": "import * as Haus from \"@betalyra/haus-fmt-effect\";\nimport { Console, Effect, Match } from \"effect\";\nimport order from \"./order.haus\";\nimport { Root } from \"./order.schema.haus\";",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 700
+        },
+        {
+          "action": "positionCursor",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "3,9"
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.showHover"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 3000
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.hideHover"
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "6",
+          "content": "const program = Effect.gen(function* () {\n});\n\nEffect.runPromise(program);",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "7",
+          "content": "  yield* Console.log(order);\n});",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "save"
+        },
+        {
+          "action": "executeTerminalCommand",
+          "command": "clear && pnpm video",
+          "waitTimeout": 8000
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1500
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "workbench.action.focusActiveEditorGroup"
+        }
+      ],
+      "id": "haus-9"
+    },
+    {
+      "title": "   10. Autocomplete and type safety",
+      "moves": [
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "7",
+          "content": "  yield* Console.log(order.",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "positionCursor",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "7,28"
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.triggerSuggest"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1500
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "hideSuggestWidget"
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "7",
+          "content": "  yield* Console.log(order.custmer);",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 700
+        },
+        {
+          "action": "positionCursor",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "7,29"
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.showHover"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 2200
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.hideHover"
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "7",
+          "content": "  yield* Console.log(order.customer, order.lines[0].product);",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "save"
+        },
+        {
+          "action": "executeTerminalCommand",
+          "command": "clear && pnpm video",
+          "waitTimeout": 8000
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1500
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "workbench.action.focusActiveEditorGroup"
+        }
+      ],
+      "id": "haus-10"
+    },
+    {
+      "title": "   11. Exhaustive pattern matching on variants",
+      "moves": [
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "8",
+          "content": "  const status = Match.value(order.status).pipe(\n    Match.tagsExhaustive({\n    }),\n  );\n});",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "10",
+          "content": "      Pending: () => \"waiting\",\n      Shipped: (s) => `on its way: ${s.tracking}`,\n    }),",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 700
+        },
+        {
+          "action": "positionCursor",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "9,27"
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.showHover"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 2600
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.hideHover"
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "12",
+          "content": "      Cancelled: () => \"cancelled\",\n    }),",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "highlight",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "9:13"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1300
+        },
+        {
+          "action": "unselect",
+          "path": "typescript/examples/content-mapper/src/video/main.ts"
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "15",
+          "content": "  yield* Console.log(status);\n});",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "save"
+        },
+        {
+          "action": "executeTerminalCommand",
+          "command": "clear && pnpm video",
+          "waitTimeout": 8000
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1500
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "workbench.action.focusActiveEditorGroup"
+        }
+      ],
+      "id": "haus-11"
+    },
+    {
+      "title": "   12. Decode haus text at runtime: an Effect that can fail",
+      "moves": [
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "16",
+          "content": "\n  const incoming = Haus.decode(Root)(`{ id: 7, customer: \"Grace Hopper\", paid: False, status: Pending, lines: [] }`);\n});",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "highlight",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "17:17"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1300
+        },
+        {
+          "action": "unselect",
+          "path": "typescript/examples/content-mapper/src/video/main.ts"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 700
+        },
+        {
+          "action": "positionCursor",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "17,10"
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.showHover"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 2800
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.hideHover"
+        }
+      ],
+      "id": "haus-12"
+    },
+    {
+      "title": "   13. yield* it: the typed value",
+      "moves": [
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "18",
+          "content": "  const fresh = yield* incoming;\n  yield* Console.log(fresh.customer, fresh.status);\n});",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "highlight",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "18:18"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1300
+        },
+        {
+          "action": "unselect",
+          "path": "typescript/examples/content-mapper/src/video/main.ts"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 700
+        },
+        {
+          "action": "positionCursor",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "18,10"
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.showHover"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 2200
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "editor.action.hideHover"
+        },
+        {
+          "action": "save"
+        },
+        {
+          "action": "executeTerminalCommand",
+          "command": "clear && pnpm video",
+          "waitTimeout": 8000
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1500
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "workbench.action.focusActiveEditorGroup"
+        }
+      ],
+      "id": "haus-13"
+    },
+    {
+      "title": "   14. Invalid input: a typed error",
+      "moves": [
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "17",
+          "content": "  const incoming = Haus.decode(Root)(`{ id: 7, customer: \"Grace Hopper\", paid: \"no\", status: Pending, lines: [] }`);",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "replace",
+          "path": "typescript/examples/content-mapper/src/video/main.ts",
+          "position": "22",
+          "content": "program.pipe(\n  Effect.catchTag(\"HausSchemaError\", (e) => Console.log(`invalid order: ${e.message}`)),\n  Effect.runPromise,\n);",
+          "insertTypingMode": "character-by-character",
+          "insertTypingSpeed": 25
+        },
+        {
+          "action": "save"
+        },
+        {
+          "action": "executeTerminalCommand",
+          "command": "clear && pnpm video",
+          "waitTimeout": 8000
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 1500
+        },
+        {
+          "action": "executeVSCodeCommand",
+          "command": "workbench.action.focusActiveEditorGroup"
+        },
+        {
+          "action": "waitForTimeout",
+          "timeout": 2500
+        }
+      ],
+      "id": "haus-14"
+    }
+  ]
+}

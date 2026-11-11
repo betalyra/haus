@@ -1,0 +1,3 @@
+// The manifest of a schema package: its name and version are the identity of
+// its types in every language (@haus/money@1#Money).
+{ name: "@haus/money", version: "1.0.0", schema: "money.schema.haus" }

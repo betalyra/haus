@@ -55,7 +55,7 @@ Reload VS Code (**Developer: Reload Window**) and open [`examples/person.haus`](
 - 🏷️ **Variants:** `None`, `Some(30)`, `Circle { radius: 5 }`. Booleans are just `True` / `False`.
 - 🧩 **Open records and variants:** unknown fields are ignored, unknown tags decode as "unknown" instead of failing.
 - 🔢 **Exact numbers:** `19.90` stays `19.90`; there's no silent float rounding and no 2⁵³ limit.
-- 📅 **Standard modules:** dates and times (`Date("2026-11-07")`, `Instant(…)`, `Duration("PT30S")`) and money (`Money(19.99, EUR)`), imported when you need them. The always-present prelude stays small.
+- 📅 **Standard modules and packages:** dates and times are built in (`Date("2026-11-07")`, `Instant(…)`, `Duration("PT30S")`, `import std/time`); money (`Money(19.99, EUR)`) and geo come as schema packages (`import @haus/money`), imported when you need them. The always-present prelude stays small.
 - 🧱 **Bytes:** binary data as hex, `x"9f86d081 884c7d65"`, instead of base64 inside a string.
 - 🚫 **No `null`:** leave out what you don't have (`nickname?: String`), or say "no value" explicitly with `None`. Each has exactly one meaning, so updates can send just the fields that change.
 - ✍️ **Pleasant to write:** unquoted keys, `//` and `/* */` comments, trailing commas, `"""` multi-line strings.
