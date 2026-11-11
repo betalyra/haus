@@ -1,0 +1,21 @@
+---
+import { Code as Shiki } from "astro:components";
+import { hausLang, hausTheme } from "@/lib/code";
+
+interface Props {
+  code: string;
+  lang?: "haus" | "json" | "ts" | "rust" | "sh" | "python";
+  label?: string;
+  size?: "sm" | "md" | "lg";
+  muted?: boolean;
+  class?: string;
+}
+
+const { code, lang = "haus", label, size = "md", muted = false, class: className } = Astro.props;
+const shikiLang = lang === "haus" ? hausLang : lang;
+---
+
+<figure class:list={["code", `code--${size}`, { "code--muted": muted }, className]}>
+  {label && <figcaption class="code__label">{label}</figcaption>}
+  <Shiki code={code.trim()} lang={shikiLang as any} theme={hausTheme} />
+</figure>

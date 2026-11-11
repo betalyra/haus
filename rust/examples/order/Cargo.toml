@@ -1,0 +1,16 @@
+[package]
+name = "haus-example-order"
+version = "0.0.0"
+description = "An order decoded with and without codecs: the Rust twin of the TypeScript codecs example"
+edition.workspace = true
+publish = false
+
+[dependencies]
+haus = { path = "../../haus" }
+# Schema packages are ordinary dependencies (spec §13.3).
+haus-money = { path = "../../../extensions/money" }
+haus-geo = { path = "../../../extensions/geo" }
+jiff = "0.2"
+
+[build-dependencies]
+haus-build = { path = "../../haus-build" }

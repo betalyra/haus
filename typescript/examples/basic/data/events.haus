@@ -1,7 +1,0 @@
-// A stream of shop events. One value per event, each followed by a comma.
-OrderPlaced { orderId: 1042, total: Money(30.30, EUR) },
-OrderShipped { orderId: 1042, at: Instant("2026-11-08T09:12:00Z") },
-// A newer producer added this event type. Our schema is an open variant,
-// so it arrives as `@unknown` instead of breaking the consumer.
-LoyaltyPointsAwarded { customer: "ada@example.com", points: 30 },
-OrderPlaced { orderId: 1043, total: Money(12.00, CHF) },   // CHF: open Currency

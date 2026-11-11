@@ -1,0 +1,15 @@
+[package]
+name = "haus-geo"
+version = "1.0.0"
+description = "@haus/geo: Points and boxes on the earth (a haus schema package)"
+edition = "2024"
+license = "MIT"
+# Tells crates that depend on this one where its schema is (haus_build::package).
+links = "haus-geo"
+include = ["Cargo.toml", "build.rs", "src", "haus.package.haus", "*.schema.haus", "profiles"]
+
+[dependencies]
+haus = { path = "../../rust/haus" }
+
+[build-dependencies]
+haus-build = { path = "../../rust/haus-build" }

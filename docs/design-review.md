@@ -91,7 +91,7 @@ Ecosystem gotchas, documented in the examples:
 | | Item |
 |---|---|
 | ⬜ | **Canonical form** for hashing, signing and deduplication (spec §12). |
-| ⬜ | **Schema language** spec, parser and checker: rows, open vs closed, `Stream`, generics. Rules for recursion and expressiveness are settled (spec §9.9–10): explicit, guarded, regular recursion and no computation in schemas. |
+| ⬜ | **Schema language** spec, parser and checker: spreads (`...Name`, replacing row parameters), open vs closed, `Stream`, generics. Rules for recursion and expressiveness are settled (spec §9.9–10): explicit, guarded, regular recursion and no computation in schemas. |
 | ⬜ | **JSON interop:** a mapping both ways, `from-json` / `to-json`, and the `application/haus` MIME type. |
 | ⬜ | **CLI:** `check`, `fmt`, `convert`, and a jq-like `query` using the path syntax from error messages. |
 | ✅ | **A parser that keeps comments and formatting**: `parseDocument` records comment and value positions; the formatter places comments and blank lines. |

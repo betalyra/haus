@@ -1,0 +1,27 @@
+---
+import Base from "@/layouts/Base.astro";
+import Nav from "@/components/Nav.astro";
+import Hero from "@/components/Hero.astro";
+import Showcase from "@/components/Showcase.astro";
+import Compare from "@/components/Compare.astro";
+import Features from "@/components/Features.astro";
+import InCode from "@/components/InCode.astro";
+import TryIt from "@/components/TryIt.astro";
+import Footer from "@/components/Footer.astro";
+---
+
+<Base
+  title="haus: a data format that feels like home"
+  description="haus is a data format that feels like home: clean to write, with variants, dates and times, exact numbers and streams built in, and types that grow without breaking readers."
+>
+  <Nav />
+  <main id="main">
+    <Hero />
+    <Showcase />
+    <Features />
+    <InCode />
+    <Compare />
+    <TryIt />
+  </main>
+  <Footer />
+</Base>

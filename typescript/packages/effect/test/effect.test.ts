@@ -180,7 +180,7 @@ describe("encode", () => {
   it.effect("DateTime, Unknown passthrough and open literals", () =>
     Effect.gen(function* () {
       const created = yield* Haus.decode(UserCreated)('UserCreated { id: 1, email: "a@b", at: Instant("2026-11-07T10:00:00Z") }')
-      expect(yield* Haus.encode(UserCreated, { style: "compact" })(created)).toBe('UserCreated { id: 1, email: "a@b", at: Instant("2026-11-07T10:00:00.000Z") }')
+      expect(yield* Haus.encode(UserCreated, { style: "compact" })(created)).toBe('UserCreated { id: 1, email: "a@b", at: Instant("2026-11-07T10:00:00Z") }')
       const events = yield* Haus.decode(Schema.Array(ServerEvent))("[Refunded { id: 7 }]")
       expect(yield* Haus.encode(Schema.Array(ServerEvent), { style: "compact" })(events)).toBe("[Refunded { id: 7 }]")
       const OpenCurrency = Haus.OpenUnion([Schema.Literals(["EUR", "USD"])])

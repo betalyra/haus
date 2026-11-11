@@ -91,7 +91,7 @@ block_comment ::= "/*" ( block_comment | comment_char )* "*/"
 
 (* ─────────────────────────────────────────────────────────────────────
    Schema files (.schema.haus). Same comments and whitespace as data.
-   Checks beyond the syntax (scoping, arity, rows, guarded recursion,
+   Checks beyond the syntax (scoping, arity, spreads, guarded recursion,
    §9.9 and §9.10 of spec/README.md) are listed in spec/README.md §14.
    ───────────────────────────────────────────────────────────────────── *)
 
@@ -109,14 +109,16 @@ type        ::= type_name ( ws atom )+                    (* application: Array 
 atom        ::= type_name | param | "(" ws type ws ")"
               | [ "closed" ws ] record_type               (* open unless closed: other fields are ignored *)
               | [ "closed" ws ] variant_type              (* open unless closed: other tags become Unknown *)
-record_type ::= "{" ws [ field ( ws "," ws field )* ws [ "," ws ] ] [ "..." param ws [ "," ws ] ] "}"
+record_type ::= "{" ws [ member ( ws "," ws member )* ws [ "," ws ] ] "}"
+member      ::= field | spread
 field       ::= key [ "?" ] ws ":" ws type                (* key?: the field may be missing *)
-variant_type ::= "<" ws [ "|" ws ] [ case ( ws "|" ws case )* ] [ ws "|" ws "..." param ] ws ">"
+variant_type ::= "<" ws [ "|" ws ] [ alt ( ws "|" ws alt )* ] ws ">"
                 (* < > is a variant with any tags *)
+alt         ::= case | spread
 case        ::= tag ( ws atom )*                          (* Tag { … }: named fields; Tag A B: positional *)
+spread      ::= "..." type_name                           (* ...UserEvent: copy the named type's tags or fields *)
 type_name   ::= [A-Z] [A-Za-z0-9_]*
 param       ::= [a-z] [A-Za-z0-9_]*                       (* not "type", "import" or "closed" *)
-                (* ...r: the rest of the fields or tags comes from row parameter r *)
 
 (* ─────────────────────────────────────────────────────────────────────
    Semantic rules: see spec/README.md (data model, equality, numbers,

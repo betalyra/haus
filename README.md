@@ -96,7 +96,7 @@ const order = h.parse(Order, text)   // typed; mismatches fail with e.g. `expect
 const back = h.stringify(Order, order)
 ```
 
-There is also an [Effect adapter](typescript/packages/effect) (`Haus.decode(schema)`, `Haus.encodeStream(schema)`), and a parser in [Roc](roc).
+There is also an [Effect adapter](typescript/packages/effect) (`Haus.decode(schema)`, `Haus.encodeStream(schema)`), and bindings for [Rust](rust) and [Roc](roc), with the same examples on the same files.
 
 ### Typed imports (TypeScript 7.1, experimental)
 
@@ -110,7 +110,7 @@ thread.replies[0].likes                          // bigint
 Haus.decode(Comment)(text)                       // the schema works for any input
 ```
 
-Data that doesn't match its schema is an error in the editor, at the value that's wrong. A data file without a schema next to it gets a type inferred from its data. See the [example](typescript/examples/content-mapper).
+Data that doesn't match its schema is an error in the editor, at the value that's wrong. A data file without a schema next to it gets a type inferred from its data. See the [quickstart](typescript/examples/quickstart).
 
 ## Repository
 
@@ -118,14 +118,23 @@ Data that doesn't match its schema is an error in the editor, at the value that'
 |---|---|
 | [`spec/`](spec) | Grammar, semantics, standard format, prelude types |
 | [`test-suite/`](test-suite) | Conformance files every parser must pass |
-| [`typescript/`](typescript) | Parser, schemas, formatter, type inference, Effect adapter, examples |
-| [`roc/`](roc) | Roc parser and decoding showcase |
+| [`typescript/`](typescript) | Parser, schemas, formatter, type inference, Effect adapter, content mapper, examples, demos |
+| [`rust/`](rust) | Parser, `haus-build` (Rust types from schemas, with codecs), examples |
+| [`extensions/`](extensions) | Official schema packages (`@haus/money`, `@haus/geo`), for npm and crates.io |
+| [`roc/`](roc) | Parser, decoding, encoding, streams; modules generated from schemas; examples |
 | [`editors/vscode/`](editors/vscode) | VS Code extension: highlighting, errors, hover with inferred types, formatting |
-| [`examples/`](examples) | Sample `.haus` and `.schema.haus` files |
+| [`examples/`](examples) | Sample `.haus` and `.schema.haus` files, shared by the TypeScript and Rust examples |
 | [`docs/`](docs) | Design review and open issues |
 
 ```sh
-cd typescript && pnpm install && pnpm test     # TypeScript packages
-cd typescript/examples/basic && pnpm start     # demo: decode, stream, errors, encode
-cd roc/package && roc test ConformanceTest.roc # Roc conformance suite
+cd typescript && pnpm install && pnpm test        # TypeScript packages
+cd typescript/examples/quickstart && pnpm start   # typed data, decode, encode, errors
+cd typescript/examples/order && pnpm start        # schema packages and codecs
+cd typescript/examples/logs && pnpm start         # a stream, entry by entry
+cd rust && cargo test                             # Rust crates and the conformance suite
+cd rust && cargo run -p haus-example-quickstart   # the same quickstart in Rust
+cd rust && cargo run -p haus-example-order        # the same order example in Rust
+cd rust && cargo run -p haus-example-logs         # the same stream example in Rust
+cd roc/package && roc test ConformanceTest.roc    # Roc conformance suite
+cd roc/examples/quickstart && roc main.roc        # the same quickstart in Roc (also order, logs)
 ```

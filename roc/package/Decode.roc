@@ -1,7 +1,7 @@
 ## Building blocks for decoding a haus `Value` into your own Roc types.
 ##
 ## A decoder is a function `Value -> Try(a, Decode.Error)`. Errors carry a
-## path that is built on the way out (`$[1].amount.currency`), so decoders
+## path that is built on the way out (`[1].amount.currency`), so decoders
 ## don't need to know where they are.
 ##
 ## Decoders are plain functions, so recursion (a tree decoder calling itself
@@ -16,6 +16,7 @@
 ##         Ok({ id: Decode.field(fields, "id", Decode.u64)?, email: Decode.field(fields, "email", Decode.str)? })
 ##     }
 import Value
+import Time
 
 Decode := [].{
 	# ── documents ───────────────────────────────────────────
@@ -27,7 +28,7 @@ Decode := [].{
 		var $out = []
 		var $i = 0.U64
 		for v in values {
-			$out = $out.append(at(decoder(v), "$[${$i.to_str()}]").map_err(|e| Decode(e))?)
+			$out = $out.append(at(decoder(v), "[${$i.to_str()}]").map_err(|e| Decode(e))?)
 			$i = $i + 1
 		}
 		Ok($out)
@@ -37,8 +38,12 @@ Decode := [].{
 	one : Str, (Value -> Try(a, Error)) -> Try(a, [Syntax(Value.ParseError), Decode(Error)])
 	one = |text, decoder| {
 		v = Value.parse(text).map_err(|e| Syntax(e))?
-		at(decoder(v), "$").map_err(|e| Decode(e))
+		decoder(v).map_err(|e| Decode(e))
 	}
+
+	## Item `i` of a stream, already parsed: errors say which (`[3].total`).
+	item : Value, U64, (Value -> Try(a, Error)) -> Try(a, Error)
+	item = |v, i, decoder| at(decoder(v), "[${i.to_str()}]")
 
 	# ── scalars ─────────────────────────────────────────────
 
@@ -55,20 +60,42 @@ Decode := [].{
 		_ => expected("Bytes", v)
 	}
 
-	## A non-negative integer.
+	## `Int`: an integer, as long as it fits an I128.
+	int : Value -> Try(I128, Error)
+	int = |v| whole(v, "Int", "-170141183460469231731687303715884105728", "170141183460469231731687303715884105727", I128.from_str)
+
+	i8 : Value -> Try(I8, Error)
+	i8 = |v| whole(v, "Int8", "-128", "127", I8.from_str)
+
+	i16 : Value -> Try(I16, Error)
+	i16 = |v| whole(v, "Int16", "-32768", "32767", I16.from_str)
+
+	i32 : Value -> Try(I32, Error)
+	i32 = |v| whole(v, "Int32", "-2147483648", "2147483647", I32.from_str)
+
+	i64 : Value -> Try(I64, Error)
+	i64 = |v| whole(v, "Int64", "-9223372036854775808", "9223372036854775807", I64.from_str)
+
+	u8 : Value -> Try(U8, Error)
+	u8 = |v| whole(v, "UInt8", "0", "255", U8.from_str)
+
+	u16 : Value -> Try(U16, Error)
+	u16 = |v| whole(v, "UInt16", "0", "65535", U16.from_str)
+
+	u32 : Value -> Try(U32, Error)
+	u32 = |v| whole(v, "UInt32", "0", "4294967295", U32.from_str)
+
 	u64 : Value -> Try(U64, Error)
-	u64 = |v| match v {
-		Num(text) => {
-			var $n = 0
-			for b in text.to_utf8() {
-				if b < '0' or b > '9' {
-					return expected("an unsigned integer", v)
-				}
-				$n = $n * 10 + (b - '0').to_u64()
-			}
-			Ok($n)
-		}
-		_ => expected("an unsigned integer", v)
+	u64 = |v| whole(v, "UInt64", "0", "18446744073709551615", U64.from_str)
+
+	## `Float64`: rounding is accepted; also the tags `NaN`, `Infinity`, `NegInfinity`.
+	f64 : Value -> Try(F64, Error)
+	f64 = |v| match v {
+		Num(text) => F64.from_str(text).map_err(|_| { reason: "${text} is not a Float64", path: "" })
+		Tag("NaN", []) => Ok(0.0 / 0.0)
+		Tag("Infinity", []) => Ok(1.0 / 0.0)
+		Tag("NegInfinity", []) => Ok(-1.0 / 0.0)
+		_ => expected("a number (Float64)", v)
 	}
 
 	## An exact decimal, kept as its literal text (`19.90` stays "19.90").
@@ -93,19 +120,29 @@ Decode := [].{
 		_ => expected("a tag without payload", v)
 	}
 
-	## `Instant("2026-11-07T10:00:00Z")`, returned as the ISO string.
+	## A std/time value, checked by the std/time profile and returned as its
+	## text: `Decode.time("Date")` reads `Date("2026-11-07")` as "2026-11-07".
+	time : Str -> (Value -> Try(Str, Error))
+	time = |name| |v| {
+		text = tagged_string(name, v)?
+		Time.check(name, text).map_err(|reason| { reason, path: "(${name})[0]" })?
+		Ok(text)
+	}
+
+	## `Instant("2026-11-07T10:00:00Z")`, checked, as its text.
 	instant : Value -> Try(Str, Error)
-	instant = |v| tagged_string("Instant", v)
+	instant = |v| time("Instant")(v)
 
-	## `Date("2026-11-07")`, returned as the ISO string.
+	## `Date("2026-11-07")`, checked, as its text.
 	date : Value -> Try(Str, Error)
-	date = |v| tagged_string("Date", v)
+	date = |v| time("Date")(v)
 
-	## `Money(19.99, EUR)`. The amount stays exact text; currencies are an open set.
-	money : Value -> Try({ amount : Str, currency : Str }, Error)
-	money = |v| match v {
-		Tag("Money", [amount, currency]) => Ok({ amount: at(decimal(amount), "[0]")?, currency: at(tag_name(currency), "[1]")? })
-		_ => expected("Money(Decimal, Currency)", v)
+	## `< >`: a bare tag by its name, or any other variant as it was.
+	any_tag : Value -> Try([Bare(Str), Other(Str, List(Value))], Error)
+	any_tag = |v| match v {
+		Tag(name, []) => Ok(Bare(name))
+		Tag(name, args) => Ok(Other(name, args))
+		_ => expected("a tag", v)
 	}
 
 	# ── containers ──────────────────────────────────────────
@@ -143,14 +180,71 @@ Decode := [].{
 		_ => expected("None | Some(…)", v)
 	}
 
+	## A closed record has only the fields listed.
+	closed : List((Str, Value)), List(Str) -> Try({}, Error)
+	closed = |fields, known| match fields.find_first(|(k, _)| !known.contains(k)) {
+		Ok((k, _)) => fail("unknown field '${k}' in a closed record")
+		Err(_) => Ok({})
+	}
+
+	## `Map v`: a record used as a dictionary.
+	map : Value, (Value -> Try(a, Error)) -> Try(List((Str, a)), Error)
+	map = |v, decoder| match v {
+		Rec(fields) => {
+			var $out = []
+			for (k, x) in fields {
+				$out = $out.append((k, at(decoder(x), ".${k}")?))
+			}
+			Ok($out)
+		}
+		_ => expected("a record (Map)", v)
+	}
+
+	## `Result e a`: `Ok(a)` or `Err(e)`.
+	result : Value, (Value -> Try(a, Error)), (Value -> Try(e, Error)) -> Try(Try(a, e), Error)
+	result = |v, ok, err| match v {
+		Tag("Ok", [x]) => Ok(Ok(at(ok(x), "(Ok)[0]")?))
+		Tag("Err", [x]) => Ok(Err(at(err(x), "(Err)[0]")?))
+		_ => expected("Ok(…) | Err(…)", v)
+	}
+
+	## Payload value `i` of `tag`.
+	arg : Str, U64, Value, (Value -> Try(a, Error)) -> Try(a, Error)
+	arg = |tag, i, v, decoder| at(decoder(v), "(${tag})[${i.to_str()}]")
+
+	## The record payload of `Tag { … }`, with errors inside it under `(Tag)`.
+	payload : Str, Value, (List((Str, Value)) -> Try(a, Error)) -> Try(a, Error)
+	payload = |tag, v, decoder| at(
+		match record(v) {
+			Ok(fields) => decoder(fields)
+			Err(e) => Err(e)
+		},
+		"(${tag})",
+	)
+
+	## A type with a codec: its base decoder first, then the codec (spec §13.4).
+	codec : Value, (Value -> Try(b, Error)), (b -> Try(t, Str)) -> Try(t, Error)
+	codec = |v, base, decode| match base(v) {
+		Ok(x) => decode(x).map_err(|reason| { reason, path: "" })
+		Err(e) => Err(e)
+	}
+
+	## A tag with the wrong number of payload values.
+	arity : Str, U64 -> Try(a, Error)
+	arity = |tag, n| fail(if (n == 0) "${tag} takes no payload" else "${tag} takes ${n.to_str()} value(s)")
+
+	## A tag a closed variant doesn't list.
+	unknown_tag : Str, List(Str) -> Try(a, Error)
+	unknown_tag = |tag, known| fail("unknown tag ${tag}; expected one of ${Str.join_with(known, ", ")}")
+
 	## An array, decoding each item.
 	list : Value, (Value -> Try(a, Error)) -> Try(List(a), Error)
 	list = |v, decoder| match v {
 		Arr(items) => {
 			var $out = []
 			var $i = 0.U64
-			for item in items {
-				$out = $out.append(at(decoder(item), "[${$i.to_str()}]")?)
+			for x in items {
+				$out = $out.append(at(decoder(x), "[${$i.to_str()}]")?)
 				$i = $i + 1
 			}
 			Ok($out)
@@ -159,6 +253,10 @@ Decode := [].{
 	}
 
 	# ── errors ──────────────────────────────────────────────
+
+	## `.total: 44.405 has more than 2 decimal places`, or just the reason at the root.
+	message : Error -> Str
+	message = |{ reason, path }| if (path == "") reason else "${path}: ${reason}"
 
 	## Fail with a custom reason at the current position.
 	fail : Str -> Try(a, Error)
@@ -169,7 +267,21 @@ Decode := [].{
 	expected = |what, v| Err({ reason: "expected ${what}, found ${describe(v)}", path: "" })
 }
 
-## `path` is relative while decoding and absolute (`$…`) once it reaches the top.
+## A whole number in range for `name`, converted with `from_str`.
+whole : Value, Str, Str, Str, (Str -> Try(n, [BadNumStr])) -> Try(n, Error)
+whole = |v, name, min, max, from_str| match v {
+	Num(text) => {
+		digits = if (text.starts_with("-")) text.drop_prefix("-") else text
+		if digits.is_empty() or !digits.to_utf8().all(|b| b >= '0' and b <= '9') {
+			return Decode.fail("expected a whole number (${name}), found ${text}")
+		}
+		from_str(text).map_err(|_| { reason: "${text} is out of range for ${name} (${min} to ${max})", path: "" })
+	}
+	_ => Decode.expected("a number (${name})", v)
+}
+
+## Where in the value (`.total(Money)[1]`, empty at the root), and what's wrong.
+## The same paths as the Rust binding.
 Error : { reason : Str, path : Str }
 
 ## Prefix the path of an error coming out of a nested decoder.
@@ -194,7 +306,7 @@ describe = |v| match v {
 
 # ── tests ────────────────────────────────────────────────────
 
-Order : { id : U64, note : [Missing, Present(Str)], coupon : [None, Some(Str)], prices : List({ amount : Str, currency : Str }), paid : Bool }
+Order : { id : U64, note : [Missing, Present(Str)], coupon : [None, Some(Str)], prices : List(Str), paid : Bool }
 
 order : Value -> Try(Order, Error)
 order = |v| {
@@ -203,23 +315,29 @@ order = |v| {
 		id: Decode.field(fs, "id", Decode.u64)?,
 		note: Decode.optional_field(fs, "note", Decode.str)?,
 		coupon: Decode.field(fs, "coupon", |c| Decode.maybe(c, Decode.str))?,
-		prices: Decode.field(fs, "prices", |p| Decode.list(p, Decode.money))?,
+		prices: Decode.field(fs, "prices", |p| Decode.list(p, Decode.decimal))?,
 		paid: Decode.field(fs, "paid", Decode.bool)?,
 	})
 }
 
-expect Decode.one("{ id: 1, coupon: None, prices: [Money(19.90, EUR)], paid: True }", order) == Ok({ id: 1, note: Missing, coupon: None, prices: [{ amount: "19.90", currency: "EUR" }], paid: True })
+expect Decode.one("{ id: 1, coupon: None, prices: [19.90], paid: True }", order) == Ok({ id: 1, note: Missing, coupon: None, prices: ["19.90"], paid: True })
 expect Decode.one("{ id: 1, note: \"hi\", coupon: Some(\"X1\"), prices: [], paid: False }", order) == Ok({ id: 1, note: Present("hi"), coupon: Some("X1"), prices: [], paid: False })
 # A Maybe must be written; an optional field is never None.
-expect Decode.one("{ id: 1, prices: [], paid: True }", order) == Err(Decode({ reason: "missing field 'coupon'", path: "$" }))
-expect Decode.one("{ id: 1, note: None, coupon: None, prices: [], paid: True }", order) == Err(Decode({ reason: "expected String, found variant None", path: "$.note" }))
-expect Decode.one("{ id: 1, coupon: None, prices: [Money(1, EUR), Money(2, 3)], paid: True }", order) == Err(Decode({ reason: "expected a tag without payload, found number 3", path: "$.prices[1][1]" }))
-expect Decode.one("{ id: 1, coupon: Some(1), prices: [], paid: True }", order) == Err(Decode({ reason: "expected String, found number 1", path: "$.coupon[0]" }))
-expect Decode.one("{ id: 1, coupon: None, prices: [], paid: Yes }", order) == Err(Decode({ reason: "expected True | False, found variant Yes", path: "$.paid" }))
+expect Decode.one("{ id: 1, prices: [], paid: True }", order) == Err(Decode({ reason: "missing field 'coupon'", path: "" }))
+expect Decode.one("{ id: 1, note: None, coupon: None, prices: [], paid: True }", order) == Err(Decode({ reason: "expected String, found variant None", path: ".note" }))
+expect Decode.one("{ id: 1, coupon: None, prices: [1, Two], paid: True }", order) == Err(Decode({ reason: "expected a number, found variant Two", path: ".prices[1]" }))
+expect Decode.message({ reason: "missing field 'id'", path: "" }) == "missing field 'id'"
+expect Decode.message({ reason: "expected a string", path: ".total" }) == ".total: expected a string"
+expect Decode.one("300", Decode.u8) == Err(Decode({ reason: "300 is out of range for UInt8 (0 to 255)", path: "" }))
+expect Decode.one("1.5", Decode.i64) == Err(Decode({ reason: "expected a whole number (Int64), found 1.5", path: "" }))
+expect Decode.one("-12", Decode.int) == Ok(-12)
+expect Decode.one("Date(\"2026-02-30\")", Decode.date) == Err(Decode({ reason: "\"2026-02-30\" is not a valid Date: 2026-02 has no day 30", path: "(Date)[0]" }))
+expect Decode.one("{ id: 1, coupon: Some(1), prices: [], paid: True }", order) == Err(Decode({ reason: "expected String, found number 1", path: ".coupon[0]" }))
+expect Decode.one("{ id: 1, coupon: None, prices: [], paid: Yes }", order) == Err(Decode({ reason: "expected True | False, found variant Yes", path: ".paid" }))
 expect Decode.one("{ hash: x\"9f86 D0\" }", |v| Decode.field(Decode.record(v)?, "hash", Decode.bytes)) == Ok([0x9f, 0x86, 0xd0])
 expect Decode.one("x\"\"", Decode.bytes) == Ok([])
-expect Decode.one("x\"00\"", Decode.str) == Err(Decode({ reason: "expected String, found bytes", path: "$" }))
-expect Decode.one("\"00\"", Decode.bytes) == Err(Decode({ reason: "expected Bytes, found a string", path: "$" }))
+expect Decode.one("x\"00\"", Decode.str) == Err(Decode({ reason: "expected String, found bytes", path: "" }))
+expect Decode.one("\"00\"", Decode.bytes) == Err(Decode({ reason: "expected Bytes, found a string", path: "" }))
 expect Decode.all("1, 2, x", Decode.u64) == Err(Syntax({ reason: "unexpected identifier 'x': lowercase identifiers can only be record keys", line: 1, column: 7 }))
 
 # A partial update: `name?: String, nickname?: Maybe String`.

@@ -68,7 +68,7 @@
   // ── Polymorphic variants ───────────────────────────────────
   // No declaration is needed to use a tag. Any tag can appear anywhere;
   // whether a consumer accepts it is decided by its schema (open or closed
-  // row), not by the data. This event stream mixes tags from different
+  // variant), not by the data. This event stream mixes tags from different
   // "producers" in a single list.
   events: [
     UserCreated { id: 42, email: "jan@example.com" },
@@ -79,8 +79,8 @@
 
   // ── Extensible records ─────────────────────────────────────
   // At the data level, every record is open: extra fields are always legal.
-  // A consumer typed as `{ id: Int | r }` reads `id` and keeps the rest
-  // intact in `r`. Both entries are valid `Entity`s (see syntax-tour.schema.haus).
+  // A reader typed as `Entity` (an open record) reads `id` and `kind` and
+  // ignores the rest. Both entries are valid (see syntax-tour.schema.haus).
   entities: [
     { id: 1, kind: Person, name: "Ada" },
     { id: 2, kind: Robot, model: "R2", firmware: Some("4.1.0") },

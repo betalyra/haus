@@ -9,8 +9,10 @@ language-neutral package:
 | `*.schema.haus` | The schema. Shape only, like every haus schema. |
 | `profiles/*.vectors.haus` | Profiles: rules beyond the shape that codecs can implement, with test vectors. |
 
-The `package.json` only publishes the same files to npm; other languages
-publish them to their own registries, from this one source.
+The same schema is published for each language from this one source: the
+`package.json` publishes it to npm, the `Cargo.toml` makes it a crate (its
+build script generates the Rust types), and `roc/` is a Roc package with the
+module generated from it (`roc/examples/gen.sh`).
 
 There is no haus registry (spec §13.3, *Distribution*). Anyone can publish a
 schema package as an ordinary dependency: to npm, crates.io, PyPI or a private

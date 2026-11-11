@@ -1,0 +1,12 @@
+[package]
+name = "haus-build-tests"
+version = "0.0.0"
+description = "Tests of the code haus-build generates (it needs a build script, so it is a crate of its own)"
+edition.workspace = true
+publish = false
+
+[dependencies]
+haus = { path = "../haus" }
+
+[build-dependencies]
+haus-build = { path = "../haus-build" }

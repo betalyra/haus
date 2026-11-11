@@ -1,0 +1,38 @@
+// Every kind of type haus-build generates.
+import std/time (Date, Instant)
+
+// Recursion through a payload: Node holds Box<Tree>.
+type Tree = < Leaf | Node Tree Tree >
+
+// A generic record.
+type Page a = { items: Array a, next?: String }
+
+type Scores = Page Int
+
+// A closed variant: other tags are an error.
+type Kind = closed < Admin | Member { since: Date } >
+
+// An open variant: other tags decode to Unknown.
+type Shape = < Circle Float64 | Rect Float64 Float64 >
+
+// Spreads copy tags and fields in; openness is the type's own.
+type BaseEvent = < Ping | Failed { reason: String } >
+type AppEvent = closed < ...BaseEvent | Placed { order: Int } >
+type Base = { id: Int }
+type Item = closed { ...Base, label: String }
+
+type Person = closed {
+  name: String,
+  nickname?: String,
+  email: Maybe String,
+  type: Kind,
+  createdAt: Instant,
+  address: { street: String, city: String },
+  scores: Map Int8,
+  check: Result String UInt8,
+  avatar?: Bytes,
+  friends: Array Person,
+  best?: Person,
+  shape: Shape,
+  tree: Tree,
+}

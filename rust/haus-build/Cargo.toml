@@ -1,0 +1,15 @@
+[package]
+name = "haus-build"
+version = "0.1.0"
+description = "Rust types from haus schemas, generated in build.rs"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+haus = { path = "../haus" }
+prettyplease = "0.3.0"
+proc-macro2 = "1.0.107"
+quote = "1.0.47"
+syn = { version = "3.0.10", default-features = false, features = ["full", "parsing", "printing"] }
+winnow = "1.0.5"

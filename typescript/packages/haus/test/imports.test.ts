@@ -87,6 +87,16 @@ describe("imports", () => {
     expect(schemaError("import ./a (A)", r)).toContain("import cycle")
   })
 
+  it("rejects two files with the same id", () => {
+    const r = memory(
+      { ids1: "type UserId = String", ids2: "type UserId = String" },
+      { "@acme/ids": { key: "ids1", id: "@acme/ids@3", version: "3.1.0" }, "@other/ids": { key: "ids2", id: "@acme/ids@3", version: "3.2.0" } },
+    )
+    expect(schemaError("import @acme/ids (UserId)\nimport @other/ids (UserId)", r)).toContain("is @acme/ids@3, but another file already is")
+    // the same file imported twice (a diamond) is fine
+    expect(() => parseSchemaFile("import ./order (Order)\nimport ./common (City)", { resolver, id: "app/root" })).not.toThrow()
+  })
+
   it("std/money moved to @haus/money", () => {
     expect(schemaError("import std/money (Money)")).toContain("std/money is no longer a standard module; it is the package @haus/money: import @haus/money (Money)")
     expect(schemaError("type Root = { price: Money }")).toContain("import it with: import @haus/money (Money)")

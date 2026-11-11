@@ -1,0 +1,20 @@
+{
+  "name": "haus-example-logs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prestart": "pnpm --filter @betalyra/haus-fmt --filter @betalyra/haus-fmt-effect build",
+    "start": "tsx --import @betalyra/haus-fmt-content-mapper/register src/main.ts",
+    "typecheck": "tsc --noEmit --runExternalCode"
+  },
+  "devDependencies": {
+    "@betalyra/haus-fmt-content-mapper": "workspace:*",
+    "@types/node": "24.10.1",
+    "tsx": "4.23.15",
+    "typescript": "7.1.0-beta"
+  },
+  "dependencies": {
+    "@betalyra/haus-fmt-effect": "workspace:*",
+    "effect": "4.0.6"
+  }
+}

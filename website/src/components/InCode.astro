@@ -1,0 +1,73 @@
+---
+import Code from "./Code.astro";
+import CodeTabs from "./CodeTabs";
+import Wash from "./Wash.astro";
+import { codeRoc, codeRust, codeTs, schemaHaus, threadHaus } from "@/content/samples";
+import type { Tab } from "./CodeTabs";
+import { links } from "@/lib/links";
+import type { Pigment } from "@/lib/pigments";
+
+const fileTabs: Tab[] = [
+  { value: "data", label: "Data", caption: "A comment thread, where each reply is a comment too." },
+  { value: "schema", label: "Schema", caption: "Its schema. Comment refers to itself, so threads can nest." },
+];
+
+const languageTabs: Tab[] = [
+  { value: "ts", label: "TypeScript", caption: "Using the Effect binding. A Standard Schema binding is coming." },
+  { value: "rust", label: "Rust", caption: "haus-build generates the types at compile time." },
+  { value: "roc", label: "Roc", caption: "haus-gen generates the types. The Roc parser is still in progress." },
+];
+
+const notes: { term: string; rest: string; color: Pigment }[] = [
+  { term: "Typed data.", rest: "Import a data file like a module, already typed by its schema.", color: "ultramarine" },
+  { term: "Clear errors.", rest: "When data doesn't match, the error tells you where.", color: "rose" },
+  { term: "Your own types.", rest: "Codecs map schema types onto yours, for example a Date onto your date library.", color: "gold" },
+];
+---
+
+<section id="languages" class="relative mx-auto w-full max-w-6xl scroll-mt-8 px-6 py-20 lg:py-32" aria-labelledby="code-heading">
+  <div class="max-w-[42rem]">
+    <h2 id="code-heading" class="text-[2.2rem] leading-[1.08] sm:text-[2.8rem]">At home in your code.</h2>
+    <p class="mt-5 text-[1.12rem] text-ink-2">
+      A schema is a <code class="inline-code">.schema.haus</code> file next to your data. Your build reads it and
+      gives you <strong>real types</strong>. Today in <a href={links.typescript} class="prose-link">TypeScript</a>,
+      <a href={links.rust} class="prose-link">Rust</a> and <a href={links.roc} class="prose-link">Roc</a>, with
+      more languages to come.
+    </p>
+  </div>
+
+  <div class="relative isolate mt-14 grid grid-cols-1 gap-10 lg:grid-cols-12 lg:gap-8">
+    <Wash
+      seed={61}
+      class="-top-2 -left-14 -z-10 hidden h-[calc(100%+6rem)] w-[calc(100%+7rem)] lg:block"
+      strokes={[
+        { x: 0.06, y: 0.4, rx: 0.08, ry: 0.17, color: "violet", strength: 0.85 },
+        { x: 0.09, y: 0.27, rx: 0.07, ry: 0.08, color: "ultramarine", strength: 0.7 },
+        { x: 0.965, y: 0.58, rx: 0.05, ry: 0.13, color: "rose", strength: 0.85 },
+        { x: 0.955, y: 0.72, rx: 0.04, ry: 0.06, color: "gold", strength: 0.9 },
+      ]}
+    />
+    <div class="relative lg:col-span-5">
+      <CodeTabs client:idle tabs={fileTabs}>
+        <Fragment slot="data"><Code code={threadHaus} lang="haus" label="thread.haus" size="sm" /></Fragment>
+        <Fragment slot="schema"><Code code={schemaHaus} lang="haus" label="thread.schema.haus" size="sm" /></Fragment>
+      </CodeTabs>
+    </div>
+    <div class="relative lg:col-span-7">
+      <CodeTabs client:idle tabs={languageTabs}>
+        <Fragment slot="ts"><Code code={codeTs} lang="ts" label="main.ts" size="sm" /></Fragment>
+        <Fragment slot="rust"><Code code={codeRust} lang="rust" label="main.rs" size="sm" /></Fragment>
+        <Fragment slot="roc"><Code code={codeRoc} lang="python" label="main.roc" size="sm" /></Fragment>
+      </CodeTabs>
+    </div>
+  </div>
+
+  <ul class="mt-16 grid grid-cols-1 gap-x-10 gap-y-6 md:grid-cols-3">
+    {notes.map((n, i) => (
+      <li class="relative isolate pl-11">
+        <Wash seed={70 + i} color={n.color} strength={1.4} class="top-[-0.2rem] left-[-0.4rem] -z-10 h-9 w-9" delay={i * 140} />
+        <span class="font-medium text-ink">{n.term}</span> <span class="text-ink-2">{n.rest}</span>
+      </li>
+    ))}
+  </ul>
+</section>

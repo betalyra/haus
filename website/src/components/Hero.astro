@@ -1,0 +1,54 @@
+---
+import { PiArrowRightBold } from "react-icons/pi";
+import Painting from "./Painting.astro";
+import Wash from "./Wash.astro";
+import { links } from "@/lib/links";
+---
+
+<section class="relative mx-auto flex min-h-[calc(100svh-5.5rem)] w-full max-w-6xl items-center px-6 pt-4 pb-16 lg:pb-20">
+  <div class="grid w-full grid-cols-1 items-center gap-12 lg:grid-cols-12 lg:gap-10">
+    <div class="relative lg:col-span-7">
+      <h1 class="text-[2.7rem] leading-[1.03] sm:text-[3.6rem] lg:text-[4rem] xl:text-[4.5rem]">
+        A data format that feels like{" "}
+        <span class="brush">
+          home.
+          <Wash
+            seed={21}
+            delay={500}
+            strokes={[
+              { x: 0.48, y: 0.55, rx: 0.46, ry: 0.32, rot: -0.03, color: "rose", strength: 1.5, wobble: 0.7 },
+              { x: 0.8, y: 0.5, rx: 0.18, ry: 0.28, color: "gold", strength: 1.2, wobble: 0.7 },
+            ]}
+          />
+        </span>
+      </h1>
+
+      <p class="mt-7 max-w-[35rem] text-[1.2rem] leading-[1.55] text-ink-2 sm:text-[1.3rem]">
+        Clean to write, with real types built in: variants, dates and times, exact numbers.
+        And your data can grow without breaking the code that reads it.
+      </p>
+
+      <div class="mt-10 flex flex-wrap items-center gap-3">
+        <a
+          href={links.quickstart}
+          class="inline-flex h-12 items-center gap-2 rounded-full bg-ink px-6 text-[1.02rem] font-medium text-paper no-underline transition-[background-color,transform] duration-200 ease-out hover:bg-ultramarine-ink active:translate-y-px"
+        >
+          Try it in VS Code
+        </a>
+        <a
+          href={links.spec}
+          class="group inline-flex h-12 items-center gap-1.5 px-4 text-[1.02rem] font-medium text-ink"
+        >
+          <span class="brush-hover">Read the spec</span>
+          <PiArrowRightBold size={16} aria-hidden="true" className="transition-transform duration-200 ease-out group-hover:translate-x-0.5" />
+        </a>
+      </div>
+
+      <p class="mt-8 text-[0.92rem] text-ink-3">Draft 0.2. Still changing, so don't use it in production yet.</p>
+    </div>
+
+    <div class="relative lg:col-span-5">
+      <Painting class="mx-auto aspect-square w-full max-w-[34rem]" />
+    </div>
+  </div>
+</section>

@@ -69,7 +69,7 @@ describe("schema files", () => {
     expect(Exit.isFailure(decodeWith(schema.replace("small: UInt8", "small: Int8"), "Root", "{ small: 255 }"))).toBe(true)
   })
 
-  it("variants: enums, payloads, positional values, open rows", () => {
+  it("variants: enums, payloads, positional values, open variants", () => {
     const schema = `
       type Level = closed < Debug | Info >
       type Shape = closed < Circle { r: Float64 } | Point Float64 Float64 | Empty >
@@ -99,7 +99,7 @@ describe("schema files", () => {
     expect(decoded(schema, "Open", "{ a: 1, b: 2 }")).toEqual({ a: 1n })
   })
 
-  it("rows: composing variants and records", () => {
+  it("spread: composing variants and records", () => {
     const { schemas, streams } = compileFile("examples/syntax-tour.schema.haus")
     expect(streams.has("ServerEvents")).toBe(true)
     const app = Effect.runSync(Haus.decode(schemas.AppEvent!)("Heartbeat"))
@@ -108,22 +108,24 @@ describe("schema files", () => {
     expect(unknown).toMatchObject({ _tag: "@unknown", tag: "PaymentReceived" })
   })
 
-  it("open by default, closed on request, composed rows closed only if both parts are", () => {
+  it("open by default, closed on request; a spread type's own closed decides, not what it copies", () => {
     const schema = `
       type Status = < Pending | Done >
       type Fixed = closed < Pending | Done >
-      type Ev r = closed < A | ...r >
-      type Both = Ev (closed < B >)
-      type Some = Ev < B >
-      type Rec r = closed { a: Int, ...r }
-      type R1 = Rec (closed { b: Int })
-      type R2 = Rec { b: Int }`
+      type Base = < A >
+      type ClosedBase = closed < A >
+      type Both = closed < ...Base | B >
+      type Some = < ...ClosedBase | B >
+      type Ent = { a: Int }
+      type R1 = closed { ...Ent, b: Int }
+      type R2 = { b: Int, ...Ent }`
     expect(decoded(schema, "Status", "Archived")).toMatchObject({ _tag: "@unknown", tag: "Archived" })
     expect(Exit.isFailure(decodeWith(schema, "Fixed", "Archived"))).toBe(true)
+    expect(decoded(schema, "Both", "A")).toBe("A")
     expect(Exit.isFailure(decodeWith(schema, "Both", "C"))).toBe(true)
     expect(decoded(schema, "Some", "C")).toMatchObject({ tag: "C" })
     expect(Exit.isFailure(decodeWith(schema, "R1", "{ a: 1, b: 2, c: 3 }"))).toBe(true)
-    expect(decoded(schema, "R2", "{ a: 1, b: 2, c: 3 }")).toEqual({ a: 1n, b: 2n })
+    expect(decoded(schema, "R2", "{ a: 1, b: 2, c: 3 }")).toEqual({ b: 2n, a: 1n })
   })
 
   it("generic and recursive types", () => {
@@ -145,16 +147,18 @@ describe("schema files", () => {
     expect(schemaError("type A = { a: Int, a: String }")).toContain("field a appears twice")
     expect(schemaError("type A = < X | X >")).toContain("tag X appears twice")
     expect(schemaError("type A = Maybe")).toContain("needs 1 argument")
-    expect(schemaError("type E r = < A | ...r >\ntype B = E < A >")).toContain("tag A appears twice after filling the row")
-    expect(schemaError("type E r = < A | ...r >\ntype B = E { x: Int }")).toContain("can't be filled with a record")
-    expect(schemaError("type E r = < A (E r) | ...r >")).toContain("can't be recursive")
+    expect(schemaError("type E = < A >\ntype B = < ...E | A >")).toContain("tag A appears twice (from ...E)")
+    expect(schemaError("type E = { x: Int }\ntype B = < ...E >")).toContain("E is not a variant")
+    expect(schemaError("type A = < X | ...B >\ntype B = < Y | ...A >")).toContain("spreads itself")
+    expect(schemaError("type P a = < A a >\ntype B = < ...P >")).toContain("only a type without parameters can be spread")
+    expect(schemaError("type E r = < A | ...r >")).toContain("row parameters (...r) aren't supported")
     expect(schemaError("type S = Stream Int\ntype R = { s: S }")).toContain("a stream can only be the whole file")
     expect(schemaError("import std/time (Dat)")).toContain("std/time has no type Dat")
     expect(schemaError("import other/x (A)")).toContain("unknown module other/x")
     expect(schemaError("import @haus/money (Money)")).toContain("no module resolver")
     expect(schemaError("type A = { d: Date(1) }")).toContain("expected")
     expect(schemaError("type A = { x: _ }")).toContain("open by default")
-    expect(schemaError("type A = < X | ... >")).toContain("open by default")
+    expect(schemaError("type A = < X | ... >")).toContain("a type name after '...'")
     expect(schemaError("type A = closed < >")).toContain("needs at least one tag")
     expect(schemaError("type A = {| a: Int |}")).toContain("write closed { … }")
     expect(schemaError("type A = " + "(".repeat(500) + "Int" + ")".repeat(500))).toContain("nested deeper")
@@ -163,8 +167,8 @@ describe("schema files", () => {
   it("prints TypeScript declarations", () => {
     const path = "examples/syntax-tour.schema.haus"
     const d = Haus.schemaDeclarations(parseSchemaFile(read(path), options(path)))
-    expect(d).toContain(`export type Level<C$ = {}> = Haus$.Lookup<C$, "syntax-tour#Level", "Debug" | "Info" | "Warn" | "Error">;`)
-    expect(d).toContain(`export declare const Root: Haus$.Named<Schema$.Codec<Root>, "syntax-tour#Root", Root$F, `)
+    expect(d).toContain(`export type Level<C$ = {}> = Haus$.Lookup<C$, "haus-examples/syntax-tour#Level", "Debug" | "Info" | "Warn" | "Error">;`)
+    expect(d).toContain(`export declare const Root: Haus$.Named<Schema$.Codec<Root>, "haus-examples/syntax-tour#Root", Root$F, `)
     expect(d).toContain(`interface Root$F extends Haus$.TypeLambda { readonly type: Root<this["C"]> }`)
     expect(d).toContain(`readonly timeout: Option$.Option<bigint>`)
     expect(d).toContain(`readonly owner?: string`)

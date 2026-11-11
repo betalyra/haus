@@ -1,0 +1,18 @@
+// logs.schema.haus: a service log, written as a stream (spec §6).
+//
+// A stream is a file of values, each followed by a comma: appending a line
+// keeps it valid, and a reader can handle each entry as soon as its comma
+// arrives, without waiting for the end.
+
+import std/time (Instant)
+
+type Level = closed < Debug | Info | Warn | Error >
+
+// Open: entries of kinds this schema doesn't know (yet) are kept as unknown
+// values instead of failing the whole stream.
+type Entry = <
+  | Log { at: Instant, level: Level, service: String, message: String }
+  | Request { at: Instant, method: String, path: String, status: UInt16, ms: UInt32 }
+>
+
+type Root = Stream Entry

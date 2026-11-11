@@ -4,3 +4,7 @@ dist/
 # Roc build output
 roc/**/build/
 .claude/settings.local.json
+# Rust build output
+rust/target/
+# Demo Time recordings (local only)
+.demo/

@@ -263,7 +263,7 @@ const visitTypes = (t: Type, onRef: (inst: Instance) => boolean, onStd: (name: S
  * `Haus.Lookup`); without codecs it is `{}`: the types of the schema.
  * Imported types are declared here too (not exported), so the module needs
  * no other schema module. Generic types are declared as generic type
- * aliases; types with rows are expanded where they are used.
+ * aliases.
  */
 export const schemaDeclarations = (file: SchemaFile, options: DeclarationOptions = {}): string => {
   const used = new Set<string>()
@@ -378,10 +378,6 @@ export const schemaDeclarations = (file: SchemaFile, options: DeclarationOptions
   const out: string[] = []
   for (const d of defs) {
     const name = names.get(d)!
-    if (d.rowParams.size > 0) {
-      if (own.has(d)) out.push(`// ${d.name} has row parameters; it is expanded where it is used.\n`)
-      continue
-    }
     const exported = own.has(d) ? "export " : ""
     const stream = d.template.stream ? "A stream: a file of values of this type.\n\n" : ""
     const from = own.has(d) ? "" : `From ${d.module ?? "another file"} (${d.id}).\n\n`

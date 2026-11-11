@@ -1,0 +1,61 @@
+---
+import Logo from "./Logo.astro";
+import { links } from "@/lib/links";
+
+const columns = [
+  {
+    title: "Read",
+    items: [
+      { label: "Specification, draft 0.2", href: links.spec },
+      { label: "Examples", href: links.examples },
+      { label: "Conformance suite", href: links.testSuite },
+    ],
+  },
+  {
+    title: "Use",
+    items: [
+      { label: "TypeScript", href: links.typescript },
+      { label: "Rust", href: links.rust },
+      { label: "Roc", href: links.roc },
+      { label: "Editors", href: links.editors },
+      { label: "Extensions", href: links.extensions },
+    ],
+  },
+];
+---
+
+<footer class="mt-8 border-t border-line">
+  <div class="mx-auto grid w-full max-w-6xl grid-cols-1 gap-12 px-6 pt-16 pb-14 sm:grid-cols-[1.6fr_1fr_1fr] lg:pt-20">
+    <div class="max-w-[24rem]">
+      <div class="flex items-center gap-2.5">
+        <Logo size={32} />
+        <span class="font-heading text-[1.35rem] leading-none font-semibold tracking-[-0.025em] text-ink">haus</span>
+      </div>
+      <p class="mt-5 text-[0.98rem] text-ink-2">
+        A data format that feels like home. Open source, and still a draft: play with it, but don't put it in
+        production yet.
+      </p>
+    </div>
+
+    {columns.map((col) => (
+      <div>
+        <h2 class="text-[1rem] text-ink">{col.title}</h2>
+        <ul class="mt-4 space-y-2.5 text-[0.98rem]">
+          {col.items.map((item) => (
+            <li>
+              <a href={item.href} class="brush-hover text-ink-2 hover:text-ink">
+                {item.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
+    ))}
+  </div>
+  <div class="border-t border-line-soft">
+    <div class="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-8 text-[0.9rem] text-ink-3">
+      <span>haus, draft 0.2</span>
+      <a href={links.repo} class="brush-hover hover:text-ink">github.com/betalyra/haus</a>
+    </div>
+  </div>
+</footer>

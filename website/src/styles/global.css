@@ -1,0 +1,413 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@import "@fontsource-variable/albert-sans";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+
+/* ---------------------------------------------------------------------------
+   haus: line and wash on white paper.
+   Text and drawings are ink. Colour only ever arrives as watercolour:
+   washes painted by src/lib/paint.ts, and pigment-dark inks for code.
+   --------------------------------------------------------------------------- */
+
+:root {
+  --ink: #26231f;
+  --ink-2: #57514a;
+  --ink-3: #7a726a;
+  --paper: #ffffff;
+  --line: color-mix(in oklab, var(--ink) 15%, white);
+  --line-soft: color-mix(in oklab, var(--ink) 8%, white);
+
+  /* pigments, as washes (see src/lib/pigments.ts) */
+  --cerulean: #1f8fc4;
+  --ultramarine: #3a4fb8;
+  --violet: #6b4bb0;
+  --rose: #d93d78;
+  --sienna: #c0582a;
+  --gold: #e39b16;
+  --sap: #5d9a2f;
+
+  /* the same pigments, mixed dark enough to write with (all >= 4.5:1 on white) */
+  --cerulean-ink: #17658e;
+  --ultramarine-ink: #2d3f9c;
+  --violet-ink: #5a3b9e;
+  --rose-ink: #ab2a5d;
+  --sienna-ink: #9a4019;
+  --gold-ink: #8a5800;
+  --sap-ink: #3c6a1e;
+
+  /* shadcn roles, mapped onto the page */
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: var(--paper);
+  --card-foreground: var(--ink);
+  --popover: var(--paper);
+  --popover-foreground: var(--ink);
+  --primary: var(--ink);
+  --primary-foreground: var(--paper);
+  --secondary: color-mix(in oklab, var(--cerulean) 12%, white);
+  --secondary-foreground: var(--ink);
+  --muted: color-mix(in oklab, var(--ink) 6%, white);
+  --muted-foreground: var(--ink-2);
+  --accent: color-mix(in oklab, var(--ultramarine) 12%, white);
+  --accent-foreground: var(--ink);
+  --destructive: var(--rose-ink);
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--ultramarine-ink);
+  --radius: 0.75rem;
+
+  --font-sans: "Geist Variable", "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-heading: "Albert Sans Variable", "Albert Sans", var(--font-sans);
+  --font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+@theme inline {
+  --font-sans: var(--font-sans);
+  --font-heading: var(--font-heading);
+  --font-mono: var(--font-mono);
+
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-paper: var(--paper);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+  --color-cerulean: var(--cerulean);
+  --color-ultramarine: var(--ultramarine);
+  --color-violet: var(--violet);
+  --color-rose: var(--rose);
+  --color-sienna: var(--sienna);
+  --color-gold: var(--gold);
+  --color-sap: var(--sap);
+  --color-cerulean-ink: var(--cerulean-ink);
+  --color-ultramarine-ink: var(--ultramarine-ink);
+  --color-violet-ink: var(--violet-ink);
+  --color-rose-ink: var(--rose-ink);
+  --color-sienna-ink: var(--sienna-ink);
+  --color-gold-ink: var(--gold-ink);
+  --color-sap-ink: var(--sap-ink);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    overflow-x: clip; /* washes may bleed past the edge; never scroll sideways */
+    color-scheme: light;
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-size: 1.0625rem;
+    line-height: 1.6;
+    font-weight: 400;
+    font-feature-settings: "ss01";
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    caret-color: var(--ultramarine-ink);
+  }
+
+  h1, h2, h3 {
+    font-family: var(--font-heading);
+    font-weight: 650;
+    letter-spacing: -0.025em;
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  code, kbd, pre {
+    font-family: var(--font-mono);
+    font-feature-settings: normal;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--cerulean) 26%, white);
+    color: var(--ink);
+  }
+
+  /* One focus ring for everything: ultramarine ink, clear of the element. */
+  :focus-visible {
+    outline: 1.5px solid var(--ultramarine-ink);
+    outline-offset: 4px;
+    border-radius: 8px;
+    box-shadow: none;
+  }
+  /* Script-moved focus after a click (tabs) is not keyboard focus. */
+  html[data-input="pointer"] :focus-visible {
+    outline: none;
+  }
+  .code pre:focus-visible {
+    outline-offset: 8px;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  a,
+  button:not(:disabled),
+  [role="tab"],
+  [role="button"],
+  summary,
+  label[for] {
+    cursor: pointer;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/* Scrollbars, tinted from the ink. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--ink) 24%, white) transparent;
+}
+
+/* ---------------------------------------------------------------------------
+   Prose bits
+   --------------------------------------------------------------------------- */
+
+/* Links and the active tab get a painted stroke instead of a ruled line.
+   The strokes are layered glazes, generated like the washes. */
+.prose-link,
+.brush-hover,
+.tab-brush {
+  text-decoration: none;
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  transition: background-size 260ms cubic-bezier(0.16, 1, 0.3, 1), color 160ms ease-out;
+}
+
+/* Emphasis: ink, not paint. Body text is warm grey; an emphasised phrase
+   turns full ink at a semibold weight. A few per page, never whole sentences. */
+strong,
+.mark {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.prose-link {
+  color: var(--ink);
+  background-image: url("/strokes/rose.svg");
+  background-size: 100% 0.42em;
+}
+.prose-link:hover {
+  background-size: 100% 0.95em;
+}
+
+.brush-hover {
+  background-image: url("/strokes/rose.svg");
+  background-size: 0% 0.42em;
+}
+.brush-hover:hover,
+a:hover > .brush-hover,
+a:focus-visible > .brush-hover {
+  background-size: 100% 0.42em;
+}
+
+.tab-brush {
+  background-image: url("/strokes/ultramarine.svg");
+  background-size: 0% 0.5em;
+  background-position: 0 92%;
+}
+.tab-brush:hover {
+  background-size: 35% 0.5em;
+}
+.tab-brush[data-active],
+.tab-brush[data-state="active"] {
+  background-size: 100% 0.5em;
+}
+
+.inline-code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  padding: 0.05em 0.35em;
+  border-radius: 0.35em;
+  background: color-mix(in oklab, var(--ink) 6%, white);
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------------
+   Code blocks (Shiki output). Each one is a sheet of white paper laid on the
+   painting: opaque, so a wash can frame the code but never sit under it.
+   --------------------------------------------------------------------------- */
+
+.code {
+  position: relative;
+  margin: 0;
+  min-width: 0;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 1.1rem 1.4rem 1.25rem;
+}
+
+.code pre.astro-code {
+  margin: 0;
+  padding: 0;
+  background: transparent !important;
+  font-size: 0.92rem;
+  line-height: 1.7;
+  overflow-x: auto;
+  tab-size: 2;
+}
+
+.code pre.astro-code code {
+  display: block;
+  font-family: inherit;
+}
+
+.code--sm {
+  padding: 0.85rem 1.1rem 0.95rem;
+  border-radius: 12px;
+}
+.code--sm pre.astro-code {
+  font-size: 0.84rem;
+  line-height: 1.65;
+}
+
+.code--lg pre.astro-code {
+  font-size: 1rem;
+  line-height: 1.75;
+}
+
+.code--muted {
+  background: color-mix(in oklab, var(--ink) 2.5%, white);
+  border-color: var(--line-soft);
+}
+.code--muted pre.astro-code span {
+  color: var(--ink-2) !important;
+}
+
+.code__label {
+  margin-bottom: 0.7rem;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.01em;
+  color: var(--ink-3);
+  line-height: 1.4;
+}
+
+/* ---------------------------------------------------------------------------
+   Watercolour washes (painted by src/lib/paint.ts)
+   --------------------------------------------------------------------------- */
+
+.wash {
+  position: absolute;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+  z-index: 0;
+}
+
+/* The paint reaches a quarter of the box past every edge (BLEED in paint.ts). */
+.wash__paint {
+  position: absolute;
+  top: -25%;
+  left: -25%;
+  width: 150%;
+  height: 150%;
+  -webkit-mask-image: var(--grain);
+  mask-image: var(--grain);
+  -webkit-mask-size: 256px 256px;
+  mask-size: 256px 256px;
+}
+
+/* Brush stroke under a word */
+.brush {
+  position: relative;
+  display: inline-block;
+  white-space: nowrap;
+  isolation: isolate;
+}
+.brush > .wash {
+  left: -0.3em;
+  right: -0.25em;
+  bottom: -0.2em;
+  width: calc(100% + 0.55em);
+  height: 0.75em;
+  z-index: -1;
+}
+
+/* ---------------------------------------------------------------------------
+   The chimney smoke: commas drifting up. Each puff gets its own drift, tilt,
+   size, duration and pause from the script in Base.astro, so no two are alike.
+   --k scales the drift to the drawing (px per step on the small mark).
+   --------------------------------------------------------------------------- */
+
+@keyframes smoke-rise {
+  0%   { transform: translate(0, 0) rotate(0deg) scale(0.9); opacity: 0; }
+  15%  { opacity: 0.9; }
+  70%  { opacity: 0.55; }
+  100% {
+    transform: translate(calc(var(--dx, -6) * var(--k)), calc(var(--dy, -22) * var(--k))) rotate(var(--rot, -18deg)) scale(var(--grow, 1));
+    opacity: 0;
+  }
+}
+
+.smoke {
+  --k: 1px;
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+  animation: smoke-rise var(--dur, 7s) cubic-bezier(0.22, 1, 0.36, 1) var(--wait, 0s) 1 both;
+}
+.painting .smoke {
+  --k: 0.33px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .smoke {
+    animation: none;
+    opacity: 0.85;
+  }
+  .smoke--2 {
+    display: none;
+  }
+}

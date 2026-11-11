@@ -1,0 +1,66 @@
+---
+import {
+  PiCalendarDotsLight,
+  PiDoorOpenLight,
+  PiFeatherLight,
+  PiPackageLight,
+  PiPuzzlePieceLight,
+  PiSealCheckLight,
+  PiShapesLight,
+  PiWavesLight,
+} from "react-icons/pi";
+import Code from "./Code.astro";
+import Wash from "./Wash.astro";
+import { features } from "@/content/samples";
+
+/** `**phrase**` in feature text becomes <strong>. The text is our own copy, not user input. */
+const emphasise = (text: string) => text.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+
+const icons = {
+  write: PiFeatherLight,
+  variants: PiShapesLight,
+  open: PiDoorOpenLight,
+  extend: PiPuzzlePieceLight,
+  time: PiCalendarDotsLight,
+  packages: PiPackageLight,
+  typed: PiSealCheckLight,
+  streams: PiWavesLight,
+} as const;
+---
+
+<section class="relative mx-auto w-full max-w-6xl px-6 py-20 lg:py-32" aria-labelledby="features-heading">
+  <div class="max-w-[40rem]">
+    <h2 id="features-heading" class="text-[2.2rem] leading-[1.08] sm:text-[2.8rem]">What makes it a home.</h2>
+    <p class="mt-5 text-[1.12rem] text-ink-2">
+      What every project ends up inventing for itself, <strong>built into the format</strong> once.
+    </p>
+  </div>
+
+  <ul class="mt-16 grid grid-cols-1 gap-x-12 gap-y-20 md:grid-cols-2 lg:gap-x-20 lg:gap-y-24">
+    {features.map((f, i) => {
+      const Icon = icons[f.key];
+      const [main, bleed] = f.wash;
+      return (
+        <li class="relative row-span-2 grid grid-cols-[3.5rem_minmax(0,1fr)] grid-rows-subgrid gap-x-5 gap-y-7">
+          <div class="relative isolate grid size-14 shrink-0 place-items-center">
+            <Wash
+              seed={100 + i * 7}
+              delay={(i % 2) * 140}
+              class="-inset-5 -z-10 h-[calc(100%+2.5rem)] w-[calc(100%+2.5rem)]"
+              strokes={[
+                { x: 0.44, y: 0.46, rx: 0.3, ry: 0.28, color: main, strength: 1.25 },
+                { x: 0.64, y: 0.64, rx: 0.17, ry: 0.15, color: bleed, strength: 1.1 },
+              ]}
+            />
+            <Icon size={38} aria-hidden="true" className="text-ink" />
+          </div>
+          <div class="min-w-0 flex-1">
+            <h3 class="text-[1.3rem] leading-tight tracking-[-0.02em]">{f.title}</h3>
+            <p class="mt-2 max-w-[32rem] text-ink-2" set:html={emphasise(f.text)} />
+          </div>
+          <Code code={f.code} lang="haus" label={f.file} size="sm" class="col-span-2 self-start" />
+        </li>
+      );
+    })}
+  </ul>
+</section>

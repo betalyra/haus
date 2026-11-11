@@ -11,31 +11,74 @@ importers:
 
   .: {}
 
+  ../examples:
+    dependencies:
+      '@haus/geo':
+        specifier: workspace:*
+        version: link:../extensions/geo
+      '@haus/money':
+        specifier: workspace:*
+        version: link:../extensions/money
+
   ../extensions/geo: {}
 
   ../extensions/money: {}
 
-  examples/basic:
+  demos:
     dependencies:
-      '@betalyra/haus-fmt':
+      '@betalyra/haus-fmt-effect':
         specifier: workspace:*
-        version: link:../../packages/haus
+        version: link:../packages/effect
+      '@effect/platform-node':
+        specifier: 4.0.6
+        version: 4.0.6(effect@4.0.6)(redis@6.3.1)
+      '@haus/money':
+        specifier: workspace:*
+        version: link:../../extensions/money
+      effect:
+        specifier: 4.0.6
+        version: 4.0.6
     devDependencies:
+      '@betalyra/haus-fmt-content-mapper':
+        specifier: workspace:*
+        version: link:../packages/content-mapper
       '@types/node':
         specifier: 24.10.1
         version: 24.10.1
+      tsx:
+        specifier: 4.23.15
+        version: 4.23.15
       typescript:
-        specifier: 5.9.3
-        version: 5.9.3
+        specifier: 7.1.0-beta
+        version: 7.1.0-beta
 
-  examples/content-mapper:
+  examples/logs:
     dependencies:
       '@betalyra/haus-fmt-effect':
         specifier: workspace:*
         version: link:../../packages/effect
-      '@effect/platform-node':
+      effect:
         specifier: 4.0.6
-        version: 4.0.6(effect@4.0.6)(redis@6.3.1)
+        version: 4.0.6
+    devDependencies:
+      '@betalyra/haus-fmt-content-mapper':
+        specifier: workspace:*
+        version: link:../../packages/content-mapper
+      '@types/node':
+        specifier: 24.10.1
+        version: 24.10.1
+      tsx:
+        specifier: 4.23.15
+        version: 4.23.15
+      typescript:
+        specifier: 7.1.0-beta
+        version: 7.1.0-beta
+
+  examples/order:
+    dependencies:
+      '@betalyra/haus-fmt-effect':
+        specifier: workspace:*
+        version: link:../../packages/effect
       '@haus/geo':
         specifier: workspace:*
         version: link:../../../extensions/geo
@@ -59,11 +102,8 @@ importers:
         specifier: 7.1.0-beta
         version: 7.1.0-beta
 
-  examples/effect:
+  examples/quickstart:
     dependencies:
-      '@betalyra/haus-fmt':
-        specifier: workspace:*
-        version: link:../../packages/haus
       '@betalyra/haus-fmt-effect':
         specifier: workspace:*
         version: link:../../packages/effect
@@ -71,12 +111,18 @@ importers:
         specifier: 4.0.6
         version: 4.0.6
     devDependencies:
+      '@betalyra/haus-fmt-content-mapper':
+        specifier: workspace:*
+        version: link:../../packages/content-mapper
       '@types/node':
         specifier: 24.10.1
         version: 24.10.1
+      tsx:
+        specifier: 4.23.15
+        version: 4.23.15
       typescript:
-        specifier: 5.9.3
-        version: 5.9.3
+        specifier: 7.1.0-beta
+        version: 7.1.0-beta
 
   packages/content-mapper:
     dependencies:
@@ -905,8 +951,8 @@ packages:
     engines: {node: '>=20.11'}
     hasBin: true
 
-  ws@8.22.1:
-    resolution: {integrity: sha512-oyL6OPYme/CmiFvNuGzeoxCJ4nOrZE2O1FwM9MWM1AsGri6nLXB2pg+lNA8aLeXMSav0J6eIVS1j6vUPzUtK9g==}
+  ws@8.22.2:
+    resolution: {integrity: sha512-/rEZ2ejown2N5gxVTHUu9bVVC7ttu0/Tgzf5hbTOixR3Fs7mbbXgn2DbdbcKgJOmpQMtrIUWivtYuVMnp/W/yA==}
     engines: {node: '>=10.0.0'}
     peerDependencies:
       bufferutil: ^4.0.1
@@ -923,7 +969,7 @@ snapshots:
     dependencies:
       '@types/ws': 8.18.2
       effect: 4.0.6
-      ws: 8.22.1
+      ws: 8.22.2
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -1430,4 +1476,4 @@ snapshots:
 
   why-is-node-running@3.2.1: {}
 
-  ws@8.22.1: {}
+  ws@8.22.2: {}

@@ -17,8 +17,9 @@
  *   (`type List a = < Nil | Cons a (List a) >`, not `T (Pair a a)`);
  * - records and variants are open (other fields are ignored, other tags kept
  *   as unknown) unless marked `closed`;
- * - rows (`< A | ...r >`, `{ x: T, ...r }`) are filled with a variant or a
- *   record, and a type with rows can't be recursive.
+ * - `...Name` copies the cases of a named variant (`< ...UserEvent | Ping >`)
+ *   or the fields of a named record (`{ ...Entity, name: String }`). Whether
+ *   the result is open or closed is decided by its own `closed` alone.
  *
  * Errors are HausSchemaFileError, with the position in the schema file.
  */
@@ -67,8 +68,6 @@ export interface RecordType {
   readonly fields: readonly Field[]
   /** `closed { … }`: other fields are an error. Records are open otherwise (other fields are ignored). */
   readonly closed: boolean
-  /** An unfilled row parameter (only in templates). */
-  readonly row?: string
 }
 
 export type Payload =
@@ -86,8 +85,6 @@ export interface VariantType {
   readonly cases: readonly Case[]
   /** Not `closed`: other tags are accepted as unknown values. */
   readonly open: boolean
-  /** An unfilled row parameter (only in templates). */
-  readonly row?: string
 }
 
 /**
@@ -123,8 +120,6 @@ export interface Definition {
   /** The identity of the file that defines it; undefined for the file being parsed when it has no id. */
   readonly module: string | undefined
   readonly params: readonly string[]
-  /** Parameters used as rows (`| r`); the others are type parameters. */
-  readonly rowParams: ReadonlySet<string>
   /** The `//` comment lines just above the definition. */
   readonly doc: string
   /** The definition's source text, with its comment. */
@@ -132,7 +127,7 @@ export interface Definition {
   readonly offset: number
   /**
    * The type for non-generic definitions; for generic ones the template,
-   * with `param` types for the parameters (rows stay unfilled).
+   * with `param` types for the parameters.
    */
   readonly template: Instance
 }
@@ -237,8 +232,15 @@ type Node =
   | RecordNode
   | VariantNode
 
-/** `...r`: the rest of the fields or tags comes from row parameter r. */
-type RowNode = { readonly t: "var"; readonly name: string; readonly pos: number }
+/**
+ * `...Name`: the fields or cases of the named type, copied in. `at` is how
+ * many own fields or cases come before it, to keep the written order.
+ */
+interface SpreadNode {
+  readonly name: string
+  readonly at: number
+  readonly pos: number
+}
 
 interface FieldNode {
   readonly key: string
@@ -250,7 +252,7 @@ interface FieldNode {
 interface RecordNode {
   readonly t: "record"
   readonly fields: readonly FieldNode[]
-  readonly row: RowNode | undefined
+  readonly spreads: readonly SpreadNode[]
   readonly closed: boolean
   readonly pos: number
 }
@@ -264,7 +266,7 @@ interface CaseNode {
 interface VariantNode {
   readonly t: "variant"
   readonly cases: readonly CaseNode[]
-  readonly row: RowNode | undefined
+  readonly spreads: readonly SpreadNode[]
   readonly closed: boolean
   readonly pos: number
 }
@@ -433,48 +435,47 @@ class SchemaParser {
     return this.unexpected("a type")
   }
 
-  /** `...r`, after the `...`. */
-  private parseRow(what: string): RowNode {
+  /** `...Name`, after the `...`. */
+  private parseSpread(at: number): SpreadNode {
     const t = this.tok
-    if (t.t !== "lower" || this.keyword() || t.value === "_") {
-      return this.fail(`${what} are open by default; '...' is only for a row parameter: ...r`, t.pos)
+    if (t.t === "lower" && !this.keyword()) {
+      return this.fail(`row parameters (...${t.value}) aren't supported; spread a named type instead: ...UserEvent`, t.pos)
     }
+    if (t.t !== "upper") this.unexpected("a type name after '...': ...UserEvent")
     this.advance()
-    return { t: "var", name: t.value, pos: t.pos }
+    return { name: t.value, at, pos: t.pos }
   }
 
   private parseRecord(closed: boolean): RecordNode {
     const pos = this.advance().pos
     if (this.is("|")) this.fail("{| … |} is gone: write closed { … } for a closed record", this.tok.pos)
     const fields: FieldNode[] = []
-    let row: RowNode | undefined
+    const spreads: SpreadNode[] = []
     while (!this.is("}")) {
       if (this.is("...")) {
         this.advance()
-        row = this.parseRow("records")
-        if (this.is(",")) this.advance()
-        if (!this.is("}")) this.unexpected("'}' after the row (it comes last)")
-        break
+        spreads.push(this.parseSpread(fields.length))
+      } else {
+        const k = this.tok
+        if (k.t !== "lower" && k.t !== "string") this.unexpected("a field name, ...Name or '}'")
+        this.advance()
+        const optional = this.is("?")
+        if (optional) this.advance()
+        this.expect(":")
+        const type = this.parseApp()
+        fields.push({ key: k.value, optional, type, pos: k.pos })
       }
-      const k = this.tok
-      if (k.t !== "lower" && k.t !== "string") this.unexpected("a field name or '}'")
-      this.advance()
-      const optional = this.is("?")
-      if (optional) this.advance()
-      this.expect(":")
-      const type = this.parseApp()
-      fields.push({ key: k.value, optional, type, pos: k.pos })
       if (this.is(",")) this.advance()
       else if (!this.is("}")) this.unexpected("',' or '}'")
     }
     this.expect("}")
-    return { t: "record", fields, row, closed, pos }
+    return { t: "record", fields, spreads, closed, pos }
   }
 
   private parseVariant(closed: boolean): VariantNode {
     const pos = this.advance().pos
     const cases: CaseNode[] = []
-    let row: RowNode | undefined
+    const spreads: SpreadNode[] = []
     if (this.is("|")) this.advance()
     while (!this.is(">")) {
       if (this.cur().t === "upper") {
@@ -484,16 +485,14 @@ class SchemaParser {
         cases.push({ tag: tag.value, args, pos: tag.pos })
       } else if (this.is("...")) {
         this.advance()
-        row = this.parseRow("variants")
-        if (!this.is(">")) this.unexpected("'>' after the row (it comes last)")
-        break
-      } else this.unexpected("a tag, a row ...r or '>'")
+        spreads.push(this.parseSpread(cases.length))
+      } else this.unexpected("a tag, ...Name or '>'")
       if (this.is(">")) break
       this.expect("|")
     }
     this.advance()
-    if (closed && cases.length === 0 && !row) this.fail("a closed variant needs at least one tag", pos)
-    return { t: "variant", cases, row, closed, pos }
+    if (closed && cases.length === 0 && spreads.length === 0) this.fail("a closed variant needs at least one tag", pos)
+    return { t: "variant", cases, spreads, closed, pos }
   }
 }
 
@@ -552,12 +551,8 @@ const PRELUDE_GENERIC: Record<string, number> = { Array: 1, Map: 1, Maybe: 1, Re
 const MAX_INSTANCES = 10_000
 const MAX_FILES = 256
 
-type RowValue =
-  | { readonly kind: "cases"; readonly cases: readonly Case[]; readonly open: boolean; readonly row?: string }
-  | { readonly kind: "fields"; readonly fields: readonly Field[]; readonly closed: boolean; readonly row?: string }
-  | { readonly kind: "unfilled"; readonly name: string }
-
-type Binding = { readonly kind: "type"; readonly type: Type } | { readonly kind: "row"; readonly row: RowValue }
+/** What each type parameter stands for while a generic type is evaluated. */
+type Env = ReadonlyMap<string, Type>
 
 type Fail = (reason: string, pos: number) => never
 
@@ -577,7 +572,6 @@ interface Unit {
 interface Def {
   readonly decl: TypeDecl
   readonly params: readonly string[]
-  readonly rowParams: Set<string>
   readonly unit: Unit
   definition?: Definition
 }
@@ -593,6 +587,8 @@ export function parseSchemaFile(text: string, options: ParseSchemaOptions = {}):
   const units = new Map<string, Unit>()
   const loading: string[] = []
   const allDefs: Def[] = []
+  /** The file that has each id: two files with one id would give their types the same ids. */
+  const ids = new Map<string, string | undefined>()
 
   // ── loading: parse each file once, build its scope ──
   const load = (text: string, key: string | undefined, id: string | undefined, fail: Fail, root: boolean): Unit => {
@@ -600,6 +596,7 @@ export function parseSchemaFile(text: string, options: ParseSchemaOptions = {}):
     const { imports, types } = new SchemaParser(text, fail).parseFile()
     const unit: Unit = { root, id, text, fail, own: new Map(), scope: new Map(), std: new Map() }
     if (key !== undefined) units.set(key, unit)
+    if (id !== undefined) ids.set(id, key)
     loading.push(key ?? "")
     try {
       for (const imp of imports) {
@@ -639,7 +636,7 @@ export function parseSchemaFile(text: string, options: ParseSchemaOptions = {}):
           if (seen.has(p.name)) fail(`parameter ${p.name} appears twice`, p.pos)
           seen.add(p.name)
         }
-        const def: Def = { decl, params: decl.params.map((p) => p.name), rowParams: new Set(), unit }
+        const def: Def = { decl, params: decl.params.map((p) => p.name), unit }
         unit.own.set(decl.name, def)
         unit.scope.set(decl.name, def)
         allDefs.push(def)
@@ -666,6 +663,9 @@ export function parseSchemaFile(text: string, options: ParseSchemaOptions = {}):
     if (loading.includes(r.key)) fail(`import cycle: ${imp.module} imports this file again`, imp.pos)
     const cached = units.get(r.key)
     if (cached) return cached
+    if (ids.has(r.id) && ids.get(r.id) !== r.key) {
+      fail(`${imp.module} is ${r.id}, but another file already is: two copies or two packages with the same name (${r.key})`, imp.pos)
+    }
     // Errors inside an imported file are reported at the import, with their place in that file.
     const nested: Fail = (reason, pos) => {
       const at = locate(r.text, pos, { offset: 0, line: 1, column: 1 })
@@ -677,52 +677,29 @@ export function parseSchemaFile(text: string, options: ParseSchemaOptions = {}):
   const root = load(text, options.key, options.id, rootFail, true)
   const scopeOf = (def: Def, name: string) => def.unit.scope.get(name)
 
-  // ── parameter kinds: a parameter used as a row (directly or passed to a row parameter) is a row parameter ──
-  const kindUses = (def: Def): { rows: Set<string>; types: Set<string> } => {
-    const rows = new Set<string>()
-    const typesUsed = new Set<string>()
+  // Every lowercase name in a type must be one of the definition's parameters.
+  const checkParams = (def: Def): void => {
     const params = new Set(def.params)
-    const visit = (n: Node, asRow: boolean): void => {
+    const visit = (n: Node): void => {
       switch (n.t) {
         case "var":
           if (!params.has(n.name)) def.unit.fail(`unknown type parameter ${n.name}`, n.pos)
-          ;(asRow ? rows : typesUsed).add(n.name)
           return
-        case "app": {
-          const target = scopeOf(def, n.head)
-          n.args.forEach((a, i) => visit(a, target !== undefined && target.rowParams.has(target.params[i] ?? "")))
-          return
-        }
+        case "app":
+          return n.args.forEach(visit)
         case "record":
-          n.fields.forEach((f) => visit(f.type, false))
-          if (n.row) visit(n.row, true)
-          return
+          return n.fields.forEach((f) => visit(f.type))
         case "variant":
-          n.cases.forEach((c) => c.args.forEach((a) => visit(a, false)))
-          if (n.row) visit(n.row, true)
-          return
+          return n.cases.forEach((c) => c.args.forEach(visit))
         default:
           return
       }
     }
-    visit(def.decl.body, false)
-    return { rows, types: typesUsed }
-  }
-  for (let changed = true, rounds = 0; changed; rounds++) {
-    changed = false
-    if (rounds > allDefs.length + 1) break
-    for (const def of allDefs) {
-      for (const r of kindUses(def).rows) {
-        if (!def.rowParams.has(r)) def.rowParams.add(r), (changed = true)
-      }
-    }
+    visit(def.decl.body)
   }
   for (const def of allDefs) {
     const fail = def.unit.fail
-    const { types: used } = kindUses(def)
-    for (const p of def.decl.params) {
-      if (def.rowParams.has(p.name) && used.has(p.name)) fail(`${p.name} is used both as a row and as a type`, p.pos)
-    }
+    checkParams(def)
     // §9.10: a generic type refers to itself only with its own parameters.
     const check = (n: Node): void => {
       if (n.t === "app") {
@@ -739,7 +716,6 @@ export function parseSchemaFile(text: string, options: ParseSchemaOptions = {}):
   // ── evaluation ──
   const instances = new Map<string, Instance>()
   const defOf = new Map<Instance, Def>()
-  const expanding: Def[] = []
   /** The file whose nodes are being evaluated: names resolve in its scope, errors point into it. */
   let current: Unit = root
   const fail: Fail = (reason, pos) => current.fail(reason, pos)
@@ -769,9 +745,9 @@ export function parseSchemaFile(text: string, options: ParseSchemaOptions = {}):
       case "ref":
         return t.instance.key
       case "record":
-        return `{${t.closed ? "|" : ""}${t.fields.map((f) => `${JSON.stringify(f.key)}${f.optional ? "?" : ""}:${keyOf(f.type)}`).join(",")}${t.row ? `|${t.row}` : ""}}`
+        return `{${t.closed ? "|" : ""}${t.fields.map((f) => `${JSON.stringify(f.key)}${f.optional ? "?" : ""}:${keyOf(f.type)}`).join(",")}}`
       case "variant":
-        return `<${t.cases.map((c) => c.tag + payloadKey(c.payload)).join("|")}${t.open ? "|_" : ""}${t.row ? `|${t.row}` : ""}>`
+        return `<${t.cases.map((c) => c.tag + payloadKey(c.payload)).join("|")}${t.open ? "|_" : ""}>`
     }
   }
   const payloadKey = (p: Payload): string =>
@@ -796,13 +772,9 @@ export function parseSchemaFile(text: string, options: ParseSchemaOptions = {}):
   const evaluateInstance = (inst: Instance, def: Def): void =>
     within(def.unit, () => {
       if (inst.state === "done") return
-      if (inst.state === "evaluating") fail(`type ${def.decl.name} is used as a row of itself`, def.decl.pos)
+      if (inst.state === "evaluating") fail(`type ${def.decl.name} spreads itself (directly or through another type)`, def.decl.pos)
       inst.state = "evaluating"
-      const env = new Map<string, Binding>()
-      def.params.forEach((p, i) => {
-        const arg = inst.args[i]!
-        env.set(p, def.rowParams.has(p) ? { kind: "row", row: { kind: "unfilled", name: p } } : { kind: "type", type: arg })
-      })
+      const env: Env = new Map(def.params.map((p, i) => [p, inst.args[i]!]))
       const body = def.decl.body
       if ((body.t === "app" && body.head === "Stream") || (body.t === "name" && body.name === "Stream")) {
         if (body.t !== "app" || body.args.length !== 1) return fail("Stream needs 1 argument", body.pos)
@@ -850,16 +822,13 @@ export function parseSchemaFile(text: string, options: ParseSchemaOptions = {}):
   }
   const pendingStreamChecks: [Instance, number, Unit][] = []
 
-  const evaluate = (n: Node, env: ReadonlyMap<string, Binding>): Type => {
+  const evaluate = (n: Node, env: Env): Type => {
     switch (n.t) {
       case "name":
         if (n.name === "Stream") return fail("Stream needs 1 argument", n.pos)
         return lookupName(n.name, n.pos)
-      case "var": {
-        const b = env.get(n.name)!
-        if (b.kind === "row") return fail(`${n.name} is a row parameter; use it as '...${n.name}' inside < > or { }`, n.pos)
-        return b.type
-      }
+      case "var":
+        return env.get(n.name)!
       case "app":
         return apply(n, env)
       case "record":
@@ -869,7 +838,7 @@ export function parseSchemaFile(text: string, options: ParseSchemaOptions = {}):
     }
   }
 
-  const apply = (n: Extract<Node, { t: "app" }>, env: ReadonlyMap<string, Binding>): Type => {
+  const apply = (n: Extract<Node, { t: "app" }>, env: Env): Type => {
     const arity = PRELUDE_GENERIC[n.head]
     if (arity !== undefined) {
       if (n.args.length !== arity) fail(`${n.head} needs ${arity} argument${arity > 1 ? "s" : ""}`, n.pos)
@@ -902,97 +871,75 @@ export function parseSchemaFile(text: string, options: ParseSchemaOptions = {}):
     if (n.args.length !== def.params.length) {
       fail(`${n.head} needs ${def.params.length} argument${def.params.length === 1 ? "" : "s"} (${[n.head, ...def.params].join(" ")}), got ${n.args.length}`, n.pos)
     }
-    if (def.rowParams.size === 0) {
-      return refTo(instance(def, n.args.map((a) => evaluate(a, env)), n.pos), n.pos)
+    return refTo(instance(def, n.args.map((a) => evaluate(a, env)), n.pos), n.pos)
+  }
+
+  /** The record or variant that `...Name` copies from, evaluated now if necessary. */
+  const spreadOf = (sp: SpreadNode, want: "record" | "variant"): RecordType | VariantType => {
+    const def = current.scope.get(sp.name)
+    if (!def) {
+      lookupName(sp.name, sp.pos) // reports unknown types, with an import hint
+      return fail(`${sp.name} can't be spread: only a named ${want} can`, sp.pos)
     }
-    // Types with rows are expanded where they are used.
-    if (expanding.includes(def)) fail(`${def.decl.name} has row parameters and so can't be recursive`, n.pos)
-    const inner = new Map<string, Binding>()
-    def.params.forEach((p, i) => {
-      const arg = n.args[i]!
-      inner.set(p, def.rowParams.has(p) ? { kind: "row", row: rowArg(arg, env) } : { kind: "type", type: evaluate(arg, env) })
+    if (def.params.length > 0) {
+      fail(`${sp.name} has parameters (${[sp.name, ...def.params].join(" ")}); only a type without parameters can be spread`, sp.pos)
+    }
+    const inst = instance(def, [], sp.pos)
+    const t = resolveRef({ kind: "ref", instance: inst }, sp.pos)
+    if (inst.stream) fail(`${sp.name} is a Stream and can't be spread`, sp.pos)
+    if (t.kind !== want) fail(`${sp.name} is not a ${want}, so it can't be spread here`, sp.pos)
+    return t as RecordType | VariantType
+  }
+
+  /** Own entries and spread ones, in the order they are written. */
+  const inOrder = <T>(own: readonly T[], spreads: readonly SpreadNode[], spread: (sp: SpreadNode) => readonly T[]): T[] => {
+    const out: T[] = []
+    own.forEach((x, i) => {
+      for (const sp of spreads) if (sp.at === i) out.push(...spread(sp))
+      out.push(x)
     })
-    expanding.push(def)
-    try {
-      const body = def.decl.body
-      if (body.t === "app" && body.head === "Stream") fail("Stream can only be the whole type of a definition", n.pos)
-      return within(def.unit, () => evaluate(body, inner))
-    } finally {
-      expanding.pop()
-    }
+    for (const sp of spreads) if (sp.at === own.length) out.push(...spread(sp))
+    return out
   }
 
-  const rowArg = (n: Node, env: ReadonlyMap<string, Binding>): RowValue => {
-    if (n.t === "var") {
-      const b = env.get(n.name)!
-      if (b.kind === "type") fail(`${n.name} is a type parameter and can't fill a row`, n.pos)
-      return (b as Extract<Binding, { kind: "row" }>).row
-    }
-    const t = resolveRef(evaluate(n, env), n.pos)
-    if (t.kind === "variant") return { kind: "cases", cases: t.cases, open: t.open, ...(t.row ? { row: t.row } : {}) }
-    if (t.kind === "record") return { kind: "fields", fields: t.fields, closed: t.closed, ...(t.row ? { row: t.row } : {}) }
-    return fail("a row is filled with a variant < … > (< > for any tags) or a record { … }", n.pos)
-  }
-
-  const rowOf = (row: RowNode, env: ReadonlyMap<string, Binding>): RowValue => {
-    const b = env.get(row.name)
-    if (!b) return fail(`unknown type parameter ${row.name}`, row.pos)
-    if (b.kind === "type") return fail(`${row.name} is a type parameter, not a row`, row.pos)
-    return b.row
-  }
-
-  const evaluateFields = (nodes: readonly FieldNode[], env: ReadonlyMap<string, Binding>): Field[] => {
-    const seen = new Set<string>()
-    return nodes.map((f) => {
-      if (seen.has(f.key)) fail(`field ${f.key} appears twice`, f.pos)
-      seen.add(f.key)
-      return { key: f.key, optional: f.optional, type: evaluate(f.type, env) }
-    })
-  }
-
-  const evaluateRecord = (n: RecordNode, env: ReadonlyMap<string, Binding>): RecordType => {
-    const fields = evaluateFields(n.fields, env)
-    if (!n.row) return { kind: "record", fields, closed: n.closed }
-    const row = rowOf(n.row, env)
-    switch (row.kind) {
-      case "unfilled":
-        return { kind: "record", fields, closed: n.closed, row: row.name }
-      case "cases":
-        return fail("this row is a record row; it can't be filled with a variant", n.row.pos)
-      case "fields": {
-        const keys = new Set(fields.map((f) => f.key))
-        for (const f of row.fields) if (keys.has(f.key)) fail(`field ${f.key} appears twice after filling the row`, n.row.pos)
-        // Closed only if both parts are.
-        return { kind: "record", fields: [...fields, ...row.fields], closed: n.closed && row.closed, ...(row.row ? { row: row.row } : {}) }
+  /** Reports a field or tag that appears twice, saying where each one came from. */
+  const once = (what: "field" | "tag") => {
+    const seen = new Map<string, string>()
+    return (name: string, from: string, pos: number) => {
+      const before = seen.get(name)
+      if (before !== undefined) {
+        const where = [before, from].filter(Boolean).join(" and ")
+        fail(`${what} ${name} appears twice${where ? ` (${where})` : ""}`, pos)
       }
+      seen.set(name, from)
     }
   }
 
-  const evaluateVariant = (n: VariantNode, env: ReadonlyMap<string, Binding>): VariantType => {
-    const seen = new Set<string>()
-    const cases: Case[] = n.cases.map((c) => {
-      if (seen.has(c.tag)) fail(`tag ${c.tag} appears twice`, c.pos)
-      seen.add(c.tag)
+  const evaluateRecord = (n: RecordNode, env: Env): RecordType => {
+    const check = once("field")
+    const own = n.fields.map((f) => ({ field: { key: f.key, optional: f.optional, type: evaluate(f.type, env) }, from: "", pos: f.pos }))
+    const fields = inOrder(own, n.spreads, (sp) =>
+      (spreadOf(sp, "record") as RecordType).fields.map((field) => ({ field, from: `from ...${sp.name}`, pos: sp.pos })),
+    ).map(({ field, from, pos }) => (check(field.key, from, pos), field))
+    // Open or closed is decided here alone, never by what is spread in.
+    return { kind: "record", fields, closed: n.closed }
+  }
+
+  const evaluateVariant = (n: VariantNode, env: Env): VariantType => {
+    const check = once("tag")
+    const own = n.cases.map((c) => {
       const [first] = c.args
       const payload: Payload =
         c.args.length === 0 ? { kind: "none" }
         : c.args.length === 1 && first!.t === "record" ? { kind: "record", record: evaluateRecord(first!, env) }
         : { kind: "positional", items: c.args.map((a) => evaluate(a, env)) }
-      return { tag: c.tag, payload }
+      return { c: { tag: c.tag, payload } as Case, from: "", pos: c.pos }
     })
-    if (!n.row) return { kind: "variant", cases, open: !n.closed }
-    const row = rowOf(n.row, env)
-    switch (row.kind) {
-      case "unfilled":
-        return { kind: "variant", cases, open: !n.closed, row: row.name }
-      case "fields":
-        return fail("this row is a variant row; it can't be filled with a record", n.row.pos)
-      case "cases": {
-        for (const c of row.cases) if (seen.has(c.tag)) fail(`tag ${c.tag} appears twice after filling the row`, n.row.pos)
-        // Closed only if both parts are.
-        return { kind: "variant", cases: [...cases, ...row.cases], open: !n.closed || row.open, ...(row.row ? { row: row.row } : {}) }
-      }
-    }
+    const cases = inOrder(own, n.spreads, (sp) =>
+      (spreadOf(sp, "variant") as VariantType).cases.map((c) => ({ c, from: `from ...${sp.name}`, pos: sp.pos })),
+    ).map(({ c, from, pos }) => (check(c.tag, from, pos), c))
+    // Open or closed is decided here alone, never by what is spread in.
+    return { kind: "variant", cases, open: !n.closed }
   }
 
   const definitionOf = (def: Def): Definition => {
@@ -1003,7 +950,6 @@ export function parseSchemaFile(text: string, options: ParseSchemaOptions = {}):
       id: def.unit.id === undefined ? d.name : `${def.unit.id}#${d.name}`,
       module: def.unit.id,
       params: def.params,
-      rowParams: def.rowParams,
       doc: d.doc,
       source: def.unit.text.slice(d.docStart, d.end).trim(),
       offset: d.pos,

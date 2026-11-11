@@ -30,7 +30,7 @@ Shop := [].{
 	decode_app_event = |v| match v {
 		Tag("PaymentReceived", _) => {
 			fs = Decode.record(v)?
-			Ok(PaymentReceived({ id: Decode.field(fs, "id", Decode.u64)?, amount: Decode.field(fs, "amount", Decode.money)?, at: Decode.field(fs, "at", Decode.instant)? }))
+			Ok(PaymentReceived({ id: Decode.field(fs, "id", Decode.u64)?, amount: Decode.field(fs, "amount", money)?, at: Decode.field(fs, "at", Decode.instant)? }))
 		}
 		Tag("Heartbeat", []) => Ok(Heartbeat)
 		_ =>
@@ -55,6 +55,14 @@ Shop := [].{
 	## Any record with an `id` field.
 	id_of : { id : U64, .. } -> U64
 	id_of = |record| record.id
+}
+
+## `Money(19.99, EUR)` as a record. (The full @haus/money package, generated
+## from its schema, is in extensions/money/roc; see examples/order.)
+money : Value -> Try({ amount : Str, currency : Str }, Decode.Error)
+money = |v| match v {
+	Tag("Money", [amount, currency]) => Ok({ amount: Decode.arg("Money", 0, amount, Decode.decimal)?, currency: Decode.arg("Money", 1, currency, Decode.tag_name)? })
+	_ => Decode.expected("Money(Decimal, Currency)", v)
 }
 
 UserEvent : [
@@ -108,9 +116,9 @@ expect {
 expect Shop.id_of({ id: 1, email: "a@b" }) + Shop.id_of({ id: 2, amount: { amount: "1", currency: "EUR" } }) == 3
 
 # Mismatches report where they happened.
-expect Decode.all("UserCreated { id: 1, at: Instant(\"x\") },", Shop.decode_user_event) == Err(Decode({ reason: "missing field 'email'", path: "$[0]" }))
-expect Decode.all("Heartbeat, UserRenamed { id: \"42\" },", Shop.decode_user_event) == Err(Decode({ reason: "expected an unsigned integer, found a string", path: "$[1].id" }))
-expect Decode.all("UserCreated(1)", Shop.decode_user_event) == Err(Decode({ reason: "expected a record, found variant UserCreated", path: "$[0]" }))
+expect Decode.all("UserCreated { id: 1, at: Instant(\"x\") },", Shop.decode_user_event) == Err(Decode({ reason: "missing field 'email'", path: "[0]" }))
+expect Decode.all("Heartbeat, UserRenamed { id: \"42\" },", Shop.decode_user_event) == Err(Decode({ reason: "expected a number (UInt64), found a string", path: "[1].id" }))
+expect Decode.all("UserCreated(1)", Shop.decode_user_event) == Err(Decode({ reason: "expected a record, found variant UserCreated", path: "[0]" }))
 expect {
 	match Decode.all("{ ok: true }", Shop.decode_user_event) {
 		Err(Syntax({ line: 1, column: 7, .. })) => True

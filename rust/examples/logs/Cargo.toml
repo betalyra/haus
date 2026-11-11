@@ -1,0 +1,12 @@
+[package]
+name = "haus-example-logs"
+version = "0.0.0"
+description = "A log read and written as a stream: the Rust twin of the TypeScript logs example"
+edition.workspace = true
+publish = false
+
+[dependencies]
+haus = { path = "../../haus" }
+
+[build-dependencies]
+haus-build = { path = "../../haus-build" }

@@ -1,7 +1,9 @@
 packages:
   - packages/*
   - examples/*
+  - demos
   - ../extensions/*
+  - ../examples
 
 allowBuilds:
   esbuild: true

@@ -1,0 +1,31 @@
+---
+/**
+ * A watercolour wash, painted on load by src/lib/paint.ts.
+ * Positioned absolutely by the caller through `class`. The canvas inside
+ * reaches a quarter of the box beyond each edge (see BLEED in paint.ts), so
+ * paint that spreads past the box is never cut off.
+ * Pass `strokes` for a mixed wash, or `color` for a single brushload.
+ */
+import { pigments, type Pigment, type Stroke } from "@/lib/pigments";
+
+interface Props {
+  strokes?: Stroke[];
+  color?: Pigment;
+  strength?: number;
+  seed?: number;
+  /** ms before the paint starts blooming */
+  delay?: number;
+  class?: string;
+}
+
+const { strokes, color = "gold", strength = 1, seed = 1, delay = 0, class: className } = Astro.props;
+
+const blobs = (strokes ?? [{ x: 0.5, y: 0.5, rx: 0.36, ry: 0.34, color, strength }]).map((s) => ({
+  ...s,
+  color: pigments[s.color],
+}));
+---
+
+<div class:list={["wash", className]} aria-hidden="true">
+  <canvas class="wash__paint" data-wash={JSON.stringify({ seed, delay, blobs })}></canvas>
+</div>

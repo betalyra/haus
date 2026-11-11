@@ -1,0 +1,68 @@
+---
+import "@/styles/global.css";
+
+interface Props {
+  title: string;
+  description: string;
+}
+
+const { title, description } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta name="theme-color" content="#ffffff" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  </head>
+  <body class="min-h-dvh overflow-x-clip">
+    <a
+      href="#main"
+      class="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-md focus:bg-paper focus:px-3 focus:py-2 focus:text-ink"
+    >
+      Skip to content
+    </a>
+
+
+    <slot />
+
+    <script>
+      import { paintAll } from "@/lib/paint";
+      paintAll();
+
+      // Focus rings follow the keyboard, not the mouse.
+      const root = document.documentElement;
+      addEventListener("pointerdown", () => (root.dataset.input = "pointer"), true);
+      addEventListener("keydown", () => (root.dataset.input = "keyboard"), true);
+
+      // Chimney smoke: every puff drifts, tilts and lingers a little differently.
+      if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        const between = (lo: number, hi: number) => lo + Math.random() * (hi - lo);
+        const puff = (el: SVGElement, first = false) => {
+          el.style.setProperty("--dx", between(-9, 3).toFixed(1));
+          el.style.setProperty("--dy", between(-28, -17).toFixed(1));
+          el.style.setProperty("--rot", `${between(-30, -4).toFixed(0)}deg`);
+          el.style.setProperty("--grow", between(0.85, 1.2).toFixed(2));
+          el.style.setProperty("--dur", `${between(6, 9.5).toFixed(2)}s`);
+          el.style.setProperty("--wait", `${(first ? between(0.3, 4) : between(1.2, 4.5)).toFixed(2)}s`);
+          el.style.animationName = "none";
+          void el.getBoundingClientRect();
+          el.style.animationName = "";
+        };
+        document.querySelectorAll<SVGElement>(".smoke").forEach((el) => {
+          el.addEventListener("animationend", () => puff(el));
+          puff(el, true);
+          if (el.classList.contains("smoke--2")) el.style.setProperty("--wait", `${between(3.5, 6).toFixed(2)}s`);
+        });
+      }
+    </script>
+  </body>
+</html>

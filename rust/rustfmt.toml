@@ -1,0 +1,4 @@
+# Shared by every crate in this workspace (and the extension crates, via `--config-path`).
+edition = "2024"
+max_width = 120
+use_small_heuristics = "Max"

@@ -1,0 +1,13 @@
+[package]
+name = "haus"
+version = "0.1.0"
+description = "The haus data format: parser and data model"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+serde = "1"
+serde_json = { version = "1", features = ["unbounded_depth"] }

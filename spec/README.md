@@ -314,16 +314,29 @@ A schema file (`.schema.haus`, grammar in [`grammar.ebnf`](grammar.ebnf)) is a l
 
 Tools that check a file against its schema (editors, `haus check`) MUST report what a closed type forbids as an error, and SHOULD mark fields and tags an open type doesn't list as a hint ("not in the schema"), without failing the check.
 
-**Rows.** `< A | ...r >` and `{ x: T, ...r }` take the rest of their tags or fields from the argument for `r`, a variant or a record. The result is closed only if both parts are closed: `type AppEvent = UserEvent (closed < Heartbeat >)` with `type UserEvent r = closed < … | ...r >` has exactly those tags; `UserEvent < >` is open.
+**Spreads.** `...Name` copies the tags of the named variant into a variant, or the fields of the named record into a record, at the place where it is written. Whether the result is open or closed is decided by its own `closed` alone, never by the type it copies from:
+
+```
+type UserEvent = < UserCreated { id: Int } | UserRenamed { id: Int, to: String } >
+type AppEvent = closed < ...UserEvent | Heartbeat >   // exactly these three tags
+type ServerEvent = < ...UserEvent >                   // the user events; other tags become Unknown
+
+type Base = { id: Int, createdAt: Instant }
+type Person = closed { ...Base, name: String }
+```
+
+Only a named type without parameters can be spread; to reuse a structure with a part left open, use a type parameter (`type Envelope e = { id: String, event: e }`). There are no row parameters: `...r` is reserved and MUST be rejected.
 
 Implementations MUST reject:
 
 - unknown types, types used with the wrong number of arguments, types defined twice, and redefinitions of prelude types;
-- duplicate fields in a record and duplicate tags in a variant, also after a row is filled;
-- `closed < >`; a parameter used both as a row and as a type;
+- duplicate fields in a record and duplicate tags in a variant, also those copied in by a spread;
+- `closed < >`;
+- a spread of something other than a named variant (in a variant) or a named record (in a record), of a type with parameters, or of a `Stream`;
+- a type that spreads itself, directly or through other types (`type A = < ...B >`, `type B = < ...A >`);
+- `...r`: row parameters are not part of the language;
 - recursion that doesn't pass through a record field, array element or variant payload (`type A = B`, `type B = A`), §9.9;
 - a generic type that refers to itself with arguments other than its own parameters, §9.10;
-- a type with row parameters that refers to itself (it is expanded where it is used);
 - `Stream a` anywhere but as the whole type of a definition, and references to such a definition;
 - the import errors of §13.3.
 

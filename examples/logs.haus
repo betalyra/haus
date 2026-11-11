@@ -1,0 +1,7 @@
+// A service log: one entry per line, each followed by a comma.
+Log { at: Instant("2026-11-11T09:00:00Z"), level: Info, service: "api", message: "started on :8080" },
+Request { at: Instant("2026-11-11T09:00:02Z"), method: "GET", path: "/orders/7", status: 200, ms: 12 },
+Request { at: Instant("2026-11-11T09:00:03Z"), method: "POST", path: "/orders", status: 503, ms: 1840 },
+// A kind of entry the schema doesn't know: decoded as Unknown, not an error.
+Deploy { at: Instant("2026-11-11T09:01:00Z"), version: "1.4.2" },
+Log { at: Instant("2026-11-11T09:01:05Z"), level: Error, service: "payments", message: "card processor timed out" },

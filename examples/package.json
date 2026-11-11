@@ -1,0 +1,9 @@
+{
+  "name": "haus-examples",
+  "private": true,
+  "description": "Shared haus files for the TypeScript and Rust examples. The schema packages their schemas import are dependencies here, so Node resolves them from this folder (Rust resolves them through each crate's own dependencies).",
+  "dependencies": {
+    "@haus/geo": "workspace:*",
+    "@haus/money": "workspace:*"
+  }
+}

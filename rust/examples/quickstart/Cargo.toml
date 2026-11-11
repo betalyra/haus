@@ -1,0 +1,12 @@
+[package]
+name = "haus-example-quickstart"
+version = "0.0.0"
+description = "Data typed by its schema, decoding, encoding and errors: the Rust twin of the TypeScript quickstart"
+edition.workspace = true
+publish = false
+
+[dependencies]
+haus = { path = "../../haus" }
+
+[build-dependencies]
+haus-build = { path = "../../haus-build" }

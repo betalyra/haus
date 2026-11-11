@@ -412,8 +412,13 @@ const encodeGenericNode = (js: unknown): Value => {
   return vRec(new Map(entries.map(([k, v]) => [k, encodeGeneric(v)])))
 }
 
+/** Without a zero fraction: `…T09:00:00Z`, not `…T09:00:00.000Z` (the same instant, as written). */
+const noZeroFraction = (iso: string) => iso.replace(/\.000(?=Z|[+-]\d{2}:\d{2})/, "")
+
 const dateTimeValue = (d: DateTime.DateTime): Value =>
-  DateTime.isZoned(d) ? vVariant("ZonedDateTime", [vStr(DateTime.formatIsoZoned(d))]) : vVariant("Instant", [vStr(DateTime.formatIso(d))])
+  DateTime.isZoned(d)
+    ? vVariant("ZonedDateTime", [vStr(noZeroFraction(DateTime.formatIsoZoned(d)))])
+    : vVariant("Instant", [vStr(noZeroFraction(DateTime.formatIso(d)))])
 
 const encCache = new WeakMap<AST, Encoder>()
 
