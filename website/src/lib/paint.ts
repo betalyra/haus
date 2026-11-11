@@ -3,8 +3,9 @@
  *
  * Each brushload is an ellipse whose edge is recursively deformed, then glazed
  * as ~33 slightly different, very transparent layers (the layered-polygon
- * technique). Layers are painted smallest first, so the pigment spreads out
- * across the paper when a wash scrolls into view. A dried "tide line" finishes
+ * technique). Each wash is painted once, in idle time, about a screen before
+ * it scrolls into view; it is then revealed with a CSS transition (opacity,
+ * a growing soft mask), with no script running per frame. A dried "tide line" finishes
  * the edge, and a paper-grain mask (set once as --grain) granulates the pigment.
  */
 
@@ -135,7 +136,8 @@ const prep = (el: HTMLCanvasElement): Canvas | null => {
   const h = el.clientHeight;
   const ctx = el.getContext("2d");
   if (!w || !h || !ctx) return null;
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  // Soft paint needs no more than 1.5x: sharper costs memory, not looks.
+  const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
   el.width = Math.round(w * dpr);
   el.height = Math.round(h * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -159,19 +161,9 @@ const drawUpTo = (c: Canvas, upto: number) => {
   }
 };
 
-const reduced = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-const bloom = (c: Canvas, duration = 1700) => {
-  if (reduced()) return drawUpTo(c, c.queue.length);
-  const start = performance.now() + (c.spec.delay ?? 0);
-  const tick = (now: number) => {
-    const p = Math.min(Math.max((now - start) / duration, 0), 1);
-    const eased = 1 - Math.pow(1 - p, 3);
-    drawUpTo(c, Math.round(eased * c.queue.length));
-    if (p < 1) requestAnimationFrame(tick);
-  };
-  requestAnimationFrame(tick);
-};
+/** Runs `f` when the browser is idle (or soon, where idle callbacks don't exist). */
+const idle = (f: () => void) =>
+  "requestIdleCallback" in window ? requestIdleCallback(f, { timeout: 400 }) : setTimeout(f, 16);
 
 /** A tile of cold-press paper: fine tooth plus soft blotches, as an alpha mask. */
 const grain = () => {
@@ -211,17 +203,41 @@ export function paintAll() {
   const canvases = new Map<HTMLCanvasElement, Canvas | null>();
   const els = Array.from(document.querySelectorAll<HTMLCanvasElement>("canvas[data-wash]"));
 
-  const io = new IntersectionObserver(
-    (entries) => {
+  const paint = (el: HTMLCanvasElement) => {
+    if (canvases.has(el)) return;
+    const c = prep(el);
+    canvases.set(el, c);
+    if (c) drawUpTo(c, c.queue.length);
+  };
+
+  // Paint a screen ahead, while the browser is idle.
+  const ahead = new IntersectionObserver(
+    (entries) =>
       entries.forEach((e) => {
         if (!e.isIntersecting) return;
-        io.unobserve(e.target);
-        const c = prep(e.target as HTMLCanvasElement);
-        canvases.set(e.target as HTMLCanvasElement, c);
-        if (c) bloom(c);
-      });
-    },
-    { rootMargin: "0px 0px -8% 0px" },
+        ahead.unobserve(e.target);
+        idle(() => paint(e.target as HTMLCanvasElement));
+      }),
+    { rootMargin: "100% 0px 100% 0px" },
+  );
+
+  // Reveal once it's actually on screen (painting it now if idle time hasn't come yet).
+  const shown = new IntersectionObserver(
+    (entries) =>
+      entries.forEach((e) => {
+        if (!e.isIntersecting) return;
+        const el = e.target as HTMLCanvasElement;
+        shown.unobserve(el);
+        paint(el);
+        // A little randomness in when and how fast, so washes revealed together
+        // don't move in lockstep.
+        const delay = (canvases.get(el)?.spec.delay ?? 0) + Math.random() * 30;
+        const pace = 0.9 + Math.random() * 0.3;
+        el.style.transitionDelay = `${Math.round(delay)}ms`;
+        el.style.transitionDuration = [180, 400, 400].map((ms) => `${Math.round(ms * pace)}ms`).join(", ");
+        requestAnimationFrame(() => el.classList.add("is-shown"));
+      }),
+    { rootMargin: "0px 0px 10% 0px" },
   );
 
   const ro = new ResizeObserver((entries) => {
@@ -229,14 +245,16 @@ export function paintAll() {
       const el = e.target as HTMLCanvasElement;
       const old = canvases.get(el);
       if (!old || old.size === `${el.clientWidth}x${el.clientHeight}`) return;
-      const c = prep(el);
-      canvases.set(el, c);
-      if (c) drawUpTo(c, c.queue.length);
+      canvases.delete(el);
+      paint(el);
     });
   });
 
   els.forEach((el) => {
-    io.observe(el);
     ro.observe(el);
+    // The hero: painted now and shown as it is, with no reveal.
+    if (el.classList.contains("is-instant")) return paint(el);
+    ahead.observe(el);
+    shown.observe(el);
   });
 }

@@ -14,33 +14,80 @@ import type { Stroke } from "@/lib/pigments";
 interface Props {
   class?: string;
   light?: "day" | "dusk";
+  /** Show the paint at once, without a reveal (the hero). */
+  instant?: boolean;
 }
 
-const { class: className, light = "day" } = Astro.props;
+const { class: className, light = "day", instant = false } = Astro.props;
 
-const washes: Record<"day" | "dusk", Stroke[]> = {
+// Each layer is its own canvas, revealed one after another, but not from top
+// to bottom: by day the roof comes first, then the sky, the garden and, last,
+// the lamplight; at dusk the sunset, then the garden, the sky and the lamps.
+type Layer = { delay: number; strokes: Stroke[] };
+
+const washes: Record<"day" | "dusk", Layer[]> = {
   day: [
-    { x: 0.58, y: 0.2, rx: 0.36, ry: 0.15, rot: -0.08, color: "cerulean", strength: 0.85, wobble: 1.1 },
-    { x: 0.8, y: 0.14, rx: 0.14, ry: 0.09, rot: 0.3, color: "ultramarine", strength: 0.7 },
-    { x: 0.26, y: 0.17, rx: 0.12, ry: 0.07, color: "violet", strength: 0.4 },
-    { x: 0.46, y: 0.44, rx: 0.26, ry: 0.09, rot: -0.1, color: "rose", strength: 1.1 },
-    { x: 0.65, y: 0.4, rx: 0.08, ry: 0.05, rot: 0.3, color: "sienna", strength: 0.7 },
-    { x: 0.5, y: 0.7, rx: 0.2, ry: 0.14, color: "gold", strength: 1 },
-    { x: 0.55, y: 0.76, rx: 0.08, ry: 0.08, color: "yellow", strength: 0.9 },
-    { x: 0.5, y: 0.87, rx: 0.42, ry: 0.04, rot: 0.02, color: "sap", strength: 1.1, wobble: 0.8 },
-    { x: 0.2, y: 0.86, rx: 0.12, ry: 0.035, color: "gold", strength: 0.5, wobble: 0.8 },
+    {
+      delay: 60,
+      strokes: [
+        { x: 0.58, y: 0.2, rx: 0.36, ry: 0.15, rot: -0.08, color: "cerulean", strength: 0.85, wobble: 1.1 },
+        { x: 0.8, y: 0.14, rx: 0.14, ry: 0.09, rot: 0.3, color: "ultramarine", strength: 0.7 },
+        { x: 0.26, y: 0.17, rx: 0.12, ry: 0.07, color: "violet", strength: 0.4 },
+      ],
+    },
+    {
+      delay: 0,
+      strokes: [
+        { x: 0.46, y: 0.44, rx: 0.26, ry: 0.09, rot: -0.1, color: "rose", strength: 1.1 },
+        { x: 0.65, y: 0.4, rx: 0.08, ry: 0.05, rot: 0.3, color: "sienna", strength: 0.7 },
+      ],
+    },
+    {
+      delay: 180,
+      strokes: [
+        { x: 0.5, y: 0.7, rx: 0.2, ry: 0.14, color: "gold", strength: 1 },
+        { x: 0.55, y: 0.76, rx: 0.08, ry: 0.08, color: "yellow", strength: 0.9 },
+      ],
+    },
+    {
+      delay: 120,
+      strokes: [
+        { x: 0.5, y: 0.87, rx: 0.42, ry: 0.04, rot: 0.02, color: "sap", strength: 1.1, wobble: 0.8 },
+        { x: 0.2, y: 0.86, rx: 0.12, ry: 0.035, color: "gold", strength: 0.5, wobble: 0.8 },
+      ],
+    },
   ],
   // Evening: a violet sky, the last light low behind the house, lamps on.
   dusk: [
-    { x: 0.5, y: 0.17, rx: 0.4, ry: 0.13, rot: 0.05, color: "violet", strength: 0.75, wobble: 1.1 },
-    { x: 0.24, y: 0.24, rx: 0.17, ry: 0.1, color: "ultramarine", strength: 0.75 },
-    { x: 0.76, y: 0.5, rx: 0.2, ry: 0.13, rot: -0.1, color: "rose", strength: 0.9 },
-    { x: 0.84, y: 0.62, rx: 0.12, ry: 0.1, color: "gold", strength: 1 },
-    { x: 0.45, y: 0.43, rx: 0.22, ry: 0.08, rot: -0.1, color: "sienna", strength: 0.75 },
-    { x: 0.5, y: 0.72, rx: 0.15, ry: 0.11, color: "yellow", strength: 1.1 },
-    { x: 0.52, y: 0.76, rx: 0.08, ry: 0.07, color: "gold", strength: 1 },
-    { x: 0.5, y: 0.87, rx: 0.42, ry: 0.04, rot: -0.02, color: "sap", strength: 1.15, wobble: 0.8 },
-    { x: 0.78, y: 0.86, rx: 0.13, ry: 0.035, color: "ultramarine", strength: 0.45, wobble: 0.8 },
+    {
+      delay: 120,
+      strokes: [
+        { x: 0.5, y: 0.17, rx: 0.4, ry: 0.13, rot: 0.05, color: "violet", strength: 0.75, wobble: 1.1 },
+        { x: 0.24, y: 0.24, rx: 0.17, ry: 0.1, color: "ultramarine", strength: 0.75 },
+      ],
+    },
+    {
+      delay: 0,
+      strokes: [
+        { x: 0.76, y: 0.5, rx: 0.2, ry: 0.13, rot: -0.1, color: "rose", strength: 0.9 },
+        { x: 0.84, y: 0.62, rx: 0.12, ry: 0.1, color: "gold", strength: 1 },
+        { x: 0.45, y: 0.43, rx: 0.22, ry: 0.08, rot: -0.1, color: "sienna", strength: 0.75 },
+      ],
+    },
+    {
+      delay: 180,
+      strokes: [
+        { x: 0.5, y: 0.72, rx: 0.15, ry: 0.11, color: "yellow", strength: 1.1 },
+        { x: 0.52, y: 0.76, rx: 0.08, ry: 0.07, color: "gold", strength: 1 },
+      ],
+    },
+    {
+      delay: 60,
+      strokes: [
+        { x: 0.5, y: 0.87, rx: 0.42, ry: 0.04, rot: -0.02, color: "sap", strength: 1.15, wobble: 0.8 },
+        { x: 0.78, y: 0.86, rx: 0.13, ry: 0.035, color: "ultramarine", strength: 0.45, wobble: 0.8 },
+      ],
+    },
   ],
 };
 
@@ -48,7 +95,9 @@ const titleId = `painting-${light}`;
 ---
 
 <div class:list={["painting relative", className]}>
-  <Wash seed={light === "day" ? 4 : 91} class="inset-0 h-full w-full" strokes={washes[light]} />
+  {washes[light].map((layer, i) => (
+    <Wash seed={(light === "day" ? 4 : 91) + i * 13} delay={layer.delay} instant={instant} class="inset-0 h-full w-full" strokes={layer.strokes} />
+  ))}
 
   <svg class="relative h-full w-full" viewBox="-4 -8 72 72" fill="none" role="img" aria-labelledby={titleId}>
     <title id={titleId}>The haus mark: a little house whose chimney smoke is a comma</title>

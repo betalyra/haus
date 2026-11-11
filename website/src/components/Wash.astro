@@ -15,10 +15,12 @@ interface Props {
   seed?: number;
   /** ms before the paint starts blooming */
   delay?: number;
+  /** Paint straight away and show it without a reveal (the hero). */
+  instant?: boolean;
   class?: string;
 }
 
-const { strokes, color = "gold", strength = 1, seed = 1, delay = 0, class: className } = Astro.props;
+const { strokes, color = "gold", strength = 1, seed = 1, delay = 0, instant = false, class: className } = Astro.props;
 
 const blobs = (strokes ?? [{ x: 0.5, y: 0.5, rx: 0.36, ry: 0.34, color, strength }]).map((s) => ({
   ...s,
@@ -27,5 +29,5 @@ const blobs = (strokes ?? [{ x: 0.5, y: 0.5, rx: 0.36, ry: 0.34, color, strength
 ---
 
 <div class:list={["wash", className]} aria-hidden="true">
-  <canvas class="wash__paint" data-wash={JSON.stringify({ seed, delay, blobs })}></canvas>
+  <canvas class:list={["wash__paint", { "is-instant": instant }]} data-wash={JSON.stringify({ seed, delay, blobs })}></canvas>
 </div>

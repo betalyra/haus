@@ -353,10 +353,37 @@ a:focus-visible > .brush-hover {
   left: -25%;
   width: 150%;
   height: 150%;
-  -webkit-mask-image: var(--grain);
-  mask-image: var(--grain);
-  -webkit-mask-size: 256px 256px;
-  mask-size: 256px 256px;
+  /* Two masks: the paper grain, and a soft-edged circle that grows from the
+     middle, so the paint spreads out into the paper like a wet wash. */
+  -webkit-mask-image: var(--grain), radial-gradient(closest-side, #000 55%, transparent 100%);
+  mask-image: var(--grain), radial-gradient(closest-side, #000 55%, transparent 100%);
+  -webkit-mask-size: 256px 256px, 30% 30%;
+  mask-size: 256px 256px, 30% 30%;
+  -webkit-mask-repeat: repeat, no-repeat;
+  mask-repeat: repeat, no-repeat;
+  -webkit-mask-position: 0 0, center;
+  mask-position: 0 0, center;
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+  opacity: 0;
+  transition:
+    opacity 180ms ease-out,
+    -webkit-mask-size 400ms cubic-bezier(0.22, 1, 0.36, 1),
+    mask-size 400ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.wash__paint.is-instant {
+  transition: none;
+}
+.wash__paint.is-shown,
+.wash__paint.is-instant {
+  opacity: 1;
+  -webkit-mask-size: 256px 256px, 260% 260%;
+  mask-size: 256px 256px, 260% 260%;
+}
+@media (prefers-reduced-motion: reduce) {
+  .wash__paint {
+    transition: none;
+  }
 }
 
 /* Brush stroke under a word */
