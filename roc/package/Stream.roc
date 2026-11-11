@@ -304,6 +304,14 @@ expect {
 }
 
 # Each value as soon as its comma arrives.
+# Comments between values: commas, brackets and quotes inside them don't cut.
+expect {
+	text = "// header, with a comma\nA { x: 1 }, // after A, [unbalanced\n/* block, with } and \" and /* nested, */ */\nB(2),\n\n// before C\nC { s: \"// not a comment\" } /* before the comma */ ,\n// trailing comment, {"
+	json = |r| r.map_ok(|values| values.map(Value.to_test_json))
+	whole = json(Value.parse_all(text))
+	whole.map_ok(|vs| vs.len()) == Ok(3) and [1, 2, 3, 4, 5, 7, 11, 1000].all(|size| json(chunked(text, size)) == whole)
+}
+
 expect {
 	s0 = Stream.reader(Stream.defaults)
 	match Stream.push(s0, "UserCreated { id: 1 ".to_utf8()) {

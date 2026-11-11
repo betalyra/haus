@@ -68,6 +68,21 @@ fn does_not_split_on_commas_inside_strings_comments_or_payloads() {
 }
 
 #[test]
+fn reads_comments_between_values_split_anywhere() {
+    let text = "// header, with a comma\nA { x: 1 }, // after A, [unbalanced\n/* block, with } and \" and /* nested, */ */\nB(2),\n\n// before C\nC { s: \"// not a comment\" } /* before the comma */ ,\n// trailing comment, {";
+    let whole = haus::parse(text).unwrap();
+    assert_eq!(whole.len(), 3);
+    let bytes = text.as_bytes();
+    for k in 0..=bytes.len() {
+        let mut r = Reader::default();
+        let mut got = r.push(&bytes[..k]).unwrap();
+        got.extend(r.push(&bytes[k..]).unwrap());
+        got.extend(r.finish().unwrap());
+        assert_eq!(got, whole, "split at {k}");
+    }
+}
+
+#[test]
 fn errors_have_positions_in_the_whole_stream() {
     let mut r = Reader::default();
     r.push(b"A,\nB,\n").unwrap();

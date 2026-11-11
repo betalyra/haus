@@ -56,6 +56,17 @@ describe("StreamReader", () => {
     const out = [...r.push('"a,b", /* , */ Pair(1, 2), // ,\n"""\n  x,\n  """,'), ...r.end()]
     expect(out.map(canonical)).toEqual(["a,b", { tag: "Pair", args: [{ num: "1" }, { num: "2" }] }, "x,"])
   })
+
+  it("reads comments between values, split anywhere", () => {
+    const text = '// header, with a comma\nA { x: 1 }, // after A, [unbalanced\n/* block, with } and " and /* nested, */ */\nB(2),\n\n// before C\nC { s: "// not a comment" } /* before the comma */ ,\n// trailing comment, {'
+    const whole = parseAll(text).map(canonical)
+    expect(whole).toHaveLength(3)
+    for (let k = 0; k <= text.length; k++) {
+      const r = new StreamReader()
+      const out = [...r.push(text.slice(0, k)), ...r.push(text.slice(k)), ...r.end()]
+      expect(out.map(canonical)).toEqual(whole)
+    }
+  })
 })
 
 describe("parse", () => {
