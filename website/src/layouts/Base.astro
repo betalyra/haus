@@ -45,24 +45,18 @@ const { title, description } = Astro.props;
       addEventListener("pointerdown", () => (root.dataset.input = "pointer"), true);
       addEventListener("keydown", () => (root.dataset.input = "keyboard"), true);
 
-      // Chimney smoke: every puff drifts, tilts and lingers a little differently.
+      // Chimney smoke: every rise drifts and swells a little differently,
+      // set while the puff is invisible at the start of its cycle.
       if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
-        const between = (lo: number, hi: number) => lo + Math.random() * (hi - lo);
-        const puff = (el: SVGElement, first = false) => {
-          el.style.setProperty("--dx", between(-9, 3).toFixed(1));
-          el.style.setProperty("--dy", between(-28, -17).toFixed(1));
-          el.style.setProperty("--rot", `${between(-30, -4).toFixed(0)}deg`);
-          el.style.setProperty("--grow", between(0.85, 1.2).toFixed(2));
-          el.style.setProperty("--dur", `${between(6, 9.5).toFixed(2)}s`);
-          el.style.setProperty("--wait", `${(first ? between(0.3, 4) : between(1.2, 4.5)).toFixed(2)}s`);
-          el.style.animationName = "none";
-          void el.getBoundingClientRect();
-          el.style.animationName = "";
+        const between = (lo: number, hi: number) => (lo + Math.random() * (hi - lo)).toFixed(1);
+        const vary = (el: HTMLElement) => {
+          el.style.setProperty("--dx", `${between(5, 35)}%`);
+          el.style.setProperty("--dy", `${between(-120, -95)}%`);
+          el.style.setProperty("--grow", between(1.15, 1.45));
         };
-        document.querySelectorAll<SVGElement>(".smoke").forEach((el) => {
-          el.addEventListener("animationend", () => puff(el));
-          puff(el, true);
-          if (el.classList.contains("smoke--2")) el.style.setProperty("--wait", `${between(3.5, 6).toFixed(2)}s`);
+        document.querySelectorAll<HTMLElement>(".puff").forEach((el) => {
+          vary(el);
+          el.addEventListener("animationiteration", () => vary(el));
         });
       }
     </script>

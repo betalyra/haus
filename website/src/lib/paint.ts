@@ -5,7 +5,8 @@
  * as ~33 slightly different, very transparent layers (the layered-polygon
  * technique). Each wash is painted once, in idle time, about a screen before
  * it scrolls into view; it is then revealed with a CSS transition (opacity,
- * a growing soft mask), with no script running per frame. A dried "tide line" finishes
+ * a growing soft mask), with no script running per frame. The paintings
+ * (.is-soak) take their time and spread from the middle of their strokes. A dried "tide line" finishes
  * the edge, and a paper-grain mask (set once as --grain) granulates the pigment.
  */
 
@@ -230,11 +231,14 @@ export function paintAll() {
         shown.unobserve(el);
         paint(el);
         // A little randomness in when and how fast, so washes revealed together
-        // don't move in lockstep.
-        const delay = (canvases.get(el)?.spec.delay ?? 0) + Math.random() * 30;
+        // don't move in lockstep. The paintings soak in slowly and quietly:
+        // [opacity, spread] in ms.
+        const soak = el.classList.contains("is-soak");
+        const delay = (canvases.get(el)?.spec.delay ?? 0) + Math.random() * (soak ? 150 : 30);
         const pace = 0.9 + Math.random() * 0.3;
+        const times = soak ? [1300, 2400] : [180, 400, 400];
         el.style.transitionDelay = `${Math.round(delay)}ms`;
-        el.style.transitionDuration = [180, 400, 400].map((ms) => `${Math.round(ms * pace)}ms`).join(", ");
+        el.style.transitionDuration = times.map((ms) => `${Math.round(ms * pace)}ms`).join(", ");
         requestAnimationFrame(() => el.classList.add("is-shown"));
       }),
     { rootMargin: "0px 0px 10% 0px" },
@@ -252,7 +256,7 @@ export function paintAll() {
 
   els.forEach((el) => {
     ro.observe(el);
-    // The hero: painted now and shown as it is, with no reveal.
+    // The hero headline: painted now and shown as it is, with no reveal.
     if (el.classList.contains("is-instant")) return paint(el);
     ahead.observe(el);
     shown.observe(el);

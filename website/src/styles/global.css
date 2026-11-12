@@ -380,8 +380,31 @@ a:focus-visible > .brush-hover {
   -webkit-mask-size: 256px 256px, 260% 260%;
   mask-size: 256px 256px, 260% 260%;
 }
+/* The paintings soak in: the soft circle starts where the strokes are
+   (--cx, --cy, set by Wash.astro) and widens slowly while the pigment
+   deepens, the way a wet wash creeps into damp paper. */
+@property --soak {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 4%;
+}
+.wash__paint.is-soak {
+  -webkit-mask-image: var(--grain), radial-gradient(var(--soak) var(--soak) at var(--cx, 50%) var(--cy, 50%), #000 40%, transparent 100%);
+  mask-image: var(--grain), radial-gradient(var(--soak) var(--soak) at var(--cx, 50%) var(--cy, 50%), #000 40%, transparent 100%);
+  -webkit-mask-size: 256px 256px, 100% 100%;
+  mask-size: 256px 256px, 100% 100%;
+  transition:
+    opacity 1300ms cubic-bezier(0.3, 0.5, 0.3, 1),
+    --soak 2400ms cubic-bezier(0.25, 0.7, 0.3, 1);
+}
+.wash__paint.is-soak.is-shown {
+  --soak: 200%;
+  -webkit-mask-size: 256px 256px, 100% 100%;
+  mask-size: 256px 256px, 100% 100%;
+}
 @media (prefers-reduced-motion: reduce) {
-  .wash__paint {
+  .wash__paint,
+  .wash__paint.is-soak {
     transition: none;
   }
 }
@@ -403,38 +426,43 @@ a:focus-visible > .brush-hover {
 }
 
 /* ---------------------------------------------------------------------------
-   The chimney smoke: commas drifting up. Each puff gets its own drift, tilt,
-   size, duration and pause from the script in Base.astro, so no two are alike.
-   --k scales the drift to the drawing (px per step on the small mark).
+   The chimney smoke on the paintings: two grey washes taking turns. Each is
+   born small in the chimney (grid 45.2, 12.2 in Painting.astro), swells as it
+   rises and fades out while the next one is born. Base.astro gives every
+   rise its own drift and size (--dx, --dy, --grow, in puff widths).
+   Only transform and opacity move, so it stays on the compositor.
    --------------------------------------------------------------------------- */
 
-@keyframes smoke-rise {
-  0%   { transform: translate(0, 0) rotate(0deg) scale(0.9); opacity: 0; }
-  15%  { opacity: 0.9; }
-  70%  { opacity: 0.55; }
-  100% {
-    transform: translate(calc(var(--dx, -6) * var(--k)), calc(var(--dy, -22) * var(--k))) rotate(var(--rot, -18deg)) scale(var(--grow, 1));
-    opacity: 0;
-  }
+@keyframes puff {
+  0%   { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
+  12%  { opacity: 1; }
+  55%  { opacity: 0.85; }
+  100% { transform: translate(-50%, -50%) translate(var(--dx, 20%), var(--dy, -105%)) scale(var(--grow, 1.3)); opacity: 0; }
 }
 
-.smoke {
-  --k: 1px;
-  transform-box: fill-box;
-  transform-origin: center;
+.puff {
+  position: absolute;
+  left: 68.3%;
+  top: 28%;
+  width: 15%;
+  aspect-ratio: 1;
+  pointer-events: none;
+  mix-blend-mode: multiply;
   opacity: 0;
-  animation: smoke-rise var(--dur, 7s) cubic-bezier(0.22, 1, 0.36, 1) var(--wait, 0s) 1 both;
+  animation: puff var(--cycle, 5.6s) cubic-bezier(0.45, 0.15, 0.55, 1) var(--wait, 0.2s) infinite both;
 }
-.painting .smoke {
-  --k: 0.33px;
+.puff--2 {
+  --wait: calc(0.2s + var(--cycle, 5.6s) / 2);
 }
 
+/* Without motion, the puffs rest where the logo has them. */
 @media (prefers-reduced-motion: reduce) {
-  .smoke {
+  .puff {
     animation: none;
-    opacity: 0.85;
+    opacity: 1;
+    transform: translate(-50%, -50%) translate(0, -20%) scale(0.55);
   }
-  .smoke--2 {
-    display: none;
+  .puff--2 {
+    transform: translate(-50%, -50%) translate(35%, -85%) scale(0.85);
   }
 }

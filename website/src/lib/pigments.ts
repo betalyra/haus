@@ -11,6 +11,8 @@ export const pigments = {
   gold: "#e39b16",
   yellow: "#f2c419",
   sap: "#5d9a2f",
+  /** Payne's grey: smoke and shadow. */
+  payne: "#4b5566",
 } as const;
 
 export type Pigment = keyof typeof pigments;

@@ -1,19 +1,18 @@
 ---
 /**
- * The haus mark: a cozy little house drawn in one ink weight, with a comma
- * for chimney smoke. Trailing commas are welcome.
+ * The haus mark: a cozy little house drawn in one ink weight, with two puffs
+ * of chimney smoke.
  */
 import { mark } from "@/lib/mark";
 
 interface Props {
   size?: number;
-  animated?: boolean;
   class?: string;
   title?: string;
   strokeWidth?: number;
 }
 
-const { size = 40, animated = false, class: className, title = "haus", strokeWidth = 3.2 } = Astro.props;
+const { size = 40, class: className, title = "haus", strokeWidth = 3.2 } = Astro.props;
 ---
 
 <svg class={className} width={size} height={size} viewBox="0 0 64 64" fill="none" role="img" aria-label={title}>
@@ -24,8 +23,7 @@ const { size = 40, animated = false, class: className, title = "haus", strokeWid
     <path d={mark.body} />
     <circle cx={mark.window.cx} cy={mark.window.cy} r={mark.window.r} stroke-width={strokeWidth * 0.8} />
   </g>
-  <g fill="var(--ink)" transform="translate(45.3 12) scale(0.7) translate(-45.3 -12)">
-    <path class:list={[{ smoke: animated, "smoke--1": animated }]} d={mark.comma} />
-    {animated && <path class="smoke smoke--2" d={mark.comma} />}
+  <g fill="var(--ink)">
+    {mark.puffs.map((p) => <circle {...p} />)}
   </g>
 </svg>

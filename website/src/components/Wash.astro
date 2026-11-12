@@ -15,19 +15,27 @@ interface Props {
   seed?: number;
   /** ms before the paint starts blooming */
   delay?: number;
-  /** Paint straight away and show it without a reveal (the hero). */
+  /** Paint straight away and show it without a reveal (the hero headline). */
   instant?: boolean;
+  /** Reveal slowly, soaking out from the middle of the strokes (the paintings). */
+  soak?: boolean;
   class?: string;
 }
 
-const { strokes, color = "gold", strength = 1, seed = 1, delay = 0, instant = false, class: className } = Astro.props;
+const { strokes, color = "gold", strength = 1, seed = 1, delay = 0, instant = false, soak = false, class: className } = Astro.props;
 
 const blobs = (strokes ?? [{ x: 0.5, y: 0.5, rx: 0.36, ry: 0.34, color, strength }]).map((s) => ({
   ...s,
   color: pigments[s.color],
 }));
+
+// Where the soak starts: the strokes' weighted middle, in canvas coordinates
+// (the canvas reaches a quarter of the box past each edge).
+const weight = blobs.reduce((n, b) => n + b.rx * b.ry * (b.strength ?? 1), 0);
+const middle = (k: "x" | "y") => blobs.reduce((n, b) => n + b[k] * b.rx * b.ry * (b.strength ?? 1), 0) / weight;
+const soakAt = soak ? `--cx:${(((0.25 + middle("x")) / 1.5) * 100).toFixed(1)}%;--cy:${(((0.25 + middle("y")) / 1.5) * 100).toFixed(1)}%` : undefined;
 ---
 
 <div class:list={["wash", className]} aria-hidden="true">
-  <canvas class:list={["wash__paint", { "is-instant": instant }]} data-wash={JSON.stringify({ seed, delay, blobs })}></canvas>
+  <canvas class:list={["wash__paint", { "is-instant": instant, "is-soak": soak }]} style={soakAt} data-wash={JSON.stringify({ seed, delay, blobs })}></canvas>
 </div>

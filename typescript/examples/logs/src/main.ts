@@ -2,11 +2,9 @@
 // arrives, so memory holds one entry, not the whole file. The same steps as
 // rust/examples/logs, on the same files. Run: pnpm start
 import * as Haus from "@betalyra/haus-fmt-effect";
-import { Console, DateTime, Effect, Stream } from "effect";
-import { createReadStream } from "node:fs";
+import { NodeRuntime, NodeServices } from "@effect/platform-node";
+import { Console, DateTime, Effect, FileSystem, Path, Stdio, Stream } from "effect";
 import { Entry } from "../../../../examples/logs.schema.haus";
-
-const log = new URL("../../../../examples/logs.haus", import.meta.url);
 
 /** One line per entry. Entries of kinds the schema doesn't know are "@unknown". */
 const describe = (entry: Entry): string => {
@@ -28,8 +26,12 @@ const isProblem = (entry: Entry): boolean =>
 const time = (at: DateTime.Utc) => DateTime.formatIso(at).slice(11, 19);
 
 const program = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  const stdio = yield* Stdio.Stdio;
+  const log = yield* (yield* Path.Path).fromFileUrl(new URL("../../../../examples/logs.haus", import.meta.url));
+
   // 1. Read the stream entry by entry: an Effect Stream over a file (or a socket, or a fetch body).
-  const problems = yield* Haus.decodeStream(Entry)(createReadStream(log)).pipe(
+  const problems = yield* Haus.decodeStream(Entry)(fs.stream(log)).pipe(
     Stream.tap((entry) => Console.log(describe(entry))),
     Stream.filter(isProblem),
     Stream.runCollect,
@@ -38,8 +40,8 @@ const program = Effect.gen(function* () {
   // 2. Write a stream: the problems, one entry per line.
   yield* Console.log("problems:");
   yield* Haus.encodeStream(Entry)(Stream.fromIterable(problems)).pipe(
-    Stream.runForEach((line) => Effect.sync(() => process.stdout.write(line))),
+    Stream.run(stdio.stdout({ endOnDone: false })),
   );
 });
 
-Effect.runPromise(program);
+program.pipe(Effect.provide(NodeServices.layer), NodeRuntime.runMain);
