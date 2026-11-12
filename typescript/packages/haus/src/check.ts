@@ -156,7 +156,12 @@ const tags = (v: VariantType) => {
  * type `typeName` of a schema file. A Stream type checks every value; any
  * other type expects exactly one.
  */
-export function checkData(file: SchemaFile, typeName: string, values: readonly Value[]): CheckIssue[] {
+export interface CheckOptions {
+  /** Called for every value with the type the schema expects there (as written: `Comment`, not its body). */
+  readonly onValue?: (value: Value, type: Type) => void
+}
+
+export function checkData(file: SchemaFile, typeName: string, values: readonly Value[], options: CheckOptions = {}): CheckIssue[] {
   const definition = file.definition(typeName)
   if (!definition) return [{ severity: "error", message: `the schema has no type ${typeName}`, start: 0, end: 1 }]
   if (definition.params.length > 0) {
@@ -178,6 +183,7 @@ export function checkData(file: SchemaFile, typeName: string, values: readonly V
   }
 
   const check = (v: Value, type: Type): void => {
+    options.onValue?.(v, type)
     if (issues.length >= MAX_ISSUES) return
     const t = resolve(type)
     switch (t.kind) {

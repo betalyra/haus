@@ -65,6 +65,8 @@ import "../../test-suite/invalid/leading-comma-array.haus" as invalid_leading_co
 import "../../test-suite/invalid/leading-comma-file.haus" as invalid_leading_comma_file : List(U8)
 import "../../test-suite/invalid/leading-dot.haus" as invalid_leading_dot : List(U8)
 import "../../test-suite/invalid/leading-zero.haus" as invalid_leading_zero : List(U8)
+import "../../test-suite/invalid/lone-carriage-return-in-record.haus" as invalid_lone_carriage_return_in_record : List(U8)
+import "../../test-suite/invalid/lone-carriage-return.haus" as invalid_lone_carriage_return : List(U8)
 import "../../test-suite/invalid/lone-comma-record.haus" as invalid_lone_comma_record : List(U8)
 import "../../test-suite/invalid/lone-minus.haus" as invalid_lone_minus : List(U8)
 import "../../test-suite/invalid/lowercase-true.haus" as invalid_lowercase_true : List(U8)
@@ -312,6 +314,12 @@ expect ConformanceTest.rejects(invalid_leading_dot)
 
 # invalid/leading-zero.haus
 expect ConformanceTest.rejects(invalid_leading_zero)
+
+# invalid/lone-carriage-return-in-record.haus
+expect ConformanceTest.rejects(invalid_lone_carriage_return_in_record)
+
+# invalid/lone-carriage-return.haus
+expect ConformanceTest.rejects(invalid_lone_carriage_return)
 
 # invalid/lone-comma-record.haus
 expect ConformanceTest.rejects(invalid_lone_comma_record)

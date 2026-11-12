@@ -1,0 +1,253 @@
+---
+import Base from "@/layouts/Base.astro";
+import Nav from "@/components/Nav.astro";
+import Footer from "@/components/Footer.astro";
+import Wash from "@/components/Wash.astro";
+import { PiLinkSimpleBold } from "react-icons/pi";
+
+const outputs = [
+  { key: "typescript", label: "Types in TypeScript", caption: "What TypeScript sees when your code imports these files (with @haus-fmt/import): one module per file." },
+  { key: "json", label: "Values", caption: "What your program gets at runtime, written as JSON." },
+  { key: "inferred", label: "Inferred schema", caption: "A schema that fits this data: a starting point for your own." },
+  { key: "formatted", label: "Formatted", caption: "The data in the standard layout, comments kept." },
+];
+---
+
+<Base
+  title="Playground · haus"
+  description="Write haus in your browser: errors as you type, types on hover, a schema to check against, and the TypeScript types and values your code gets."
+>
+  <Nav />
+  <main id="main" class="mx-auto w-full max-w-7xl px-6 pt-6 pb-20 sm:pt-10">
+    <div class="relative isolate flex flex-wrap items-end justify-between gap-x-8 gap-y-5">
+      <Wash
+        seed={77}
+        class="-top-8 -left-10 -z-10 h-28 w-56"
+        strokes={[
+          { x: 0.35, y: 0.5, rx: 0.3, ry: 0.32, color: "cerulean", strength: 0.7 },
+          { x: 0.62, y: 0.42, rx: 0.16, ry: 0.2, color: "violet", strength: 0.5 },
+        ]}
+      />
+      <div class="max-w-[40rem]">
+        <h1 class="text-[2.2rem] leading-[1.08] sm:text-[2.8rem]">Playground</h1>
+        <p class="mt-3 text-[1.05rem] text-ink-2">
+          Write haus and add a schema if you like. Hover anything to see its type. It all runs in your browser.
+        </p>
+      </div>
+      <div class="flex w-full items-center gap-2 sm:w-auto">
+        <label class="sr-only" for="play-preset">Example</label>
+        <select id="play-preset" class="play-select min-w-0 flex-1 sm:flex-none">
+          <option value="" disabled>Your own</option>
+        </select>
+        <button id="play-share" type="button" class="play-button shrink-0">
+          <PiLinkSimpleBold size={15} aria-hidden="true" />
+          <span>Share</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="mt-8 grid grid-cols-1 gap-5 lg:grid-cols-2">
+      <div class="grid min-w-0 grid-rows-[auto_auto] gap-5">
+        <section class="play-card" aria-label="Data">
+          <header class="play-card__head"><span>data.haus</span></header>
+          <div id="play-data" class="play-editor h-[22rem] lg:h-[26rem]"></div>
+        </section>
+        <section class="play-card" aria-label="Schema">
+          <header class="play-card__head">
+            <span>data.schema.haus</span>
+            <label class="play-switch">
+              <input id="play-use" type="checkbox" role="switch" checked />
+              <span class="play-switch__track" aria-hidden="true"></span>
+              <span>Check against schema</span>
+            </label>
+          </header>
+          <div id="play-schema" class="play-editor h-[14rem] lg:h-[16rem]"></div>
+        </section>
+      </div>
+
+      <section class="play-card flex min-w-0 flex-col" aria-label="Output">
+        <header class="play-card__head flex-wrap gap-y-2">
+          <div role="tablist" class="flex flex-wrap gap-x-4 gap-y-1">
+            {outputs.map((o) => (
+              <button type="button" role="tab" class="play-tab" data-output={o.key} data-caption={o.caption}>{o.label}</button>
+            ))}
+          </div>
+          <button id="play-use-schema" type="button" class="play-link" hidden>Use as schema</button>
+        </header>
+        <p id="play-caption" class="play-caption"></p>
+        <div id="play-output" class="play-editor min-h-[20rem] flex-1"></div>
+        <p id="play-summary" class="play-summary" aria-live="polite"></p>
+      </section>
+    </div>
+
+    <p class="mt-6 text-[0.92rem] text-ink-3">
+      Types and values are those of the plain target of <code class="inline-code">@haus-fmt/import</code> (no Effect).
+      Schema imports of packages like <code class="inline-code">@haus/money</code> don't work here yet;
+      <code class="inline-code">std/time</code> does.
+    </p>
+  </main>
+  <Footer />
+</Base>
+
+<script>
+  import "@/lib/play/main";
+</script>
+
+<style>
+  .play-card {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .play-card__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.7rem 1rem 0.6rem;
+    border-bottom: 1px solid var(--line-soft, var(--line));
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--ink-2);
+  }
+  .play-editor {
+    overflow: auto;
+  }
+  .play-editor :global(.cm-editor) {
+    height: 100%;
+  }
+  .play-tab {
+    padding: 0.15rem 0;
+    font-family: var(--font-sans, inherit);
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--ink-3);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: color 150ms ease, border-color 150ms ease;
+  }
+  .play-tab:hover,
+  .play-tab[aria-selected="true"] {
+    color: var(--ink);
+  }
+  .play-tab[aria-selected="true"] {
+    border-bottom-color: var(--ultramarine);
+  }
+  .play-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: var(--font-sans);
+    font-size: 0.82rem;
+    color: var(--ink-2);
+    cursor: pointer;
+    user-select: none;
+  }
+  .play-switch input {
+    position: absolute;
+    opacity: 0;
+    width: 1px;
+    height: 1px;
+  }
+  .play-switch__track {
+    position: relative;
+    width: 1.9rem;
+    height: 1.1rem;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--ink) 18%, white);
+    transition: background-color 160ms ease;
+  }
+  .play-switch__track::after {
+    content: "";
+    position: absolute;
+    top: 0.15rem;
+    left: 0.15rem;
+    width: 0.8rem;
+    height: 0.8rem;
+    border-radius: 50%;
+    background: var(--paper);
+    box-shadow: 0 1px 2px color-mix(in oklab, var(--ink) 30%, transparent);
+    transition: transform 160ms ease;
+  }
+  .play-switch input:checked + .play-switch__track {
+    background: var(--ultramarine);
+  }
+  .play-switch input:checked + .play-switch__track::after {
+    transform: translateX(0.8rem);
+  }
+  .play-switch input:focus-visible + .play-switch__track {
+    outline: 1.5px solid var(--ultramarine);
+    outline-offset: 2px;
+  }
+  /* A schema that is switched off stays editable, just quieter. */
+  #play-schema[data-off] {
+    opacity: 0.5;
+  }
+  .play-caption {
+    margin: 0;
+    padding: 0.55rem 1rem 0;
+    font-size: 0.82rem;
+    color: var(--ink-3);
+  }
+  .play-link {
+    font-size: 0.8rem;
+    color: var(--ultramarine-ink, var(--ultramarine));
+    cursor: pointer;
+  }
+  .play-link:hover {
+    text-decoration: underline;
+  }
+  .play-summary {
+    margin: 0;
+    padding: 0.6rem 1rem;
+    border-top: 1px solid var(--line-soft, var(--line));
+    font-size: 0.85rem;
+    color: var(--ink-2);
+  }
+  .play-summary[data-state="error"] {
+    color: #ab2a5d;
+  }
+  .play-select,
+  .play-button {
+    height: 2.4rem;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--paper);
+    font-size: 0.92rem;
+    color: var(--ink);
+    cursor: pointer;
+    transition: border-color 150ms ease, background-color 150ms ease;
+  }
+  .play-select {
+    padding: 0 2rem 0 0.95rem;
+    appearance: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2357514a' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 0.8rem center;
+  }
+  .play-button {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0 1rem;
+    font-weight: 500;
+  }
+  .play-select:hover,
+  .play-button:hover {
+    border-color: color-mix(in oklab, var(--ink) 30%, white);
+  }
+  .play-button[data-done]::after {
+    content: attr(data-done);
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    white-space: nowrap;
+    padding: 0.25rem 0.6rem;
+    border-radius: 8px;
+    background: var(--ink);
+    color: var(--paper);
+    font-size: 0.78rem;
+  }
+</style>

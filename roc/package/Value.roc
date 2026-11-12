@@ -639,8 +639,12 @@ skip_trivia = |src, start| {
 	var $go = True
 	while $go {
 		c = at(src, $p)
-		if c == ' ' or c == '\t' or c == '\n' or c == '\r' {
+		if c == ' ' or c == '\t' or c == '\n' {
 			$p = $p + 1
+		} else if c == '\r' and at(src, $p + 1) == '\n' {
+			$p = $p + 2
+		} else if c == '\r' {
+			return Err({ reason: "carriage return without a line feed (line breaks are LF or CRLF)", pos: $p })
 		} else if c == '/' and at(src, $p + 1) == '/' {
 			while $p < src.len() and at(src, $p) != '\n' {
 				if bidi_at(src, $p) {

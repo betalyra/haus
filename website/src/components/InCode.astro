@@ -50,7 +50,7 @@ const notes: { term: string; rest: string; color: Pigment }[] = [
     />
     <div class="relative min-w-0 lg:col-span-5">
       <CodeTabs client:idle tabs={fileTabs}>
-        <Fragment slot="data"><Code code={threadHaus} lang="haus" label="thread.haus" size="sm" /></Fragment>
+        <Fragment slot="data"><Code code={threadHaus} lang="haus" label="thread.haus" size="sm" schema={{ text: schemaHaus }} /></Fragment>
         <Fragment slot="schema"><Code code={schemaHaus} lang="haus" label="thread.schema.haus" size="sm" /></Fragment>
       </CodeTabs>
     </div>

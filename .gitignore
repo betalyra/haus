@@ -8,3 +8,4 @@ roc/**/build/
 rust/target/
 # Demo Time recordings (local only)
 .demo/
+.vscode/settings.json

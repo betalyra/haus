@@ -43,7 +43,8 @@ export {
   type ResolvedModule, type SchemaFile, type StdType, type Type, type VariantType,
 } from "./schema-file.js"
 export { checkStdTime, isStdTimeType, STD_TIME_TYPES, type StdTimeType } from "./std-time.js"
-export { checkData, schemaReference, type CheckIssue, type SchemaReference } from "./check.js"
+export { checkData, describeType, schemaReference, type CheckIssue, type CheckOptions, type SchemaReference } from "./check.js"
+export { contextOf, describeValue, hoverAt, hoverContext, hoverMarkdown, hoverText, TAG_NOTES, type HoverContext, type HoverInfo } from "./hover.js"
 export { completeAt, type Completion } from "./complete.js"
 export { HausValidationError, parseWith, parseWithAsync, type StandardSchemaV1 } from "./standard.js"
 export { parsePlain, toPlain } from "./plain.js"

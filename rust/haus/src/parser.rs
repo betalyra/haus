@@ -576,7 +576,9 @@ impl<'a> Parser<'a> {
     fn trivia(&mut self) -> R<()> {
         loop {
             match (self.peek(), self.at(1)) {
-                (Some(b' ' | b'\t' | b'\n' | b'\r'), _) => self.pos += 1,
+                (Some(b' ' | b'\t' | b'\n'), _) => self.pos += 1,
+                (Some(b'\r'), Some(b'\n')) => self.pos += 2,
+                (Some(b'\r'), _) => return Err(self.fail("carriage return without a line feed (line breaks are LF or CRLF)")),
                 (Some(b'/'), Some(b'/')) => {
                     let end = self.src[self.pos..].find('\n').map_or(self.b.len(), |n| self.pos + n);
                     self.check_comment(self.pos, end)?;

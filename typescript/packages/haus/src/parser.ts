@@ -403,8 +403,11 @@ export class Parser {
     return str(this.checkStringLength(out.join("\n"), open))
   }
 
+  /** The limit counts characters (code points), not UTF-16 units: an emoji is one character, but two units. */
   private checkStringLength(s: string, open: number): string {
-    if (s.length > this.limits.maxStringLength) this.fail(`string longer than ${this.limits.maxStringLength} characters`, open)
+    if (s.length > this.limits.maxStringLength && codePoints(s) > this.limits.maxStringLength) {
+      this.fail(`string longer than ${this.limits.maxStringLength} characters`, open)
+    }
     return s
   }
 
@@ -441,8 +444,12 @@ export class Parser {
   private skipTrivia() {
     for (;;) {
       const c = this.src[this.pos]
-      if (c === " " || c === "\t" || c === "\n" || c === "\r") {
+      if (c === " " || c === "\t" || c === "\n") {
         this.pos++
+      } else if (c === "\r" && this.src[this.pos + 1] === "\n") {
+        this.pos += 2
+      } else if (c === "\r") {
+        this.fail("carriage return without a line feed (line breaks are LF or CRLF)")
       } else if (c === "/" && this.src[this.pos + 1] === "/") {
         const nl = this.src.indexOf("\n", this.pos)
         const end = nl < 0 ? this.src.length : nl
@@ -508,6 +515,16 @@ export class Parser {
     const p = locate(this.src, at, this.origin)
     throw new HausSyntaxError(reason, p.offset, p.line, p.column)
   }
+}
+
+/** The number of code points: each surrogate pair counts once. */
+const codePoints = (s: string): number => {
+  let n = s.length
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i)
+    if (c >= 0xd800 && c <= 0xdbff) n--
+  }
+  return n
 }
 
 /** The value of a hex digit, or -1. */

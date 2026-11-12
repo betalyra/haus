@@ -120,3 +120,11 @@ describe("limits and stream safety", () => {
     }
   })
 })
+
+describe("string length limit", () => {
+  it("counts characters, not UTF-16 units", () => {
+    const emoji = "😀".repeat(3) // 3 characters, 6 UTF-16 units
+    expect(parseAll(`"${emoji}"`, { maxStringLength: 3 }).length).toBe(1)
+    expect(() => parseAll(`"${emoji}x"`, { maxStringLength: 3 })).toThrow("longer than 3 characters")
+  })
+})

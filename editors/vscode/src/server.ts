@@ -7,16 +7,19 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 import {
   checkData,
   completeAt,
+  contextOf,
   format,
   HausSyntaxError,
+  hoverAt,
+  hoverMarkdown,
   infer,
   inferSchema,
   parseDocument,
   parseSchemaFile,
-  printShape,
   schemaReference,
   type SchemaFile,
   type HRecord,
+  type HoverContext,
   type Inference,
   type Value,
 } from "@haus-fmt/haus"
@@ -279,62 +282,25 @@ connection.onHover(({ textDocument, position }): Hover | null => {
   }
   const state = parsed.get(textDocument.uri)
   if (!doc || !state) return null
-  const offset = doc.offsetAt(position)
-
-  for (const top of state.values) {
-    const hit = find(top, offset)
-    if (hit) {
-      return {
-        // The type first: long hovers scroll, and the type is what people look for.
-        contents: { kind: "markdown", value: inferred(state.inference, hit.value) + describe(hit.value, hit.key) },
-        range: { start: doc.positionAt(hit.span[0]), end: doc.positionAt(hit.span[1]) },
-      }
-    }
+  const info = hoverAt(hoverState(doc, state), doc.offsetAt(position))
+  if (!info) return null
+  return {
+    contents: { kind: "markdown", value: hoverMarkdown(info) },
+    range: { start: doc.positionAt(info.start), end: doc.positionAt(info.end) },
   }
-  return null
 })
 
-interface Hit {
-  value: Value
-  /** Set when hovering a record key; `value` is then the field's value. */
-  key?: string
-  span: readonly [number, number]
-}
-
-/** The innermost value (or record key) at `offset`. */
-function find(v: Value, offset: number): Hit | undefined {
-  if (v.start === undefined || v.end === undefined || offset < v.start || offset >= v.end) return undefined
-  const inner = (items: readonly Value[]) => {
-    for (const x of items) {
-      const hit = find(x, offset)
-      if (hit) return hit
-    }
-    return undefined
+/** The hover context of a data file: its values, their inferred types and, with a schema, the schema's types. */
+function hoverState(doc: TextDocument, state: Parsed): HoverContext {
+  const link = schemaLink(doc)
+  const text = link && schemaText(link.path)
+  if (!link || text === undefined) return { values: state.values, inference: state.inference }
+  try {
+    return contextOf(state.values, { file: compileSchema(text, link.path), type: link.type })
+  } catch (e) {
+    if (!(e instanceof HausSyntaxError)) throw e
+    return { values: state.values, inference: state.inference }
   }
-  switch (v.kind) {
-    case "record":
-      for (const [key, span] of v.keySpans ?? []) {
-        if (offset >= span[0] && offset < span[1]) return { value: v.fields.get(key)!, key, span }
-      }
-      return inner([...v.fields.values()]) ?? { value: v, span: [v.start, v.end] }
-    case "array":
-      return inner(v.items) ?? { value: v, span: [v.start, v.end] }
-    case "variant": {
-      const tagEnd = v.start + v.tag.length
-      if (offset < tagEnd) return { value: v, span: [v.start, tagEnd] }
-      return inner(v.args) ?? { value: v, span: [v.start, v.end] }
-    }
-    default:
-      return { value: v, span: [v.start, v.end] }
-  }
-}
-
-/** The type unified over every value at the same position in this file. */
-function inferred(inference: Inference, v: Value): string {
-  const shape = inference.shapeOf.get(v)
-  if (!shape) return ""
-  const seen = shape.occurrences === 1 ? "1 value" : `${shape.occurrences} values`
-  return `\`\`\`haus-schema\n${printShape(shape, { width: 80, context: inference.root })}\n\`\`\`\n\n_Inferred from this file (${seen} at this position)._\n\n---\n\n`
 }
 
 // ── formatting ───────────────────────────────────────────────
@@ -375,54 +341,5 @@ connection.onRequest("haus/inferSchema", ({ uri }: { uri: string }): string | nu
 })
 
 /** What the prelude says a tag means. */
-const PRELUDE: Record<string, string> = {
-  True: "`Bool` (prelude)",
-  False: "`Bool` (prelude)",
-  None: "`Maybe a` (prelude): no value",
-  Some: "`Maybe a` (prelude): a value",
-  Ok: "`Result e a` (prelude): success",
-  Err: "`Result e a` (prelude): failure",
-  Date: "`Date` (std/time): RFC 3339 full-date",
-  Time: "`Time` (std/time): RFC 3339 partial-time",
-  DateTime: "`DateTime` (std/time): date and time, no zone",
-  Instant: "`Instant` (std/time): exact point in time (RFC 3339)",
-  ZonedDateTime: "`ZonedDateTime` (std/time): instant + IANA zone (RFC 9557)",
-  Duration: "`Duration` (std/time): ISO 8601 duration",
-  YearMonth: "`YearMonth` (std/time): `2026-11`",
-  TimeZone: "`TimeZone` (std/time): IANA zone, `Europe/Lisbon`",
-  NaN: "`Float64` (prelude): not a number",
-  Infinity: "`Float64` (prelude): +∞",
-  NegInfinity: "`Float64` (prelude): −∞",
-}
-
-function describe(v: Value, key?: string): string {
-  const head = key === undefined ? "" : `**field** \`${key}\`\n\n`
-  switch (v.kind) {
-    case "number": {
-      const asFloat = Number(v.text)
-      const exact = /^-?\d+$/.test(v.text) ? Number.isSafeInteger(asFloat) : String(asFloat) === v.text
-      return `${head}**number** \`${v.text}\` — exact decimal` +
-        (exact ? "" : `\n\nAs a \`Float64\` this would be \`${asFloat}\` (not exact; use \`Decimal\` or \`BigInt\`).`)
-    }
-    case "string":
-      return `${head}**string**, ${plural([...v.value].length, "character")}`
-    case "bytes":
-      return `${head}**bytes**, ${plural(v.bytes.length, "byte")}`
-    case "array":
-      return `${head}**array**, ${plural(v.items.length, "item")}`
-    case "record":
-      return `${head}**record**, ${plural(v.fields.size, "field")}: ${[...v.fields.keys()].map((k) => `\`${k}\``).join(", ")}`
-    case "variant": {
-      const [first] = v.args
-      const payload =
-        v.args.length === 0 ? "no payload"
-        : v.args.length === 1 && first?.kind === "record" ? `record payload (${plural(first.fields.size, "field")})`
-        : plural(v.args.length, "positional argument")
-      const prelude = PRELUDE[v.tag]
-      return `${head}**variant** \`${v.tag}\` — ${payload}` + (prelude ? `\n\n${prelude}` : "")
-    }
-  }
-}
-
 documents.listen(connection)
 connection.listen()

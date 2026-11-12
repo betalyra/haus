@@ -339,6 +339,47 @@ a:focus-visible > .brush-hover {
   line-height: 1.4;
 }
 
+/* Hover types in haus examples (src/lib/hover.ts, HoverTips.astro): while the
+   pointer is over an example, faint dotted lines say "there's more here"; the
+   tooltip says what haus sees. */
+.hover-tip {
+  border-radius: 3px;
+  text-decoration: underline dotted transparent;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  cursor: help;
+  transition: background-color 120ms ease, text-decoration-color 200ms ease;
+}
+/* The dotted lines appear only while the pointer is over the example, so code reads clean. */
+.code:hover .hover-tip {
+  text-decoration-color: color-mix(in oklab, var(--ink) 22%, transparent);
+}
+.hover-tip.is-hovered {
+  background: color-mix(in oklab, var(--ultramarine) 9%, transparent);
+}
+.hover-tooltip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 50;
+  max-width: min(30rem, calc(100vw - 16px));
+  padding: 0.55rem 0.75rem;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 6px 24px -12px color-mix(in oklab, var(--ink) 35%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: var(--ink);
+  white-space: pre-wrap;
+  pointer-events: none;
+}
+/* The first line is the type; the rest is detail. */
+.hover-tooltip::first-line {
+  font-weight: 600;
+}
+
 /* ---------------------------------------------------------------------------
    Watercolour washes (painted by src/lib/paint.ts)
    --------------------------------------------------------------------------- */

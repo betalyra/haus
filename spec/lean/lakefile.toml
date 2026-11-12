@@ -1,0 +1,10 @@
+name = "haus"
+version = "0.1.0"
+defaultTargets = ["Haus", "haus-ref"]
+
+[[lean_lib]]
+name = "Haus"
+
+[[lean_exe]]
+name = "haus-ref"
+root = "Main"

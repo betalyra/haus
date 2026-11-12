@@ -1,0 +1,52 @@
+---
+/**
+ * One tooltip for every `.hover-tip` in the page's code examples (see
+ * src/lib/hover.ts). It lives outside the code cards, so their scrolling
+ * never clips it. Mouse: hover. Touch: tap, and tap elsewhere to close.
+ */
+---
+
+<div class="hover-tooltip" role="tooltip" hidden></div>
+
+<script>
+  const tip = document.querySelector<HTMLElement>(".hover-tooltip")!;
+  let current: HTMLElement | null = null;
+
+  const show = (el: HTMLElement) => {
+    current?.classList.remove("is-hovered");
+    current = el;
+    el.classList.add("is-hovered");
+    tip.textContent = el.dataset.hover ?? "";
+    tip.hidden = false;
+    const r = el.getBoundingClientRect();
+    const w = tip.offsetWidth;
+    const h = tip.offsetHeight;
+    const left = Math.min(Math.max(8, r.left), innerWidth - w - 8);
+    const below = r.bottom + 6;
+    const top = below + h > innerHeight - 8 ? r.top - h - 6 : below;
+    tip.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
+  };
+  const hide = () => {
+    current?.classList.remove("is-hovered");
+    current = null;
+    tip.hidden = true;
+  };
+  const target = (e: Event) => (e.target as Element | null)?.closest?.<HTMLElement>(".hover-tip[data-hover]") ?? null;
+
+  document.addEventListener("pointerover", (e) => {
+    if (e.pointerType !== "mouse") return;
+    const el = target(e);
+    if (el) show(el);
+  });
+  document.addEventListener("pointerout", (e) => {
+    if (e.pointerType !== "mouse") return;
+    if (target(e) && !target({ target: e.relatedTarget } as Event)) hide();
+  });
+  document.addEventListener("click", (e) => {
+    const el = target(e);
+    if (el && el !== current) show(el);
+    else hide();
+  });
+  addEventListener("scroll", hide, { passive: true, capture: true });
+  addEventListener("keydown", (e) => e.key === "Escape" && hide());
+</script>

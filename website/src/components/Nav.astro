@@ -4,8 +4,9 @@ import Logo from "./Logo.astro";
 import { links } from "@/lib/links";
 
 const items = [
+  { label: "Playground", href: "/play" },
   { label: "Spec", href: links.spec },
-  { label: "Languages", href: "#languages" },
+  { label: "Languages", href: "/#languages", wide: true },
   { label: "Editors", href: links.editors, wide: true },
 ];
 ---

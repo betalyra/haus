@@ -11,5 +11,7 @@ export default defineConfig({
   integrations: [react()],
   vite: {
     plugins: [tailwindcss()],
+    // The playground and the hover types use the haus parser and the examples from the repo.
+    server: { fs: { allow: [".."] } },
   },
 });

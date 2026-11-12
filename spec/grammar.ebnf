@@ -80,14 +80,19 @@ block_char  ::= [^\#x00-#x08#x0A-#x1F#x202A-#x202E#x2066-#x2069]  (* tab allowed
                    indentation is removed. *)
 
 newline     ::= #x0A | #x0D #x0A
+                (* A carriage return on its own is an error. *)
 
 ws          ::= ( [ \t] | newline | comment )*
 comment     ::= line_comment | block_comment
 line_comment  ::= "//" [^#x0A#x202A-#x202E#x2066-#x2069]*
+                (* runs to the end of its line: `[ // x 1 ]` is unclosed, not [1] *)
 block_comment ::= "/*" ( block_comment | comment_char )* "*/"
                 (* block comments nest; comment_char is any character except
                    the bidirectional controls #x202A-#x202E and #x2066-#x2069
-                   ("Trojan Source": reordered text hidden in comments) *)
+                   ("Trojan Source": reordered text hidden in comments).
+                   Read left to right, the first "*/" closes and every "/*"
+                   opens a nested comment, so `/* a */ b */` ends after `a */`,
+                   and `/* a /*/` is unterminated. *)
 
 (* ─────────────────────────────────────────────────────────────────────
    Schema files (.schema.haus). Same comments and whitespace as data.

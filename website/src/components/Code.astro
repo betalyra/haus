@@ -1,20 +1,25 @@
 ---
 import { Code as Shiki } from "astro:components";
 import { hausLang, hausTheme } from "@/lib/code";
+import { hausHover } from "@/lib/hover";
 
 interface Props {
   code: string;
   lang?: "haus" | "json" | "ts" | "rust" | "sh" | "python";
   label?: string;
   size?: "sm" | "md" | "lg";
+  /** For haus data examples: the schema they are checked against, so hovers show its types. */
+  schema?: { text: string; type?: string };
   class?: string;
 }
 
-const { code, lang = "haus", label, size = "md", class: className } = Astro.props;
+const { code, lang = "haus", label, size = "md", schema, class: className } = Astro.props;
 const shikiLang = lang === "haus" ? hausLang : lang;
+// haus examples get hover types: definitions in schema files, types in data files.
+const transformers = lang === "haus" ? [hausHover(label?.endsWith(".schema.haus") ? "schema" : "data", schema ? { schema } : {})] : [];
 ---
 
 <figure class:list={["code", `code--${size}`, className]}>
   {label && <figcaption class="code__label">{label}</figcaption>}
-  <Shiki code={code.trim()} lang={shikiLang as any} theme={hausTheme} />
+  <Shiki code={code.trim()} lang={shikiLang as any} theme={hausTheme} transformers={transformers} />
 </figure>
