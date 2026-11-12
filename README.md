@@ -1,8 +1,6 @@
 <h1>
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/haus-dark.svg">
-    <img src="docs/assets/haus-light.svg" alt="" width="40" height="40" align="top">
-  </picture>
+  <img src="docs/assets/haus-light.svg#gh-light-mode-only" alt="" width="40" height="40" align="top">
+  <img src="docs/assets/haus-dark.svg#gh-dark-mode-only" alt="" width="40" height="40" align="top">
   haus
 </h1>
 
