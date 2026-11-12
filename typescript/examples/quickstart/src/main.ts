@@ -1,6 +1,6 @@
 // The quickstart: data typed by its schema, decoding, encoding and errors.
 // The same steps as rust/examples/quickstart, on the same files. Run: pnpm start
-import * as Haus from "@betalyra/haus-fmt-effect";
+import * as Haus from "@haus-fmt/effect";
 import { Console, Effect } from "effect";
 // A data file is a module, typed (and checked) by the schema next to it.
 import thread from "../../../../examples/thread.haus";

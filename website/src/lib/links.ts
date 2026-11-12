@@ -1,4 +1,4 @@
-export const repo = "https://github.com/betalyra/haus";
+export const repo = "https://github.com/betalyra/haus-fmt";
 
 export const links = {
   repo,
@@ -8,7 +8,7 @@ export const links = {
   rust: `${repo}/tree/main/rust`,
   roc: `${repo}/tree/main/roc`,
   effect: `${repo}/tree/main/typescript/packages/effect`,
-  contentMapper: `${repo}/tree/main/typescript/packages/content-mapper`,
+  contentMapper: `${repo}/tree/main/typescript/packages/import`,
   vscode: `${repo}/tree/main/editors/vscode`,
   editors: `${repo}/tree/main/editors`,
   examples: `${repo}/tree/main/examples`,

@@ -14,11 +14,11 @@ const trigger = "tab-brush px-1 pb-1.5 text-[0.98rem] font-medium text-ink-3 tra
 // All panels share one grid cell, so the area is as tall as the tallest one and
 // switching tabs never changes the layout (or the washes painted around it).
 const panel =
-  "col-start-1 row-start-1 text-base data-[state=inactive]:invisible data-[state=inactive]:pointer-events-none";
+  "col-start-1 row-start-1 min-w-0 text-base data-[state=inactive]:invisible data-[state=inactive]:pointer-events-none";
 
 export default function CodeTabs({ tabs, ...slots }: Props) {
   return (
-    <Tabs defaultValue={tabs[0].value} className="gap-4">
+    <Tabs defaultValue={tabs[0].value} className="min-w-0 gap-4">
       <TabsList variant="line" className="h-auto gap-5 p-0">
         {tabs.map((t) => (
           <TabsTrigger key={t.value} value={t.value} className={trigger}>
@@ -26,7 +26,7 @@ export default function CodeTabs({ tabs, ...slots }: Props) {
           </TabsTrigger>
         ))}
       </TabsList>
-      <div className="grid">
+      <div className="grid grid-cols-[minmax(0,1fr)]">
         {tabs.map((t) => (
           <TabsContent key={t.value} value={t.value} forceMount className={panel}>
             {slots[t.value] as ReactNode}

@@ -1,0 +1,55 @@
+{
+  "name": "@haus-fmt/import",
+  "version": "0.1.0",
+  "description": "Import .haus files in TypeScript: typed imports (TypeScript 7.1 content mapper), a Node loader and a Vite plugin",
+  "type": "module",
+  "exports": {
+    "./register": "./src/register/plain.ts",
+    "./register/effect": "./src/register/effect.ts",
+    "./node": "./src/node.ts",
+    "./vite": "./src/vite.ts",
+    "./runtime": "./src/runtime.ts"
+  },
+  "typescript": {
+    "contentMapper": {
+      "exec": [
+        "node",
+        "src/typescript.ts"
+      ],
+      "compilerOptions": [],
+      "dynamicConfig": false
+    }
+  },
+  "dependencies": {
+    "@haus-fmt/haus": "workspace:*",
+    "ts-content-mapper": "0.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "@haus-fmt/effect": "workspace:*",
+    "effect": "4.0.6",
+    "vite": "8.3.6",
+    "vitest": "5.0.5",
+    "typescript": "5.9.3"
+  },
+  "peerDependencies": {
+    "@haus-fmt/effect": "workspace:*",
+    "effect": "^4.0.6",
+    "vite": ">=6"
+  },
+  "peerDependenciesMeta": {
+    "@haus-fmt/effect": {
+      "optional": true
+    },
+    "effect": {
+      "optional": true
+    },
+    "vite": {
+      "optional": true
+    }
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  }
+}

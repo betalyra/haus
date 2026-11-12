@@ -12,10 +12,9 @@
 import { existsSync, readFileSync } from "node:fs"
 import { basename, dirname, join, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
-import { checkData, HausSyntaxError, parseSchemaFile, parseWithLocations, schemaReference } from "@betalyra/haus-fmt"
-import { schemaOptions } from "@betalyra/haus-fmt/node"
-import * as Haus from "@betalyra/haus-fmt-effect"
-import { Effect } from "effect"
+import { checkData, HausSyntaxError, parseSchemaFile, parseWithLocations, schemaReference, type ParseSchemaOptions, type ResolvedModule } from "@haus-fmt/haus"
+import { schemaOptions } from "@haus-fmt/haus/node"
+import * as Haus from "@haus-fmt/effect"
 
 export interface Diagnostic {
   readonly message: string
@@ -54,25 +53,11 @@ function specifier(fileName: string, pkg: string): string {
 
 export const effectSpecifier = (fileName: string): string => specifier(fileName, "effect")
 
-const compiled = new Map<string, Haus.CompiledSchemaFile>()
-
-/** Compile a schema file and its imports (cached by path and text). */
-function compile(text: string, path: string): Haus.CompiledSchemaFile {
-  const key = `${path}\0${text}`
-  let c = compiled.get(key)
-  if (!c) {
-    if (compiled.size > 64) compiled.clear()
-    c = Haus.compileSchemaFile(text, schemaOptions(path))
-    compiled.set(key, c)
-  }
-  return c
-}
-
 /** Declarations for a `.schema.haus` file: its types and their Effect schemas (imports resolved from its place). */
 export function schemaModule(text: string, fileName: string): string {
   return Haus.schemaDeclarations(parseSchemaFile(text, schemaOptions(fileName)), {
     effect: effectSpecifier(fileName),
-    haus: specifier(fileName, "@betalyra/haus-fmt-effect"),
+    haus: specifier(fileName, "@haus-fmt/effect"),
   })
 }
 
@@ -114,43 +99,72 @@ export function dataModule(text: string, fileName: string, link: SchemaLink): { 
   }
 }
 
-// ── runtime (the Node loader) ────────────────────────────────
+// ── runtime ──────────────────────────────────────────────────
 
-/** The decoded value of a data file, checked against its schema; throws with the position of the first error. */
-export function decodeData(text: string, schemaText: string, schemaPath: string, typeName: string, fileName: string): unknown {
-  const { schemas, streams } = compile(schemaText, schemaPath)
-  const root = schemas[typeName]
-  if (!root) throw new Error(`${fileName}: its schema file has no type ${typeName}`)
-  const values = parseWithLocations(text)
-  const decode = Haus.decodeValue(root)
-  const decoded = values.map((value) =>
-    Effect.runSync(
-      decode(value).pipe(
-        Effect.mapError((e) => {
-          const at = Haus.locateIssue(value, e.path ?? [])
-          const before = text.slice(0, at.start ?? 0).split("\n")
-          return new Error(`${fileName}:${before.length}:${before.at(-1)!.length + 1}: ${e.message}`)
-        }),
-      ),
-    ))
-  if (streams.has(typeName)) return decoded
-  if (decoded.length !== 1) throw new Error(`${fileName}: expected exactly one value, found ${decoded.length}`)
-  return decoded[0]
+/**
+ * Parse options for a schema file that also record every import the
+ * resolver finds, under short keys (no absolute paths end up in a bundle).
+ * The recorded modules let runtime.ts rebuild the schema without a file system.
+ */
+function recording(path: string): { options: ParseSchemaOptions; modules: Record<string, ResolvedModule>; readonly files: string[] } {
+  const base = schemaOptions(path)
+  const short = new Map<string, string>()
+  const real = new Map<string, string>()
+  const shorten = (key: string) => {
+    let k = short.get(key)
+    if (k === undefined) {
+      k = `m${short.size}`
+      short.set(key, k)
+      real.set(k, key)
+    }
+    return k
+  }
+  const modules: Record<string, ResolvedModule> = {}
+  const root = shorten(base.key!)
+  return {
+    modules,
+    options: {
+      key: root,
+      id: base.id!,
+      resolver: {
+        resolve(module, from) {
+          const found = base.resolver!.resolve(module, from === undefined ? undefined : real.get(from))
+          const resolved = { ...found, key: shorten(found.key) }
+          modules[`${from ?? ""}\0${module}`] = resolved
+          return resolved
+        },
+      },
+    },
+    get files() {
+      return [...short.keys()]
+    },
+  }
 }
 
-/** Module source for a `.schema.haus` file: its Effect schemas as named exports (imports resolved when it loads). */
-export function schemaModuleSource(text: string, path: string): string {
-  const names = parseSchemaFile(text, schemaOptions(path)).definitions.filter((d) => d.params.length === 0).map((d) => d.name)
-  const effect = import.meta.resolve("@betalyra/haus-fmt-effect")
-  const node = import.meta.resolve("@betalyra/haus-fmt/node")
-  return `import { compileSchemaFile } from ${JSON.stringify(effect)};\n` +
-    `import { schemaOptions } from ${JSON.stringify(node)};\n` +
-    `const { schemas } = compileSchemaFile(${JSON.stringify(text)}, schemaOptions(${JSON.stringify(path)}));\n` +
-    names.map((n) => `export const ${n} = schemas[${JSON.stringify(n)}];\n`).join("")
+/** The JS expression that rebuilds a schema file's Effect schemas at runtime, and the files it was built from. */
+function compiledExpression(schemaPath: string, runtime: string): { code: string; files: string[] } {
+  const text = readFileSync(schemaPath, "utf8")
+  const r = recording(schemaPath)
+  parseSchemaFile(text, r.options) // resolves (and records) every import, and reports errors now
+  return {
+    code: `import { compiled, decodeData } from ${JSON.stringify(runtime)};\n` +
+      `const schema = compiled(${JSON.stringify(text)}, ${JSON.stringify(r.modules)}, ${JSON.stringify(r.options.key)}, ${JSON.stringify(r.options.id)});\n`,
+    files: r.files,
+  }
 }
 
-/** Module source for a data file with a schema file. */
-export function dataModuleSource(text: string, fileName: string, link: SchemaLink): string {
-  return `import { decodeData } from ${JSON.stringify(import.meta.url)};\n` +
-    `export default decodeData(${JSON.stringify(text)}, ${JSON.stringify(readFileSync(link.path, "utf8"))}, ${JSON.stringify(link.path)}, ${JSON.stringify(link.type)}, ${JSON.stringify(basename(fileName))});\n`
+/** Module source for a `.schema.haus` file: its Effect schemas as named exports. */
+export function schemaModuleSource(path: string, runtime: string): { code: string; files: string[] } {
+  const { code, files } = compiledExpression(path, runtime)
+  const names = parseSchemaFile(readFileSync(path, "utf8"), schemaOptions(path)).definitions.filter((d) => d.params.length === 0).map((d) => d.name)
+  return { code: code + names.map((n) => `export const ${n} = schema.schemas[${JSON.stringify(n)}];\n`).join(""), files }
+}
+
+/** Module source for a data file with a schema: decoded with it when the module loads. */
+export function dataModuleSource(text: string, fileName: string, link: SchemaLink, runtime: string): { code: string; files: string[] } {
+  const { code, files } = compiledExpression(link.path, runtime)
+  return {
+    code: code + `export default decodeData(${JSON.stringify(text)}, schema, ${JSON.stringify(link.type)}, ${JSON.stringify(basename(fileName))});\n`,
+    files,
+  }
 }

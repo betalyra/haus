@@ -20,7 +20,7 @@ import {
   Path,
   Stream,
 } from "effect";
-import * as Haus from "@betalyra/haus-fmt-effect";
+import * as Haus from "@haus-fmt/effect";
 import people from "../../../examples/person.haus";
 import tour from "../../../examples/syntax-tour.haus";
 import { ServerEvents } from "../../../examples/syntax-tour.schema.haus";

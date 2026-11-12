@@ -26,12 +26,12 @@ importers:
 
   demos:
     dependencies:
-      '@betalyra/haus-fmt-effect':
-        specifier: workspace:*
-        version: link:../packages/effect
       '@effect/platform-node':
         specifier: 4.0.6
         version: 4.0.6(effect@4.0.6)(redis@6.3.1)
+      '@haus-fmt/effect':
+        specifier: workspace:*
+        version: link:../packages/effect
       '@haus/money':
         specifier: workspace:*
         version: link:../../extensions/money
@@ -39,9 +39,9 @@ importers:
         specifier: 4.0.6
         version: 4.0.6
     devDependencies:
-      '@betalyra/haus-fmt-content-mapper':
+      '@haus-fmt/import':
         specifier: workspace:*
-        version: link:../packages/content-mapper
+        version: link:../packages/import
       '@types/node':
         specifier: 24.10.1
         version: 24.10.1
@@ -54,19 +54,19 @@ importers:
 
   examples/logs:
     dependencies:
-      '@betalyra/haus-fmt-effect':
-        specifier: workspace:*
-        version: link:../../packages/effect
       '@effect/platform-node':
         specifier: 4.0.6
         version: 4.0.6(effect@4.0.6)(redis@6.3.1)
+      '@haus-fmt/effect':
+        specifier: workspace:*
+        version: link:../../packages/effect
       effect:
         specifier: 4.0.6
         version: 4.0.6
     devDependencies:
-      '@betalyra/haus-fmt-content-mapper':
+      '@haus-fmt/import':
         specifier: workspace:*
-        version: link:../../packages/content-mapper
+        version: link:../../packages/import
       '@types/node':
         specifier: 24.10.1
         version: 24.10.1
@@ -79,7 +79,7 @@ importers:
 
   examples/order:
     dependencies:
-      '@betalyra/haus-fmt-effect':
+      '@haus-fmt/effect':
         specifier: workspace:*
         version: link:../../packages/effect
       '@haus/geo':
@@ -92,9 +92,9 @@ importers:
         specifier: 4.0.6
         version: 4.0.6
     devDependencies:
-      '@betalyra/haus-fmt-content-mapper':
+      '@haus-fmt/import':
         specifier: workspace:*
-        version: link:../../packages/content-mapper
+        version: link:../../packages/import
       '@types/node':
         specifier: 24.10.1
         version: 24.10.1
@@ -107,16 +107,16 @@ importers:
 
   examples/quickstart:
     dependencies:
-      '@betalyra/haus-fmt-effect':
+      '@haus-fmt/effect':
         specifier: workspace:*
         version: link:../../packages/effect
       effect:
         specifier: 4.0.6
         version: 4.0.6
     devDependencies:
-      '@betalyra/haus-fmt-content-mapper':
+      '@haus-fmt/import':
         specifier: workspace:*
-        version: link:../../packages/content-mapper
+        version: link:../../packages/import
       '@types/node':
         specifier: 24.10.1
         version: 24.10.1
@@ -127,28 +127,9 @@ importers:
         specifier: 7.1.0-beta
         version: 7.1.0-beta
 
-  packages/content-mapper:
-    dependencies:
-      '@betalyra/haus-fmt':
-        specifier: workspace:*
-        version: link:../haus
-      '@betalyra/haus-fmt-effect':
-        specifier: workspace:*
-        version: link:../effect
-      effect:
-        specifier: 4.0.6
-        version: 4.0.6
-      ts-content-mapper:
-        specifier: 0.1.1
-        version: 0.1.1
-    devDependencies:
-      '@types/node':
-        specifier: 24.10.1
-        version: 24.10.1
-
   packages/effect:
     dependencies:
-      '@betalyra/haus-fmt':
+      '@haus-fmt/haus':
         specifier: workspace:*
         version: link:../haus
     devDependencies:
@@ -182,6 +163,37 @@ importers:
       typescript:
         specifier: 5.9.3
         version: 5.9.3
+      vitest:
+        specifier: 5.0.5
+        version: 5.0.5(@types/node@24.10.1)(vite@8.3.6(@types/node@24.10.1))
+      zod:
+        specifier: 4.1.12
+        version: 4.1.12
+
+  packages/import:
+    dependencies:
+      '@haus-fmt/haus':
+        specifier: workspace:*
+        version: link:../haus
+      ts-content-mapper:
+        specifier: 0.1.1
+        version: 0.1.1
+    devDependencies:
+      '@haus-fmt/effect':
+        specifier: workspace:*
+        version: link:../effect
+      '@types/node':
+        specifier: 24.10.1
+        version: 24.10.1
+      effect:
+        specifier: 4.0.6
+        version: 4.0.6
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vite:
+        specifier: 8.3.6
+        version: 8.3.6(@types/node@24.10.1)(esbuild@0.28.2)(tsx@4.23.15)
       vitest:
         specifier: 5.0.5
         version: 5.0.5(@types/node@24.10.1)(vite@8.3.6(@types/node@24.10.1))
@@ -966,6 +978,9 @@ packages:
       utf-8-validate:
         optional: true
 
+  zod@4.1.12:
+    resolution: {integrity: sha512-JInaHOamG8pt5+Ey8kGmdcAcg3OL9reK8ltczgHTAwNhMys/6ThXHityHxVV2p3fkw/c+MAvBHFVYHFZDmjMCQ==}
+
 snapshots:
 
   '@effect/platform-node-shared@4.0.6(effect@4.0.6)':
@@ -1480,3 +1495,5 @@ snapshots:
   why-is-node-running@3.2.1: {}
 
   ws@8.22.2: {}
+
+  zod@4.1.12: {}

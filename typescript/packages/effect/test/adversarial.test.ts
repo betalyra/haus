@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "vitest"
 import { Cause, Effect, Exit, Schema } from "effect"
-import { arr, type Value } from "@betalyra/haus-fmt"
+import { arr, type Value } from "@haus-fmt/haus"
 import * as Haus from "../src/index.js"
 
 interface TA { readonly _tag: "A"; readonly a: ReadonlyArray<TA | TB> }

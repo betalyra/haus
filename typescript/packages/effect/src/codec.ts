@@ -50,7 +50,7 @@ export type Named<S extends Schema.Top, Id extends string, F extends TypeLambda 
 
 // ── codecs ───────────────────────────────────────────────────
 
-export const CodecTypeId: unique symbol = Symbol.for("@betalyra/haus-fmt-effect/Codec")
+export const CodecTypeId: unique symbol = Symbol.for("@haus-fmt/effect/Codec")
 
 export interface CodecEntry {
   readonly id: string

@@ -1,7 +1,7 @@
 // A log, read as a stream: each entry is decoded as soon as its comma
 // arrives, so memory holds one entry, not the whole file. The same steps as
 // rust/examples/logs, on the same files. Run: pnpm start
-import * as Haus from "@betalyra/haus-fmt-effect";
+import * as Haus from "@haus-fmt/effect";
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { Console, DateTime, Effect, FileSystem, Path, Stdio, Stream } from "effect";
 import { Entry } from "../../../../examples/logs.schema.haus";

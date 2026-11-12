@@ -1,4 +1,4 @@
-import { nodeResolver, schemaOptions } from "@betalyra/haus-fmt/node"
+import { nodeResolver, schemaOptions } from "@haus-fmt/haus/node"
 import { describe, expect, expectTypeOf, it } from "@effect/vitest"
 import { BigDecimal, Effect, Exit, Schema, SchemaIssue, SchemaTransformation } from "effect"
 import { readFileSync } from "node:fs"

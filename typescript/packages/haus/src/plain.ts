@@ -1,8 +1,9 @@
 /**
- * The "plain" TypeScript view of a .haus file whose type is inferred from its
- * data: one function prints the TypeScript type, the other converts the
- * values. Both follow the same rules, so the runtime value always has the
- * type the content mapper reported.
+ * The plain JS view of haus data, with the type inferred from the data
+ * itself (no schema): `parsePlain` converts the values, `plainDeclarations`
+ * prints their TypeScript type. Both follow the same rules, so the values
+ * always have the type that was printed. `.haus` imports without a schema
+ * (@haus-fmt/import) and `parseWith` (standard.ts) use this view.
  *
  *   String            → string            Bytes          → Uint8Array
  *   whole numbers     → number            decimals       → string (exact: "19.90")
@@ -12,7 +13,11 @@
  *   fields missing from some records → key?: T
  *   types nested in themselves       → named type aliases (type Comment = …)
  */
-import { infer, parseAll, printShape, recursiveNames, resolve, type RecordShape, type Shape, type Value, type VariantShape } from "@betalyra/haus-fmt"
+import { Parser } from "./parser.js"
+import { infer, printShape, recursiveNames, resolve, type RecordShape, type Shape, type VariantShape } from "./infer.js"
+import type { Value } from "./value.js"
+
+const parseAll = (text: string): Value[] => new Parser(text).parseSequence()
 
 const TIME_TAGS = new Set(["Date", "Time", "DateTime", "Instant", "ZonedDateTime", "Duration", "YearMonth", "TimeZone"])
 const BOOL = new Set(["True", "False"])
@@ -103,8 +108,8 @@ class TypePrinter {
   }
 }
 
-/** A TypeScript module declaring the file's default export. */
-export function declarations(text: string, fileName = "value.haus"): string {
+/** A TypeScript module declaring the file's default export, in the plain view. */
+export function plainDeclarations(text: string, fileName = "value.haus"): string {
   const values = parseAll(text)
   const { root } = infer(values)
   const names = recursiveNames(resolve(root))
@@ -178,25 +183,15 @@ function fields(r: Extract<Value, { kind: "record" }>, rs: RecordShape): Record<
   return out
 }
 
-/** The file's values in the plain TypeScript view (one value, or an array for a stream). */
-export function load(text: string): unknown {
-  const values = parseAll(text)
+/** Values in the plain view, typed by what all of them have in common. */
+export function toPlain(values: readonly Value[]): unknown[] {
   const { root } = infer(values)
-  const out = values.map((v) => plain(v, root))
+  return values.map((v) => plain(v, root))
+}
+
+/** A file's values in the plain view: its one value, or an array for a stream. */
+export function parsePlain(text: string): unknown {
+  const values = parseAll(text)
+  const out = toPlain(values)
   return values.length === 1 ? out[0] : out
-}
-
-/** JavaScript source for `load(text)`, as an ES module. */
-export function moduleSource(text: string): string {
-  return `export default ${js(load(text))};\n`
-}
-
-function js(x: unknown): string {
-  if (x === null) return "null"
-  if (x instanceof Uint8Array) return `new Uint8Array([${x.join(",")}])`
-  if (Array.isArray(x)) return `[${x.map(js).join(",")}]`
-  if (typeof x === "object") {
-    return `{${Object.entries(x as Record<string, unknown>).map(([k, v]) => `${k === "__proto__" ? '["__proto__"]' : JSON.stringify(k)}:${js(v)}`).join(",")}}`
-  }
-  return JSON.stringify(x)
 }

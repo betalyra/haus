@@ -22,11 +22,11 @@ pnpm typecheck                     # tsc 7.1 with the haus content mapper
 fails with `Unknown file extension ".haus"`:
 
 ```sh
-pnpm tsx --import @betalyra/haus-fmt-content-mapper/register src/main.ts
+pnpm tsx --import @haus-fmt/import/register/effect src/main.ts
 # or once per shell:
-export NODE_OPTIONS="--import @betalyra/haus-fmt-content-mapper/register"
+export NODE_OPTIONS="--import @haus-fmt/import/register/effect"
 pnpm tsx src/main.ts
 ```
 
-How `.haus` imports work: [`packages/content-mapper`](../packages/content-mapper).
+How `.haus` imports work: [`packages/import`](../packages/import).
 Presentation material (the live demo, the video script, a tour): [`../demos`](../demos).

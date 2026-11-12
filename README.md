@@ -83,7 +83,7 @@ It works, but every one of these choices is a convention you have to explain and
 ## Using it from TypeScript
 
 ```ts
-import * as h from "@betalyra/haus-fmt/schema"
+import * as h from "@haus-fmt/haus/schema"
 
 const Status = h.Variant({
   Pending: h.Unit,
@@ -96,11 +96,18 @@ const order = h.parse(Order, text)   // typed; mismatches fail with e.g. `expect
 const back = h.stringify(Order, order)
 ```
 
+Or bring your own schema library: every Standard Schema (Zod, Valibot, ArkType, Effect Schema) works with `parseWith`:
+
+```ts
+import { parseWith } from "@haus-fmt/haus"
+const order = parseWith(OrderZod, text)   // the plain JS view of the data, validated by Zod
+```
+
 There is also an [Effect adapter](typescript/packages/effect) (`Haus.decode(schema)`, `Haus.encodeStream(schema)`), and bindings for [Rust](rust) and [Roc](roc), with the same examples on the same files.
 
 ### Typed imports (TypeScript 7.1, experimental)
 
-With the [content mapper](typescript/packages/content-mapper), `.haus` files are imported like modules:
+With [`@haus-fmt/import`](typescript/packages/import) (a TypeScript content mapper, a Node loader and a Vite plugin), `.haus` files are imported like modules:
 
 ```ts
 import { Comment } from "./thread.schema.haus"   // the type and its Effect schema
@@ -118,7 +125,7 @@ Data that doesn't match its schema is an error in the editor, at the value that'
 |---|---|
 | [`spec/`](spec) | Grammar, semantics, standard format, prelude types |
 | [`test-suite/`](test-suite) | Conformance files every parser must pass |
-| [`typescript/`](typescript) | Parser, schemas, formatter, type inference, Effect adapter, content mapper, examples, demos |
+| [`typescript/`](typescript) | Parser, schemas, formatter, type inference, Standard Schema, Effect adapter, typed imports (content mapper, Node, Vite), examples, demos |
 | [`rust/`](rust) | Parser, `haus-build` (Rust types from schemas, with codecs), examples |
 | [`extensions/`](extensions) | Official schema packages (`@haus/money`, `@haus/geo`), for npm and crates.io |
 | [`roc/`](roc) | Parser, decoding, encoding, streams; modules generated from schemas; examples |

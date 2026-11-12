@@ -1,7 +1,7 @@
 {
-  "name": "@betalyra/haus-fmt",
+  "name": "@haus-fmt/haus",
   "version": "0.1.0",
-  "description": "Streaming parser for the haus data format",
+  "description": "The haus data format: parser, writer, streams, schemas and Standard Schema support",
   "type": "module",
   "exports": {
     ".": {
@@ -15,6 +15,10 @@
     "./node": {
       "types": "./dist/node.d.ts",
       "default": "./dist/node.js"
+    },
+    "./plain": {
+      "types": "./dist/plain.d.ts",
+      "default": "./dist/plain.js"
     }
   },
   "files": [
@@ -32,6 +36,7 @@
     "@types/node": "24.10.1",
     "effect": "4.0.6",
     "typescript": "5.9.3",
-    "vitest": "5.0.5"
+    "vitest": "5.0.5",
+    "zod": "4.1.12"
   }
 }

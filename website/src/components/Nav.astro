@@ -10,27 +10,28 @@ const items = [
 ];
 ---
 
-<header class="mx-auto flex w-full max-w-6xl items-center justify-between px-6 pt-6 pb-2 sm:pt-8">
+<header class="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-6 pt-6 pb-2 sm:pt-8">
   <a href="/" class="flex items-center gap-2.5" aria-label="haus, home">
     <Logo size={34} />
     <span class="text-[1.5rem] font-heading leading-none font-semibold tracking-[-0.025em] text-ink">haus</span>
   </a>
 
-  <nav aria-label="Primary" class="flex items-center gap-1 sm:gap-2">
+  <nav aria-label="Primary" class="-mr-1.5 flex items-center sm:mr-0 sm:gap-2">
     {items.map((item) => (
       <a
         href={item.href}
-        class="hidden px-2.5 py-1.5 text-[0.95rem] text-ink-2 sm:inline-block"
+        class="inline-block px-1.5 py-1.5 text-[0.92rem] text-ink-2 sm:px-2.5 sm:text-[0.95rem]"
       >
         <span class="brush-hover">{item.label}</span>
       </a>
     ))}
     <a
       href={links.repo}
-      class="ml-1 inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[0.95rem] text-ink"
+      class="inline-flex items-center gap-1.5 px-1.5 py-1.5 text-[0.95rem] text-ink sm:ml-1 sm:px-2.5"
+      aria-label="GitHub"
     >
       <PiGithubLogoLight size={22} aria-hidden="true" />
-      <span class="brush-hover">GitHub</span>
+      <span class="brush-hover hidden sm:inline">GitHub</span>
     </a>
   </nav>
 </header>

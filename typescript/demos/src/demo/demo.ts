@@ -1,5 +1,5 @@
 // Live demo: haus data, typed by its schema.
-import * as Haus from "@betalyra/haus-fmt-effect";
+import * as Haus from "@haus-fmt/effect";
 import { BigDecimal, Console, Effect, Match } from "effect";
 
 

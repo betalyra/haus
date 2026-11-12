@@ -66,7 +66,7 @@ describe("recursive schemas", () => {
 
   it("recursion without consuming input fails instead of looping", () => {
     // A wrapper that decodes the same value with its inner schema never moves on.
-    const same = <A>(inner: h.Schema<A>): h.Schema<A> => ({ expected: inner.expected, decode: inner.decode, encode: inner.encode })
+    const same = <A>(inner: h.Schema<A>): h.Schema<A> => ({ "~standard": inner["~standard"], expected: inner.expected, decode: inner.decode, encode: inner.encode })
     const P = h.Recursive<unknown>("P", (self) => same(self))
     expect(within(100, () => errorOf(() => h.parse(P, "1"))).message).toContain("unguarded recursion in P")
     // Maybe(self) consumes Some(…) when decoding, but encodes a value with itself again.
@@ -93,6 +93,7 @@ describe("work budget", () => {
   it("a schema doing exponential work is stopped", () => {
     // A buggy combinator that decodes everything twice: 2^depth work on nested arrays.
     const twice = <A>(s: h.Schema<A>): h.Schema<A> => ({
+      "~standard": s["~standard"],
       expected: s.expected,
       decode: (v, at) => {
         s.decode(v, at)

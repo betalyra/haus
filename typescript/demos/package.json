@@ -4,23 +4,23 @@
   "description": "Presentation material: the live demo, the video script and a tour of the content mapper.",
   "type": "module",
   "scripts": {
-    "predemo": "pnpm --filter @betalyra/haus-fmt --filter @betalyra/haus-fmt-effect build",
-    "demo": "tsx --import @betalyra/haus-fmt-content-mapper/register src/demo/demo.ts",
-    "demo:watch": "tsx watch --include 'src/**/*.haus' --import @betalyra/haus-fmt-content-mapper/register src/demo/demo.ts",
-    "prevideo": "pnpm --filter @betalyra/haus-fmt --filter @betalyra/haus-fmt-effect build",
-    "video": "tsx --import @betalyra/haus-fmt-content-mapper/register src/video/main.ts",
-    "pretour": "pnpm --filter @betalyra/haus-fmt --filter @betalyra/haus-fmt-effect build",
-    "tour": "tsx --import @betalyra/haus-fmt-content-mapper/register src/tour.ts",
+    "predemo": "pnpm --filter @haus-fmt/haus --filter @haus-fmt/effect build",
+    "demo": "tsx --import @haus-fmt/import/register/effect src/demo/demo.ts",
+    "demo:watch": "tsx watch --include 'src/**/*.haus' --import @haus-fmt/import/register/effect src/demo/demo.ts",
+    "prevideo": "pnpm --filter @haus-fmt/haus --filter @haus-fmt/effect build",
+    "video": "tsx --import @haus-fmt/import/register/effect src/video/main.ts",
+    "pretour": "pnpm --filter @haus-fmt/haus --filter @haus-fmt/effect build",
+    "tour": "tsx --import @haus-fmt/import/register/effect src/tour.ts",
     "typecheck": "tsc --noEmit --runExternalCode"
   },
   "devDependencies": {
-    "@betalyra/haus-fmt-content-mapper": "workspace:*",
+    "@haus-fmt/import": "workspace:*",
     "@types/node": "24.10.1",
     "tsx": "4.23.15",
     "typescript": "7.1.0-beta"
   },
   "dependencies": {
-    "@betalyra/haus-fmt-effect": "workspace:*",
+    "@haus-fmt/effect": "workspace:*",
     "@effect/platform-node": "4.0.6",
     "@haus/money": "workspace:*",
     "effect": "4.0.6"

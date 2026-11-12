@@ -313,6 +313,18 @@ a:focus-visible > .brush-hover {
   line-height: 1.65;
 }
 
+/* Phones: a little smaller, so typical lines fit without scrolling. */
+@media (max-width: 639px) {
+  .code,
+  .code--sm {
+    padding: 0.8rem 0.95rem 0.9rem;
+  }
+  .code pre.astro-code,
+  .code--sm pre.astro-code {
+    font-size: 0.78rem;
+  }
+}
+
 .code--lg pre.astro-code {
   font-size: 1rem;
   line-height: 1.75;

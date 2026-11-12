@@ -1,7 +1,7 @@
 // Codecs: the application chooses host types for named haus types. Each one
 // is an ordinary Effect schema built on the type's base schema, so the
 // schema's rules always run first and the haus text never changes.
-import * as Haus from "@betalyra/haus-fmt-effect";
+import * as Haus from "@haus-fmt/effect";
 import * as money from "@haus/money/money.schema.haus";
 import * as geo from "@haus/geo/geo.schema.haus";
 import { BigDecimal, Effect, Schema, SchemaIssue, SchemaTransformation } from "effect";

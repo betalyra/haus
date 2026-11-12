@@ -1,4 +1,4 @@
-import * as Haus from "@betalyra/haus-fmt-effect";
+import * as Haus from "@haus-fmt/effect";
 import { Console, Effect, Match } from "effect";
 import order from "./order.haus";
 import { Root } from "./order.schema.haus";

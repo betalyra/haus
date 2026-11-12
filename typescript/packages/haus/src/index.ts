@@ -45,3 +45,5 @@ export {
 export { checkStdTime, isStdTimeType, STD_TIME_TYPES, type StdTimeType } from "./std-time.js"
 export { checkData, schemaReference, type CheckIssue, type SchemaReference } from "./check.js"
 export { completeAt, type Completion } from "./complete.js"
+export { HausValidationError, parseWith, parseWithAsync, type StandardSchemaV1 } from "./standard.js"
+export { parsePlain, toPlain } from "./plain.js"

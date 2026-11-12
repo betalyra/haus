@@ -22,7 +22,7 @@
  * builds the schemas with their types, and the declarations make every type
  * a function of the codecs' types (`Root<C>`, through `Lookup`).
  */
-import { parseSchemaFile, type Builtin, type Case, type Definition, type Field, type Instance, type ParseSchemaOptions, type SchemaFile, type StdType, type Type } from "@betalyra/haus-fmt"
+import { parseSchemaFile, type Builtin, type Case, type Definition, type Field, type Instance, type ParseSchemaOptions, type SchemaFile, type StdType, type Type } from "@haus-fmt/haus"
 import { Schema } from "effect"
 import { entries, idOf, setId, type AnyCodec, type CodecEntry } from "./codec.js"
 import { BARE_TAG, CLOSED, VALUES } from "./convert.js"
@@ -44,7 +44,7 @@ export interface FromSchemaFileOptions {
 
 /**
  * Parse a schema file and build Effect schemas for its types. Pass the
- * options of `schemaOptions(path)` (from `@betalyra/haus-fmt/node`) to import
+ * options of `schemaOptions(path)` (from `@haus-fmt/haus/node`) to import
  * packages and files. Throws HausSchemaFileError.
  */
 export const compileSchemaFile = (text: string, options: ParseSchemaOptions = {}): CompiledSchemaFile =>
@@ -214,7 +214,7 @@ export const fromSchemaFile = (file: SchemaFile, options: FromSchemaFileOptions 
 export interface DeclarationOptions {
   /** Module specifier to import Effect's types from (default "effect"). */
   readonly effect?: string
-  /** Module specifier to import this package's types from (default "@betalyra/haus-fmt-effect"). */
+  /** Module specifier to import this package's types from (default "@haus-fmt/effect"). */
   readonly haus?: string
 }
 
@@ -395,6 +395,6 @@ export const schemaDeclarations = (file: SchemaFile, options: DeclarationOptions
   }
   const imports = [...used].sort().map((n) => `${n} as ${n}$`)
   const head = (imports.length ? `import type { ${imports.join(", ")} } from ${JSON.stringify(options.effect ?? "effect")};\n` : "") +
-    `import type * as Haus$ from ${JSON.stringify(options.haus ?? "@betalyra/haus-fmt-effect")};\n`
+    `import type * as Haus$ from ${JSON.stringify(options.haus ?? "@haus-fmt/effect")};\n`
   return head + out.join("")
 }

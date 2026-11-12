@@ -19,8 +19,8 @@ import {
   type HRecord,
   type Inference,
   type Value,
-} from "@betalyra/haus-fmt"
-import { schemaOptions } from "@betalyra/haus-fmt/node"
+} from "@haus-fmt/haus"
+import { schemaOptions } from "@haus-fmt/haus/node"
 import {
   CompletionItemKind,
   createConnection,

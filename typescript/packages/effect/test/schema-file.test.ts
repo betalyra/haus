@@ -1,7 +1,7 @@
-import { HausSchemaFileError, parseSchemaFile } from "@betalyra/haus-fmt"
+import { HausSchemaFileError, parseSchemaFile } from "@haus-fmt/haus"
 import { describe, expect, it } from "@effect/vitest"
 import { BigDecimal, DateTime, Effect, Exit, Option } from "effect"
-import { schemaOptions } from "@betalyra/haus-fmt/node"
+import { schemaOptions } from "@haus-fmt/haus/node"
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import * as Haus from "../src/index.js"
@@ -183,7 +183,7 @@ describe("schema files", () => {
 
 describe("error locations", () => {
   it("leads to the value that failed", async () => {
-    const { parseWithLocations } = await import("@betalyra/haus-fmt")
+    const { parseWithLocations } = await import("@haus-fmt/haus")
     const schema = `type Root = { items: Array < Point Int Int | Box { size: Int } > , m: Maybe Int }`
     const cases: [string, string][] = [
       [`{ items: [Point(1, "x")], m: None }`, `"x"`],
@@ -213,7 +213,7 @@ describe("standard modules", () => {
   })
 
   it("the checker knows exactly the types of spec/std", async () => {
-    const { STD_MODULES } = await import("@betalyra/haus-fmt")
+    const { STD_MODULES } = await import("@haus-fmt/haus")
     for (const [module, names] of Object.entries(STD_MODULES)) {
       const file = parseSchemaFile(read(`spec/${module}.schema.haus`))
       expect(file.definitions.map((d) => d.name)).toEqual(names)

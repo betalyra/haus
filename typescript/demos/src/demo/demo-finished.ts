@@ -1,7 +1,7 @@
 // The finished demo (demo.ts starts empty): order.haus is typed and checked by order.schema.haus.
 // Try: hover `order`, change `quantity: 2` to `quantity: 300` in order.haus,
 // or add a tag to Status in the schema.
-import * as Haus from "@betalyra/haus-fmt-effect";
+import * as Haus from "@haus-fmt/effect";
 import { BigDecimal, Console, Effect, Match } from "effect";
 import order from "./order.haus";
 import { Root, type Line, type Status } from "./order.schema.haus";

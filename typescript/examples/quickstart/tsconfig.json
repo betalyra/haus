@@ -10,7 +10,7 @@
     "types": ["node"]
   },
   "contentMappers": [
-    { "package": "@betalyra/haus-fmt-content-mapper", "extensions": [".haus"] }
+    { "package": "@haus-fmt/import", "extensions": [".haus"], "options": { "target": "effect" } }
   ],
   "include": ["src"]
 }

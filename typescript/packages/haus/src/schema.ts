@@ -2,7 +2,7 @@
  * Schemas in code: describe the expected shape once, get a TypeScript type
  * and a decoder from the generic haus `Value` tree into plain JS values.
  *
- *   import * as h from "@betalyra/haus-fmt/schema"
+ *   import * as h from "@haus-fmt/haus/schema"
  *   const User = h.Record({ id: h.Int, name: h.String })
  *   type User = h.Infer<typeof User>
  *   const user = h.parse(User, text)
@@ -22,6 +22,7 @@ import { Parser } from "./parser.js"
 import { parseStream, type ChunkSource } from "./stream.js"
 import { checkStdTime } from "./std-time.js"
 import { arr, bytes as bytesValue, num, rec, str, variant, type HRecord, type HVariant, type Value } from "./value.js"
+import { issuesOf, type StandardSchemaV1 } from "./standard.js"
 
 // ── core ─────────────────────────────────────────────────────
 
@@ -201,7 +202,12 @@ const decodeAt = (value: Value, limits: Limits, key?: string | number): At => {
 
 const encodeAt = (limits: Limits, key?: string | number): At => At.root(context("encode", DEFAULT_ENCODE_STEPS, limits), key)
 
-export interface Schema<A> {
+/**
+ * Every schema is also a Standard Schema (standard.ts), so it plugs into
+ * libraries that accept one. Its input is haus: a text holding exactly one
+ * value, or a parsed `Value`.
+ */
+export interface Schema<A> extends StandardSchemaV1<string | Value, A> {
   /** Human-readable description used in error messages. */
   readonly expected: string
   readonly decode: (value: Value, at: At) => A
@@ -248,7 +254,26 @@ const describeJs = (value: unknown): string => {
 const mismatch = (expected: string, v: Value, at: At): never => at.fail(`expected ${expected}, found ${describe(v)}`)
 
 /** A schema from its decoder and encoder; every application counts one step. */
-const make = <A>(expected: string, decode: (value: Value, at: At) => A, encode: (value: A, at: At) => Value): Schema<A> => ({
+/** The `~standard` property of a schema: validate haus text or a parsed Value. */
+const standard = <A>(self: () => Schema<A>): StandardSchemaV1.Props<string | Value, A> => ({
+  version: 1,
+  vendor: "haus",
+  validate: (input) => {
+    try {
+      if (typeof input === "string") return { value: parse(self(), input) }
+      if (typeof input === "object" && input !== null && VALUE_KINDS.has((input as { kind?: unknown }).kind as string)) {
+        return { value: decode(self(), input as Value) }
+      }
+      return { issues: [{ message: "expected haus text or a parsed haus Value" }] }
+    } catch (e) {
+      return issuesOf(e)
+    }
+  },
+})
+
+const make = <A>(expected: string, decode: (value: Value, at: At) => A, encode: (value: A, at: At) => Value): Schema<A> => {
+  const self: Schema<A> = {
+  "~standard": standard(() => self),
   expected,
   decode: (v, at) => {
     at.step()
@@ -258,7 +283,9 @@ const make = <A>(expected: string, decode: (value: Value, at: At) => A, encode: 
     at.step()
     return encode(a, at)
   },
-})
+  }
+  return self
+}
 
 const invalid = (what: string, value: unknown, at: At): never => at.fail(`expected ${what}, got ${describeJs(value)}`)
 
@@ -433,7 +460,10 @@ export const Maybe = <A>(inner: Schema<A>): Schema<A | null> =>
  * `h.Optional(h.Maybe(h.String))` reads a missing key (not given), `None`
  * (`null`: clear) and `Some(x)` (set).
  */
-export const Optional = <A>(inner: Schema<A>): OptionalSchema<A> => ({ ...inner, optional: true })
+export const Optional = <A>(inner: Schema<A>): OptionalSchema<A> => {
+  const self: OptionalSchema<A> = { ...inner, "~standard": standard(() => self), optional: true }
+  return self
+}
 
 export interface OptionalSchema<A> extends Schema<A> {
   readonly optional: true
@@ -490,7 +520,8 @@ const record_ = <F extends Fields>(fields: F, options: { closed?: boolean } = {}
       return rec(out)
     })
   }
-  return {
+  const self: RecordSchema<RecordOf<F>> = {
+    "~standard": standard(() => self),
     kind: "record",
     expected,
     decodeRecord,
@@ -504,6 +535,7 @@ const record_ = <F extends Fields>(fields: F, options: { closed?: boolean } = {}
       return encodeRecord(a, at)
     },
   }
+  return self
 }
 
 /** defineProperty: a field named "__proto__" must not replace the object's prototype. */
@@ -709,6 +741,7 @@ export const Recursive = <A>(name: string, build: (self: Schema<A>) => Schema<A>
     }
   }
   const self: Schema<A> = {
+    "~standard": standard(() => self),
     expected: name,
     decode: (v, at) => run(v, at, (b) => b.decode(v, at)),
     encode: (a, at) => run(a, at, (b) => b.encode(a, at)),

@@ -8,7 +8,7 @@
  * mismatch it falls back to a schema-less conversion and lets Effect report
  * the error with its path.
  */
-import { arr as vArr, bytes as vBytes, checkStdTime, num as vNum, rec as vRec, str as vStr, variant as vVariant, type HVariant, type StdTimeType, type Value } from "@betalyra/haus-fmt"
+import { arr as vArr, bytes as vBytes, checkStdTime, num as vNum, rec as vRec, str as vStr, variant as vVariant, type HVariant, type StdTimeType, type Value } from "@haus-fmt/haus"
 import { Array as Arr, BigDecimal, DateTime, Match, Option, Predicate, SchemaAST } from "effect"
 
 export type Converter = (value: Value) => unknown

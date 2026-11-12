@@ -1,7 +1,7 @@
 // The same order, decoded with the schema's own types and with the app's
 // codecs. The same steps as rust/examples/order, on the same files.
 // Run: pnpm start
-import * as Haus from "@betalyra/haus-fmt-effect";
+import * as Haus from "@haus-fmt/effect";
 import { BigDecimal, Console, Effect } from "effect";
 import { readFileSync } from "node:fs";
 import { cents, geojson, iso, jsDate, userId } from "./codecs.ts";

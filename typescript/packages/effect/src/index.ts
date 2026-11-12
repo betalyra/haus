@@ -22,8 +22,8 @@
  *   ZonedDateTime("…")       → DateTimeZoned
  *   unknown tag in OpenUnion → { _tag: "@unknown", tag, value }
  */
-import { HausSyntaxError, parseAll, parseStream, stringify, type ChunkSource, type FormatOptions, type Value } from "@betalyra/haus-fmt"
-import { checkStdTime, type StdTimeType } from "@betalyra/haus-fmt"
+import { HausSyntaxError, parseAll, parseStream, stringify, type ChunkSource, type FormatOptions, type Value } from "@haus-fmt/haus"
+import { checkStdTime, type StdTimeType } from "@haus-fmt/haus"
 import { Effect, Schema, SchemaAST, Stream } from "effect"
 import { entries, isCodec, setId, type AnyCodec, type Checked, type Decoded, type Named } from "./codec.js"
 import { withCodecs } from "./schema-file.js"

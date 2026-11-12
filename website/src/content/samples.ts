@@ -83,7 +83,7 @@ Comment {
 `;
 
 export const codeTs = `
-import * as Haus from "@betalyra/haus-fmt-effect"
+import * as Haus from "@haus-fmt/effect"
 import { Effect } from "effect"
 import thread from "./thread.haus"     // checked against its schema
 import { Comment } from "./thread.schema.haus"
