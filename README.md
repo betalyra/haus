@@ -1,4 +1,10 @@
-# 🏠 haus
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/haus-dark.svg">
+    <img src="docs/assets/haus-light.svg" alt="" width="40" height="40" align="top">
+  </picture>
+  haus
+</h1>
 
 **A data format for humans: friendly to write, pleasant to read, and at home in your code.**
 
