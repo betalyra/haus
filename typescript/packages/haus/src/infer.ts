@@ -21,6 +21,8 @@ export class Shape {
   numbers = 0
   /** Some number had a fraction or exponent. */
   decimal = false
+  /** Some whole number doesn't fit a JS number exactly (beyond ±2^53). */
+  big = false
   arrays = 0
   element: Shape | undefined
   records: RecordShape | undefined
@@ -77,6 +79,7 @@ const union = (x: Shape, y: Shape): Shape => {
     a.bytes += b.bytes
     a.numbers += b.numbers
     a.decimal ||= b.decimal
+    a.big ||= b.big
     a.arrays += b.arrays
     if (b.element) {
       if (a.element) pending.push([a.element, b.element])
@@ -178,6 +181,7 @@ export function infer(values: readonly Value[]): Inference {
       case "number":
         shape.numbers++
         if (!/^-?\d+$/.test(v.text)) shape.decimal = true
+        else if (!Number.isSafeInteger(Number(v.text))) shape.big = true
         return
       case "array":
         shape.arrays++

@@ -43,8 +43,8 @@ type Result e a = closed < Err e | Ok a >
 //                          also accept the tags NaN, Infinity, NegInfinity
 //   Decimal                exact decimal, scale preserved (19.90 != 19.9)
 //
-// A schemaless decoder must not silently lose precision: it returns numbers
-// as exact decimals (or their literal text), never as a lossy float.
+// A schemaless decoder must not lose precision or reject large numbers (spec §3):
+// it returns big integers, exact decimals or the literal text, never a lossy float.
 
 // ── Streams ──────────────────────────────────────────────────
 // `Stream a` describes a whole file as a sequence of `a`s, rather than a

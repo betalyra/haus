@@ -80,9 +80,13 @@ def wsLoop : Nat → P Unit
         set r
         -- The comment ends before its line break; a lone CR is caught by the case above.
         let body ← takeWhile fun c => c != '\n' && c != '\r'
-        if body.any isBidi then failAt "raw bidirectional control character in comment" r
-        if body.any fun c => isRawControl c && c != '\t' then failAt "raw control character in comment" r
-        wsLoop n
+        -- Reported at the first offending character.
+        match body.findIdx? fun c => isBidi c || (isRawControl c && c != '\t') with
+        | some i =>
+            let at_ := r.drop i
+            if at_.head?.any isBidi then failAt "raw bidirectional control character in comment" at_
+            else failAt "raw control character in comment" at_
+        | none => wsLoop n
     | t@('/' :: '*' :: r) => set (← blockComment t 1 r); wsLoop n
     | '/' :: _ => fail "unexpected '/' (comments are // or /* */)"
     | _ => pure ()
@@ -196,18 +200,21 @@ def escape : P Char := do
       | _ => failAt "invalid unicode escape: expected \\u{1-6 hex digits}" t
   | _ => fail "invalid escape"
 
-/-- Characters allowed by `ok`, and escapes, until `stop` holds for the rest: their text. -/
-def chars (what : String) (ok : Char → Bool) (stop : Text → Bool) : Nat → Text → P Text
+/--
+Characters allowed by `ok`, and escapes, until `stop` holds for the rest: their
+text. Running out of input is reported at `start`, the opening quote.
+-/
+def chars (what : String) (start : Text) (ok : Char → Bool) (stop : Text → Bool) : Nat → Text → P Text
   | 0, _ => fail "out of fuel"
   | n + 1, acc => do
     let t ← get
     if stop t then return acc.reverse
     match t with
-    | [] => fail s!"unterminated {what}"
-    | '\\' :: _ => chars what ok stop n ((← escape) :: acc)
+    | [] => failAt s!"unterminated {what}" start
+    | '\\' :: _ => chars what start ok stop n ((← escape) :: acc)
     | c :: r =>
         if isBidi c then fail "raw bidirectional control character (write it as an escape)"
-        else if ok c then set r; chars what ok stop n (c :: acc)
+        else if ok c then set r; chars what start ok stop n (c :: acc)
         else fail s!"{describe t} is not allowed in a {what}"
 
 /-- `basic_char`, apart from the backslash and bidi controls (checked by `chars`). -/
@@ -222,7 +229,7 @@ def checkLength (L : Limits) (s : Text) (start : Text) : P String :=
 def basicString (L : Limits) : P String := do
   let start ← get
   skip
-  let s ← chars "string" basicChar (·.head? == some '"') (start.length + 1) []
+  let s ← chars "string" start basicChar (·.head? == some '"') (start.length + 1) []
   skip
   checkLength L s start
 
@@ -247,7 +254,7 @@ def blockLine (indent line : Text) : Except Error Text :=
   let line := if line.getLast? == some '\r' then line.dropLast else line
   if indent <+: line then
     let raw := line.drop indent.length
-    (chars "block string" blockChar List.isEmpty (raw.length + 1) []).run' raw
+    (chars "block string" raw blockChar List.isEmpty (raw.length + 1) []).run' raw
   else if line.all isBlank then .ok []
   else .error (.at "line is indented less than the closing \"\"\"" line)
 
@@ -287,7 +294,10 @@ def byteChars : Text → Except Error (List UInt8 × Text)
 
 def bytes (L : Limits) : P Value := do
   let start ← get
-  let (bs, rest) ← byteChars (start.drop 2)
+  -- An unterminated byte string is reported at its start, like a string.
+  let (bs, rest) ← match byteChars (start.drop 2) with
+    | .ok r => pure r
+    | .error e => if e.reason == "unterminated byte string" then failAt e.reason start else throw e
   if start.length - rest.length - 3 > L.maxStringLength then
     failAt s!"byte string longer than {L.maxStringLength} characters" start
   set rest

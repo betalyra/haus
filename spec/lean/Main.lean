@@ -4,8 +4,10 @@ import Lean.Data.Json
 /-!
 `haus-ref`: the reference parser on the command line.
 
-    haus-ref FILE        print FILE's values in the test-suite JSON encoding
-    haus-ref --suite DIR run the conformance suite in DIR (valid/ and invalid/)
+    haus-ref FILE          print FILE's values in the test-suite JSON encoding
+    haus-ref --suite DIR   run the conformance suite in DIR (valid/ and invalid/)
+    haus-ref --batch DIR N for DIR/00000.haus … DIR/{N-1}.haus, one line each:
+                           `ok <values>` or `err <line> <column> <reason>` (fuzz/)
 -/
 
 open Haus Lean
@@ -30,6 +32,26 @@ def position (input : Text) (e : Parser.Error) : Nat × Nat :=
   let line := before.count '\n' + 1
   let column := (before.reverse.takeWhile (· != '\n')).length + 1
   (line, column)
+
+/-- One result of `--batch`. -/
+def batchLine (bytes : ByteArray) : String :=
+  match String.fromUTF8? bytes with
+  | none => "err 0 0 invalid UTF-8"
+  | some s =>
+      let t := s.toList
+      match Parser.parse {} t with
+      | .ok vs => s!"ok {(Json.arr (vs.map toJson).toArray).compress}"
+      | .error e =>
+          let (l, c) := position t e
+          -- One line per case: line breaks in the reason (from a quoted key, say) as \n.
+          s!"err {l} {c} {(e.reason.replace "\r" "\\r").replace "\n" "\\n"}"
+
+def runBatch (dir : System.FilePath) (n : Nat) : IO UInt32 := do
+  let out ← IO.getStdout
+  for i in [0:n] do
+    let name := String.ofList (List.replicate (5 - (toString i).length) '0') ++ toString i
+    out.putStrLn (batchLine (← IO.FS.readBinFile (dir / s!"{name}.haus")))
+  return 0
 
 /-- Decode UTF-8 and parse. -/
 def parseBytes (bytes : ByteArray) : Except String (List Value) :=
@@ -65,8 +87,9 @@ def runSuite (dir : System.FilePath) : IO UInt32 := do
 
 def main : List String → IO UInt32
   | ["--suite", dir] => runSuite dir
+  | ["--batch", dir, n] => runBatch dir n.toNat!
   | [file] => do
       match parseBytes (← IO.FS.readBinFile file) with
       | .ok vs => IO.println (Json.arr (vs.map toJson).toArray).compress; return 0
       | .error e => IO.eprintln s!"error: {e}"; return 1
-  | _ => do IO.eprintln "usage: haus-ref FILE | haus-ref --suite DIR"; return 2
+  | _ => do IO.eprintln "usage: haus-ref FILE | haus-ref --suite DIR | haus-ref --batch DIR N"; return 2

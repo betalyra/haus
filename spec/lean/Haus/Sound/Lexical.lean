@@ -201,8 +201,8 @@ theorem Chars.mono {P Q : Char → Prop} (hPQ : ∀ c, P c → Q c) {raw s : Tex
   | escape e c raw s he _ ih => exact .escape e c raw s he ih
 
 /-- `chars` reads characters allowed by `ok` (but no backslash or bidi control) and escapes. -/
-theorem chars_sound (what : String) (ok : Char → Bool) (stop : Text → Bool) :
-    ∀ (n : Nat) (acc t s r : Text), (chars what ok stop n acc).run t = .ok (s, r) →
+theorem chars_sound (what : String) (start : Text) (ok : Char → Bool) (stop : Text → Bool) :
+    ∀ (n : Nat) (acc t s r : Text), (chars what start ok stop n acc).run t = .ok (s, r) →
     ∃ raw s', t = raw ++ r ∧ s = acc.reverse ++ s' ∧ stop r = true ∧
       Chars (fun c => ok c = true ∧ c ≠ '\\' ∧ isBidi c = false) raw s' := by
   intro n
@@ -240,7 +240,7 @@ theorem basicString_sound (L : Limits) (t0 r : Text) (str : String)
   split at h
   · simp at h
   · rename_i v hv
-    obtain ⟨raw, s', h1, h2, h3, h4⟩ := chars_sound _ _ _ _ _ _ _ _ hv
+    obtain ⟨raw, s', h1, h2, h3, h4⟩ := chars_sound _ _ _ _ _ _ _ _ _ hv
     obtain ⟨r2, hr2⟩ : ∃ r2, v.2 = '"' :: r2 := by
       cases hv2 : v.2 with
       | nil => simp [hv2] at h3

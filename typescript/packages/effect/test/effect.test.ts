@@ -50,6 +50,15 @@ describe("decode", () => {
       expect(yield* Haus.encode(S, { style: "compact" })(v)).toBe("{ amount: 19.90 }")
     }))
 
+  it.effect("without a schema, numbers stay exact (spec §3): big integers and decimals", () =>
+    Effect.gen(function* () {
+      const v = (yield* Haus.decode(Schema.Unknown)("{ n: 42, id: 9007199254740993, total: 19.90 }")) as Record<string, unknown>
+      expect(v.n).toBe(42)
+      expect(v.id).toBe(9007199254740993n)
+      expect(BigDecimal.isBigDecimal(v.total) && BigDecimal.format(v.total)).toBe("19.9")
+      expect(yield* Haus.encode(Schema.Unknown, { style: "compact" })(v)).toBe("{ n: 42, id: 9007199254740993, total: 19.90 }")
+    }))
+
   it.effect("bytes decode to Uint8Array and back", () =>
     Effect.gen(function* () {
       const S = Schema.Struct({ key: Schema.Uint8Array })

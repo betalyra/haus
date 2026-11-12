@@ -118,7 +118,11 @@ const genericNode: Converter = Match.type<Value>().pipe(
   Match.discriminatorsExhaustive("kind")({
     string: (v) => v.value,
     bytes: (v) => v.bytes,
-    number: (v) => Number(v.text),
+    // Exact, as spec §3 requires without a schema: whole numbers that fit stay numbers,
+    // larger ones are bigints, decimals are BigDecimals (keeping their scale: 19.90).
+    number: (v) =>
+      /^-?\d+$/.test(v.text) ? (Number.isSafeInteger(Number(v.text)) ? Number(v.text) : BigInt(v.text))
+      : BigDecimal.fromStringUnsafe(v.text),
     array: (v) => v.items.map(generic),
     record: (v) => Object.fromEntries(Arr.map([...v.fields], ([k, x]) => [k, generic(x)])),
     variant: (v) =>

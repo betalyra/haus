@@ -22,7 +22,7 @@ prototype, …) is outside Lean and stays covered by tests.
 |---|---|---|---|
 | ✅ | **0. Model** | Data model, equality, grammar, reference parser, `haus-ref` (103/103 conformance cases) | — |
 | ✅ | **A. Security properties of the grammar** | Theorems about every valid file, independent of any parser (below) | days |
-| ⬜ | **G. Differential testing** | The bindings agree with `haus-ref` on generated and mutated inputs, in CI | ~1 week, can start any time |
+| 🟡 | **G. Differential testing** | The bindings agree with `haus-ref` on generated and mutated inputs, in CI | ~1 week, can start any time |
 | 🟡 | **B. Soundness** | The parser only accepts what the grammar allows. A's properties then hold for its output. | 2–3 weeks |
 | ⬜ | **C. Completeness** | The parser accepts everything the grammar allows: `parse L t = .ok vs ↔ File L t vs` | 3–5 weeks |
 | ⬜ | **D. Unambiguity** | Every valid text has exactly one meaning. Follows almost for free from B + C, since the parser is a function. | days |
@@ -74,13 +74,18 @@ Two properties already hold by construction and need no proof:
 
 ## G. Differential testing
 
-- A small CLI per binding that prints values in the test-suite JSON encoding.
-- Generated inputs: random values written with random whitespace, comments
-  and number spellings; mutations of those for invalid input; the
-  conformance suite as seeds.
-- Compare acceptance, values and error positions (§8) with `haus-ref`;
-  shrink failures to a minimal input.
-- CI: ~100k cases per pull request, more nightly.
+In [`fuzz/`](../../fuzz). Runners for all four parsers, a generator with
+mutations, comparison and shrinking are done. 100,000 cases run in about a
+minute; so far no disagreement on acceptance or values.
+
+Open:
+- Streams: the same inputs through each binding's stream reader, in random
+  chunks, compared with parsing the whole input.
+- CI: build all four, `lake build` (so a broken proof fails), ~100k cases
+  per pull request, more nightly.
+- Error positions differ in ~1% of rejected inputs: Lean reports errors in
+  block strings at the block's start, Roc reports `0x` without digits after
+  the prefix. Decide whether §8 should fix which position is reported.
 
 ## Also
 

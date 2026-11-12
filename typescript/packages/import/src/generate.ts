@@ -81,6 +81,7 @@ export function moduleFor(text: string, fileName: string, b: Backend, importRunt
 /** A plain value as a JavaScript expression. */
 function js(x: unknown): string {
   if (x === null) return "null"
+  if (typeof x === "bigint") return `${x}n`
   if (x instanceof Uint8Array) return `new Uint8Array([${x.join(",")}])`
   if (Array.isArray(x)) return `[${x.map(js).join(",")}]`
   if (typeof x === "object") {
