@@ -318,14 +318,6 @@ a:focus-visible > .brush-hover {
   line-height: 1.75;
 }
 
-.code--muted {
-  background: color-mix(in oklab, var(--ink) 2.5%, white);
-  border-color: var(--line-soft);
-}
-.code--muted pre.astro-code span {
-  color: var(--ink-2) !important;
-}
-
 .code__label {
   margin-bottom: 0.7rem;
   font-family: var(--font-mono);
@@ -423,6 +415,41 @@ a:focus-visible > .brush-hover {
   width: calc(100% + 0.55em);
   height: 0.75em;
   z-index: -1;
+}
+
+/* The easter egg on "home." in the features heading (Features.astro): the
+   address sits on the same baseline in a zero-width box, so swapping never
+   reflows the heading. */
+.egg {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.egg__ip {
+  display: inline-block;
+  width: 0;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 0.68em;
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  opacity: 0;
+}
+.egg__word,
+.egg__ip {
+  transition: opacity 450ms ease;
+}
+.egg.is-home .egg__word {
+  opacity: 0;
+}
+.egg.is-home .egg__ip {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .egg__word,
+  .egg__ip {
+    transition: none;
+  }
 }
 
 /* ---------------------------------------------------------------------------

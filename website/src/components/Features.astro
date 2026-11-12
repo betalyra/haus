@@ -30,7 +30,9 @@ const icons = {
 
 <section class="relative mx-auto w-full max-w-6xl px-6 py-20 lg:py-32" aria-labelledby="features-heading">
   <div class="max-w-[40rem]">
-    <h2 id="features-heading" class="text-[2.2rem] leading-[1.08] sm:text-[2.8rem]">What makes it a home.</h2>
+    <h2 id="features-heading" class="text-[2.2rem] leading-[1.08] sm:text-[2.8rem]">
+      What makes it a <span class="egg" data-egg><span class="egg__ip" aria-hidden="true">127.0.0.1.</span><span class="egg__word">home.</span></span>
+    </h2>
     <p class="mt-5 text-[1.12rem] text-ink-2">
       What every project ends up inventing for itself, <strong>built into the format</strong> once.
     </p>
@@ -66,3 +68,43 @@ const icons = {
     })}
   </ul>
 </section>
+
+<script>
+  // There's no place like 127.0.0.1: rest on "home." in the heading for a
+  // while (or press and hold it) and it shows its address for a moment.
+  const egg = document.querySelector<HTMLElement>("[data-egg]");
+  if (egg) {
+    let timer = 0;
+    let press = { x: 0, y: 0 };
+
+    const show = (on: boolean) => {
+      clearTimeout(timer);
+      egg.classList.toggle("is-home", on);
+    };
+    const after = (ms: number, f: () => void) => {
+      clearTimeout(timer);
+      timer = window.setTimeout(f, ms);
+    };
+
+    // A mouse that lingers.
+    egg.addEventListener("pointerenter", (e) => e.pointerType === "mouse" && after(2600, () => show(true)));
+    egg.addEventListener("pointerleave", (e) => e.pointerType === "mouse" && show(false));
+
+    // A finger that holds still; the address stays a few seconds after letting go.
+    egg.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "mouse") return;
+      press = { x: e.clientX, y: e.clientY };
+      after(1200, () => {
+        show(true);
+        after(3500, () => show(false));
+      });
+    });
+    egg.addEventListener("pointermove", (e) => {
+      if (e.pointerType !== "mouse" && !egg.classList.contains("is-home") && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 10)
+        clearTimeout(timer);
+    });
+    egg.addEventListener("pointerup", (e) => e.pointerType !== "mouse" && !egg.classList.contains("is-home") && clearTimeout(timer));
+    egg.addEventListener("pointercancel", () => !egg.classList.contains("is-home") && clearTimeout(timer));
+    egg.addEventListener("contextmenu", (e) => e.preventDefault());
+  }
+</script>
