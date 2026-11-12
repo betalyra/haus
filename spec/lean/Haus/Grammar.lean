@@ -171,17 +171,17 @@ inductive BlockLines (indent : Text) : Text → List Text → Prop
       BlockLines indent (raw ++ nl ++ rest) (s :: ss)
 
 /-- The text of a block string: its lines joined with `\n`. -/
-def blockText (ss : List Text) : String := "\n".intercalate (ss.map String.ofList)
+def blockText (ss : List Text) : String := String.ofList (List.intercalate ['\n'] ss)
 
 /--
 `block_string ::= '"""' [ \t]* newline block_line* [ \t]* '"""'`. The blanks
-before the closing quotes are the indent. The content ends at the first
-unescaped `"""`.
+before the closing quotes are the indent. The text before the closing quotes
+has no unescaped `"""`: they are the first.
 -/
 inductive BlockString (L : Limits) : Text → String → Prop
   | mk (sp nl content indent : Text) (ss : List Text) :
       (∀ c ∈ sp, isBlank c = true) → Newline nl → (∀ c ∈ indent, isBlank c = true) →
-      BlockLines indent content ss → noTripleQuote content = true →
+      BlockLines indent content ss → noTripleQuote (content ++ indent) = true →
       (blockText ss).length ≤ L.maxStringLength →
       BlockString L (['"', '"', '"'] ++ sp ++ nl ++ content ++ indent ++ ['"', '"', '"']) (blockText ss)
 

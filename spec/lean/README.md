@@ -34,23 +34,26 @@ possible input):
 | `File.bounded` (A4) | Every value is within the limits: depth, numbers, strings, byte strings |
 | `char_isScalar` (A5) | Every string is valid Unicode, with no lone surrogates |
 
-These hold for the reference parser's output as soon as its soundness is
-proven (below).
+**About the reference parser:** it is *sound*. Whatever it accepts is a
+haus file in the grammar, with exactly the values it returned:
 
-**About the reference parser:**
+```lean
+theorem parse_sound (L : Limits) (input : Text) (vs : List Value)
+    (h : Parser.parse L input = .ok vs) : File L input vs
+```
 
-Soundness says: when the parser accepts something, the grammar allows
-it, with the same value. Proven so far, in [`Haus/Sound/Lexical.lean`](Haus/Sound/Lexical.lean):
+So A1–A4 hold for everything it returns ([`Haus/Secure.lean`](Haus/Secure.lean):
+`parse_noBidi`, `parse_controls`, `parse_uniqueKeys`, `parse_bounded`). The
+proof is in [`Haus/Sound/`](Haus/Sound), one file per part of the parser:
+numbers and strings, whitespace and nested comments, byte strings, block
+strings, and values, records, arrays, payloads and files together (they call
+each other). It uses only Lean's standard axioms (`#print axioms parse_sound`).
 
-| Theorem | Says |
-|---|---|
-| `number_sound` | An accepted number is a `NumberLit` within the limits, and its value is the normalized literal |
-| `escape_sound` | An accepted escape is an `Escape` denoting the returned character |
-| `basicString_sound` | An accepted `"…"` string is a `BasicString` within the limits, denoting the returned text |
+Not proven yet: *completeness*, that the parser accepts everything the
+grammar allows. Until then a valid file could in principle be rejected, but
+nothing invalid is accepted.
 
 The full plan, including the security properties, is in [`PLAN.md`](PLAN.md).
 
-Not yet: soundness of whitespace and comments, block strings, byte strings,
-records, arrays, variants and files; then completeness (the parser accepts
-everything the grammar allows), unambiguity, formatting round trips, and
-stream splitting.
+Next: completeness, unambiguity (which follows from soundness and
+completeness), encoding round trips, and stream splitting.

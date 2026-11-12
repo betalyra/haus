@@ -23,7 +23,7 @@ prototype, …) is outside Lean and stays covered by tests.
 | ✅ | **0. Model** | Data model, equality, grammar, reference parser, `haus-ref` (103/103 conformance cases) | — |
 | ✅ | **A. Security properties of the grammar** | Theorems about every valid file, independent of any parser (below) | days |
 | 🟡 | **G. Differential testing** | The bindings agree with `haus-ref` on generated and mutated inputs, in CI | ~1 week, can start any time |
-| 🟡 | **B. Soundness** | The parser only accepts what the grammar allows. A's properties then hold for its output. | 2–3 weeks |
+| ✅ | **B. Soundness** | The parser only accepts what the grammar allows. A's properties then hold for its output. | 2–3 weeks |
 | ⬜ | **C. Completeness** | The parser accepts everything the grammar allows: `parse L t = .ok vs ↔ File L t vs` | 3–5 weeks |
 | ⬜ | **D. Unambiguity** | Every valid text has exactly one meaning. Follows almost for free from B + C, since the parser is a function. | days |
 | ⬜ | **E. Encoder round trip** | `parse (encode vs) = .ok vs`: encoded strings can't break out (no injection) | 1–2 weeks |
@@ -52,16 +52,24 @@ Two properties already hold by construction and need no proof:
   `Text → Except Error (List Value)` (§9.2).
 - It always terminates: Lean accepts only total functions.
 
-## B. Soundness (in progress)
+## B. Soundness ✅
 
-| | Part | Notes |
-|---|---|---|
-| ✅ | Numbers, escapes, basic strings | `Haus/Sound/Lexical.lean` |
-| ⬜ | Whitespace and comments | The block comment depth counter against the nested grammar rule needs an invariant |
-| ⬜ | Byte strings | Easy |
-| ⬜ | Block strings | Hardest lexical part: closing quotes, line splitting, indentation |
-| ⬜ | Values, records, arrays, variants | Mutual induction; duplicate keys and the depth budget |
-| ⬜ | Files, byte order mark | Easy |
+`parse_sound`: whatever the reference parser accepts is a `File` of the
+grammar, with the values it returned. So A1–A4 hold for its output
+(`Haus/Secure.lean`). About 1,400 lines in `Haus/Sound/`, no `sorry`, standard
+axioms only.
+
+| Part | File |
+|---|---|
+| Numbers, escapes, basic strings | `Sound/Lexical.lean` |
+| Whitespace, line and nested block comments | `Sound/Whitespace.lean` |
+| Byte strings | `Sound/Bytes.lean` |
+| Block strings | `Sound/BlockString.lean` |
+| Keys, values, records, arrays, payloads, files | `Sound/Values.lean` |
+
+Mismatches found while proving: none between parser and grammar. Two grammar
+rules were restated in an equivalent, simpler form (block string text joined
+with `List.intercalate`; the closing `"""` stated over content and indent).
 
 ## C. Completeness
 

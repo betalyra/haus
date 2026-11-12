@@ -258,13 +258,8 @@ def blockLine (indent line : Text) : Except Error Text :=
   else if line.all isBlank then .ok []
   else .error (.at "line is indented less than the closing \"\"\"" line)
 
-def blockString (L : Limits) : P String := do
-  let start ← get
-  skip 3
-  let _ ← takeWhile isBlank
-  match ← get with
-  | '\r' :: '\n' :: r | '\n' :: r => set r
-  | _ => fail "opening \"\"\" must be followed by a line break"
+/-- After the opening line of the block string at `start`: the content up to and including the closing quotes. -/
+def blockBody (L : Limits) (start : Text) : P String := do
   let some (content, rest) := findClose (← get) | failAt "unterminated block string" start
   let lines := splitLines content
   let indent := lines.getLast?.getD []
@@ -274,7 +269,16 @@ def blockString (L : Limits) : P String := do
     | .ok ds => pure ds
     | .error e => failAt e.reason start
   set rest
-  checkLength L (decoded.intersperse ['\n']).flatten start
+  checkLength L (List.intercalate ['\n'] decoded) start
+
+def blockString (L : Limits) : P String := do
+  let start ← get
+  skip 3
+  let _ ← takeWhile isBlank
+  match ← get with
+  | '\r' :: '\n' :: r | '\n' :: r => set r
+  | _ => fail "opening \"\"\" must be followed by a line break"
+  blockBody L start
 
 /-! ## Byte strings -/
 

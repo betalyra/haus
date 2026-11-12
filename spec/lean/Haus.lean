@@ -6,3 +6,8 @@ import Haus.Sound.Monad
 import Haus.Sound.Lexical
 import Haus.Props.Chars
 import Haus.Props.Values
+import Haus.Sound.Whitespace
+import Haus.Sound.Bytes
+import Haus.Sound.BlockString
+import Haus.Sound.Values
+import Haus.Secure

@@ -46,4 +46,15 @@ open Haus Parser
 
 @[simp] theorem run_skip (n : Nat) (t : Text) : (skip n).run t = .ok ((), t.drop n) := rfl
 
+@[simp] theorem run_takeWhile (p : Char → Bool) (t : Text) :
+    (takeWhile p).run t = .ok (t.takeWhile p, t.dropWhile p) := rfl
+
+@[simp] theorem run_liftM {α : Type} (e : Except Error α) (t : Text) :
+    (liftM e : P α).run t = match e with
+      | .ok a => .ok (a, t)
+      | .error err => .error err := by
+  cases e <;> rfl
+
+@[simp] theorem run_throw {α : Type} (e : Error) (t : Text) : (throw e : P α).run t = .error e := rfl
+
 end Haus.Sound
