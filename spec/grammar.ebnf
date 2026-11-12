@@ -58,9 +58,10 @@ hex_byte    ::= hex_digit hex_digit
 string      ::= basic_string | block_string
 
 basic_string ::= '"' ( basic_char | escape )* '"'
-basic_char  ::= [^"\#x00-#x1F#x202A-#x202E#x2066-#x2069]
-                (* no raw control characters (incl. tab/newline) and no raw
-                   bidirectional controls; write those as escapes *)
+basic_char  ::= [^"\#x00-#x1F#x7F-#x9F#x202A-#x202E#x2066-#x2069]
+                (* no raw control characters (C0 incl. tab and newline, DEL,
+                   C1) and no raw bidirectional controls; write those as
+                   escapes *)
 escape      ::= "\" ( '"' | "\" | "n" | "r" | "t" | "u{" hex_digit hex_digit? hex_digit?
                       hex_digit? hex_digit? hex_digit? "}" )
                 (* \u{...} must be a Unicode scalar value: <= 10FFFF and not a
@@ -69,7 +70,7 @@ hex_digit   ::= [0-9A-Fa-f]
 
 block_string ::= '"""' [ \t]* newline block_line* [ \t]* '"""'
 block_line  ::= ( block_char | escape )* newline
-block_char  ::= [^\#x00-#x08#x0A-#x1F#x202A-#x202E#x2066-#x2069]  (* tab allowed *)
+block_char  ::= [^\#x00-#x08#x0A-#x1F#x7F-#x9F#x202A-#x202E#x2066-#x2069]  (* tab allowed *)
                 (* Content may not contain an unescaped `"""`.
                    Indentation: the whitespace before the closing `"""` is the
                    indent. It is removed from the start of every content line.
@@ -84,12 +85,15 @@ newline     ::= #x0A | #x0D #x0A
 
 ws          ::= ( [ \t] | newline | comment )*
 comment     ::= line_comment | block_comment
-line_comment  ::= "//" [^#x0A#x202A-#x202E#x2066-#x2069]*
+line_comment  ::= "//" text_char*
                 (* runs to the end of its line: `[ // x 1 ]` is unclosed, not [1] *)
-block_comment ::= "/*" ( block_comment | comment_char )* "*/"
-                (* block comments nest; comment_char is any character except
-                   the bidirectional controls #x202A-#x202E and #x2066-#x2069
-                   ("Trojan Source": reordered text hidden in comments).
+text_char   ::= [^#x00-#x08#x0A-#x1F#x7F-#x9F#x202A-#x202E#x2066-#x2069]
+                (* any character but control characters (tab allowed) and
+                   bidirectional controls *)
+block_comment ::= "/*" ( block_comment | text_char | newline )* "*/"
+                (* block comments nest. No control characters other than tab
+                   and line breaks, and no bidirectional controls: both can
+                   make a comment display differently from what it contains.
                    Read left to right, the first "*/" closes and every "/*"
                    opens a nested comment, so `/* a */ b */` ends after `a */`,
                    and `/* a /*/` is unterminated. *)

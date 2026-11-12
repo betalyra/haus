@@ -24,7 +24,8 @@ export const DEFAULT_LIMITS: Limits = {
 
 /** Raw bidirectional controls (U+202A–U+202E, U+2066–U+2069) are not allowed outside escapes. */
 const isBidiControl = (c: number) => (c >= 0x202a && c <= 0x202e) || (c >= 0x2066 && c <= 0x2069)
-const BIDI = /[\u202A-\u202E\u2066-\u2069]/
+/** Raw control characters (C0, DEL, C1): allowed raw only as tab and line breaks, where the grammar says. */
+const isControl = (c: number) => c < 0x20 || (c >= 0x7f && c <= 0x9f)
 const hex4 = (c: number) => c.toString(16).toUpperCase().padStart(4, "0")
 
 const isIdentChar = (c: number) =>
@@ -316,11 +317,11 @@ export class Parser {
         continue
       }
       if (isBidiControl(c)) this.fail(`raw bidirectional control character U+${hex4(c)} (write it as \\u{${hex4(c)}})`)
-      if (c < 0x20) {
+      if (isControl(c)) {
         this.fail(
           c === 10 ? "line break in string (use \\n or a \"\"\" block string)"
           : c === 9 ? "raw tab in string (use \\t)"
-          : "control character in string",
+          : `raw control character U+${hex4(c)} in string (write it as \\u{${hex4(c)}})`,
         )
       }
       this.pos++
@@ -427,7 +428,7 @@ export class Parser {
         this.pos = saved
         chunk = i
       } else {
-        if (c < 0x20 && c !== 9) this.fail("control character in block string", at + i)
+        if (isControl(c) && c !== 9) this.fail(`raw control character U+${hex4(c)} in block string (write it as \\u{${hex4(c)}})`, at + i)
         if (isBidiControl(c)) this.fail(`raw bidirectional control character U+${hex4(c)} (write it as \\u{${hex4(c)}})`, at + i)
         i++
       }
@@ -486,10 +487,19 @@ export class Parser {
     this.fail("unterminated block comment", open)
   }
 
-  /** Comments are where "Trojan Source" attacks hide reordered text. */
+  /**
+   * Comments are where "Trojan Source" attacks hide reordered text, and where
+   * control characters (ESC, CSI, NUL) can rewrite what a terminal shows.
+   * Allowed: tab, and in block comments line breaks (CR only before LF).
+   */
   private checkCommentText(start: number, end: number) {
-    const m = BIDI.exec(this.src.slice(start, end))
-    if (m) this.fail(`raw bidirectional control character U+${hex4(m[0].charCodeAt(0))} in comment`, start + m.index)
+    for (let i = start; i < end; i++) {
+      const c = this.src.charCodeAt(i)
+      if (isBidiControl(c)) this.fail(`raw bidirectional control character U+${hex4(c)} in comment`, i)
+      if (!isControl(c) || c === 9 || c === 10) continue
+      if (c === 13 && this.src.charCodeAt(i + 1) === 10) continue
+      this.fail(c === 13 ? "carriage return without a line feed (line breaks are LF or CRLF)" : `raw control character U+${hex4(c)} in comment`, i)
+    }
   }
 
   private readIdent(): string {

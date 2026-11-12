@@ -38,14 +38,19 @@ def skip (n : Nat := 1) : P Unit := modify (·.drop n)
 
 /-- The longest prefix whose characters satisfy `p`. -/
 def takeWhile (p : Char → Bool) : P Text := do
-  let (a, b) := (← get).span p
-  set b
-  return a
+  let t ← get
+  set (t.dropWhile p)
+  return t.takeWhile p
+
+/-- `U+001B` -/
+def codePoint (c : Char) : String :=
+  let d := Nat.toDigits 16 c.toNat |>.map Char.toUpper
+  "U+" ++ String.ofList (List.replicate (4 - d.length) '0' ++ d)
 
 def describe : Text → String
   | [] => "end of input"
   | '\n' :: _ => "line break"
-  | c :: _ => s!"'{c}'"
+  | c :: _ => if isRawControl c || isBidi c then codePoint c else s!"'{c}'"
 
 def expect (c : Char) (what : String) : P Unit := do
   match ← get with
@@ -61,6 +66,8 @@ def blockComment (start : Text) : Nat → Text → Except Error Text
   | d, '*' :: '/' :: r => if d ≤ 1 then .ok r else blockComment start (d - 1) r
   | d, c :: r =>
       if isBidi c then .error (.at "raw bidirectional control character in comment" (c :: r))
+      else if isRawControl c && c != '\t' && c != '\n' && !(c == '\r' && r.head? == some '\n') then
+        .error (.at "raw control character in comment" (c :: r))
       else blockComment start d r
 
 def wsLoop : Nat → P Unit
@@ -71,7 +78,10 @@ def wsLoop : Nat → P Unit
     | '\r' :: _ => fail "carriage return without a line feed"
     | '/' :: '/' :: r =>
         set r
-        if (← takeWhile (· != '\n')).any isBidi then failAt "raw bidirectional control character in comment" r
+        -- The comment ends before its line break; a lone CR is caught by the case above.
+        let body ← takeWhile fun c => c != '\n' && c != '\r'
+        if body.any isBidi then failAt "raw bidirectional control character in comment" r
+        if body.any fun c => isRawControl c && c != '\t' then failAt "raw control character in comment" r
         wsLoop n
     | t@('/' :: '*' :: r) => set (← blockComment t 1 r); wsLoop n
     | '/' :: _ => fail "unexpected '/' (comments are // or /* */)"
@@ -96,53 +106,74 @@ def digits (p : Char → Bool) : Text → Option (Text × Text)
   | c :: r => if p c then let (a, b) := sepTail p r; some (c :: a, b) else none
   | [] => none
 
-/-- `int frac? exp?`: the literal and the rest. -/
-def lexDecimal (t : Text) : Option (Text × Text) := do
-  let (i, r) ← match t with
-    | '0' :: r => some (['0'], r)
-    | c :: _ => if c != '0' then digits isDigit t else none
-    | [] => none
-  let (f, r) := match r with
-    | '.' :: r' => ((digits isDigit r').map fun ((ds, b) : Text × Text) => ('.' :: ds, b)).getD ([], r)
-    | _ => ([], r)
-  let (e, r) := match r with
-    | m :: r' =>
-        if m == 'e' || m == 'E' then
-          let (s, r'') := match r' with
-            | '+' :: x => (['+'], x)
-            | '-' :: x => (['-'], x)
-            | x => ([], x)
-          ((digits isDigit r'').map fun ((ds, b) : Text × Text) => (m :: s ++ ds, b)).getD ([], r)
-        else ([], r)
-    | [] => ([], r)
-  return (i ++ f ++ e, r)
+/-- `int ::= "0" | [1-9] ( "_"? [0-9] )*` -/
+def lexInt : Text → Option (Text × Text)
+  | '0' :: r => some (['0'], r)
+  | t@(c :: _) => if c != '0' then digits isDigit t else none
+  | [] => none
 
-/-- `"-"? ( decimal | hex | binary )`: the literal and the rest. -/
-def lexNumber (t : Text) : Option (Text × Text) :=
-  let (s, r) := match t with
-    | '-' :: r => (['-'], r)
-    | r => ([], r)
-  let withPrefix (p : Char → Bool) (pre rest : Text) :=
-    (digits p rest).map fun ((ds, b) : Text × Text) => (s ++ pre ++ ds, b)
-  let decimal := (lexDecimal r).map fun ((lit, b) : Text × Text) => (s ++ lit, b)
-  match r with
-  | '0' :: 'x' :: r' => withPrefix isHexDigit ['0', 'x'] r' <|> decimal
-  | '0' :: 'b' :: r' => withPrefix isBinDigit ['0', 'b'] r' <|> decimal
-  | _ => decimal
+/-- `frac ::= "." digits`, or nothing. -/
+def lexFrac : Text → Text × Text
+  | '.' :: r => match digits isDigit r with
+    | some (ds, b) => ('.' :: ds, b)
+    | none => ([], '.' :: r)
+  | r => ([], r)
 
-/-- The magnitude of a decimal literal's exponent (0 for hex and binary). -/
-def exponentOf (lit : Text) : Nat :=
-  if lit.any (fun c => c == 'x' || c == 'b') then 0
-  else expMagnitude (lit.dropWhile (fun c => c != 'e' && c != 'E'))
+/-- `[+-]?`, or nothing. -/
+def lexSign : Text → Text × Text
+  | '+' :: r => (['+'], r)
+  | '-' :: r => (['-'], r)
+  | r => ([], r)
+
+/-- `exp ::= [eE] [+-]? digits`, or nothing. -/
+def lexExp : Text → Text × Text
+  | m :: r =>
+      if m == 'e' || m == 'E' then
+        match digits isDigit (lexSign r).2 with
+        | some (ds, b) => (m :: (lexSign r).1 ++ ds, b)
+        | none => ([], m :: r)
+      else ([], m :: r)
+  | [] => ([], [])
+
+/-- A lexed number: the whole literal, its exponent part (empty for hex and binary), the rest. -/
+structure Lexed where
+  literal : Text
+  exponent : Text
+  rest : Text
+
+/-- `int frac? exp?`, after the sign `s`. -/
+def lexDecimal (s r : Text) : Option Lexed := do
+  let (i, r) ← lexInt r
+  let (f, r) := lexFrac r
+  let (e, r) := lexExp r
+  return ⟨s ++ i ++ f ++ e, e, r⟩
+
+/-- Digits after a radix prefix such as `0x`, after the sign `s`. -/
+def lexRadix (p : Char → Bool) (s pre r : Text) : Option Lexed :=
+  (digits p r).map fun (ds, b) => ⟨s ++ pre ++ ds, [], b⟩
+
+/-- `"-"?`: the sign and the rest. -/
+def lexMinus : Text → Text × Text
+  | '-' :: r => (['-'], r)
+  | r => ([], r)
+
+/-- `decimal | "0x" hex | "0b" binary`, after the sign `s`. -/
+def lexUnsigned (s : Text) : Text → Option Lexed
+  | '0' :: 'x' :: r => lexRadix isHexDigit s ['0', 'x'] r <|> lexDecimal s ('0' :: 'x' :: r)
+  | '0' :: 'b' :: r => lexRadix isBinDigit s ['0', 'b'] r <|> lexDecimal s ('0' :: 'b' :: r)
+  | r => lexDecimal s r
+
+/-- `"-"? ( decimal | "0x" hex | "0b" binary )` -/
+def lexNumber (t : Text) : Option Lexed := lexUnsigned (lexMinus t).1 (lexMinus t).2
 
 def number (L : Limits) : P Value := do
-  let some (lit, rest) := lexNumber (← get) | fail "invalid number"
+  let some n := lexNumber (← get) | fail "invalid number"
   -- A number must not run into a following identifier or `.`: `007`, `1.`, `1_`.
-  if rest.head?.any (fun c => isIdentChar c || c == '.') then fail "invalid number"
-  if lit.length > L.maxNumberLength then fail s!"number literal longer than {L.maxNumberLength} characters"
-  if exponentOf lit > L.maxExponent then fail s!"exponent larger than {L.maxExponent}"
-  set rest
-  return .num (normalizeNumber lit)
+  if n.rest.head?.any (fun c => isIdentChar c || c == '.') then fail "invalid number"
+  if n.literal.length > L.maxNumberLength then fail s!"number literal longer than {L.maxNumberLength} characters"
+  if expMagnitude n.exponent > L.maxExponent then fail s!"exponent larger than {L.maxExponent}"
+  set n.rest
+  return .num (normalizeNumber n.literal)
 
 /-! ## Strings -/
 
@@ -155,9 +186,9 @@ def escape : P Char := do
   | '\\' :: 'r' :: r => set r; return '\r'
   | '\\' :: 't' :: r => set r; return '\t'
   | t@('\\' :: 'u' :: '{' :: r) =>
-      let (ds, r') := r.span isHexDigit
+      let ds := r.takeWhile isHexDigit
       let v := digitsValue 16 ds
-      match r' with
+      match r.dropWhile isHexDigit with
       | '}' :: r'' =>
           if ds.length < 1 || ds.length > 6 then failAt "invalid unicode escape: expected \\u{1-6 hex digits}" t
           else if !isScalar v then failAt s!"\\u\{{String.ofList ds}} is not a Unicode scalar value" t
@@ -180,9 +211,9 @@ def chars (what : String) (ok : Char → Bool) (stop : Text → Bool) : Nat → 
         else fail s!"{describe t} is not allowed in a {what}"
 
 /-- `basic_char`, apart from the backslash and bidi controls (checked by `chars`). -/
-def basicChar (c : Char) : Bool := c != '"' && 0x20 ≤ c.toNat
+def basicChar (c : Char) : Bool := c != '"' && !isRawControl c
 /-- `block_char`, apart from the backslash and bidi controls. -/
-def blockChar (c : Char) : Bool := 0x20 ≤ c.toNat || c == '\t'
+def blockChar (c : Char) : Bool := c == '\t' || !isRawControl c
 
 def checkLength (L : Limits) (s : Text) (start : Text) : P String :=
   if s.length > L.maxStringLength then failAt s!"string longer than {L.maxStringLength} characters" start

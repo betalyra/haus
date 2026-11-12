@@ -35,8 +35,11 @@ inductive Newline : Text → Prop
   | lf : Newline ['\n']
   | crlf : Newline ['\r', '\n']
 
-/-- The text of a line comment after `//`: no line feed, no bidi control. -/
-def LineBody (body : Text) : Prop := ∀ c ∈ body, c ≠ '\n' ∧ isBidi c = false
+/-- `text_char`: no control character but tab, and no bidi control. -/
+def TextChar (c : Char) : Prop := (c = '\t' ∨ isRawControl c = false) ∧ isBidi c = false
+
+/-- The text of a line comment after `//`. It ends before the line break. -/
+def LineBody (body : Text) : Prop := ∀ c ∈ body, TextChar c
 
 mutual
   /-- `block_comment ::= "/*" ( block_comment | comment_char )* "*/"` -/
@@ -47,7 +50,8 @@ mutual
   inductive CommentBody : Text → Prop
     | nil : CommentBody []
     | char (c : Char) (rest : Text) :
-        isBidi c = false →
+        -- text, or a line break (a carriage return only before a line feed)
+        (TextChar c ∨ c = '\n' ∨ (c = '\r' ∧ rest.head? = some '\n')) →
         -- `*/` would close the comment
         (c = '*' → rest.head? ≠ some '/') →
         -- `/*` would open a nested one; so would a final `/` with the closing `*/`
@@ -62,7 +66,7 @@ inductive WS : Text → Prop
   | nil : WS []
   | blank (c : Char) (rest : Text) : isBlank c = true → WS rest → WS (c :: rest)
   | newline (nl rest : Text) : Newline nl → WS rest → WS (nl ++ rest)
-  | lineComment (body rest : Text) : LineBody body → WS rest → WS (['/', '/'] ++ body ++ '\n' :: rest)
+  | lineComment (body nl rest : Text) : LineBody body → Newline nl → WS rest → WS (['/', '/'] ++ body ++ nl ++ rest)
   | blockComment (c rest : Text) : BlockComment c → WS rest → WS (c ++ rest)
 
 /-- Whitespace at the end of a file: the last line comment may end the file. -/
@@ -133,10 +137,10 @@ inductive Escape : Text → Char → Prop
       Escape (['\\', 'u', '{'] ++ ds ++ ['}']) (Char.ofNat (digitsValue 16 ds))
 
 /-- `basic_char`: no quote, backslash, control character or bidi control. -/
-def BasicChar (c : Char) : Prop := c ≠ '"' ∧ c ≠ '\\' ∧ 0x20 ≤ c.toNat ∧ isBidi c = false
+def BasicChar (c : Char) : Prop := c ≠ '"' ∧ c ≠ '\\' ∧ isRawControl c = false ∧ isBidi c = false
 
 /-- `block_char`: like `basic_char`, but quotes and tabs are allowed. -/
-def BlockChar (c : Char) : Prop := c ≠ '\\' ∧ (0x20 ≤ c.toNat ∨ c = '\t') ∧ isBidi c = false
+def BlockChar (c : Char) : Prop := c ≠ '\\' ∧ TextChar c
 
 /-- Characters and escapes (`raw`), and the text they denote. -/
 inductive Chars (ok : Char → Prop) : Text → Text → Prop

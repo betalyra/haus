@@ -79,7 +79,7 @@ Two values are equal when they have the same kind and:
 
 - **Encoding:** input is UTF-8. Invalid UTF-8 MUST be rejected. A leading byte order mark is ignored.
 - **Escapes:** `\"`, `\\`, `\n`, `\r`, `\t` and `\u{1–6 hex digits}`. A `\u{…}` escape MUST denote a Unicode scalar value, so surrogates are rejected.
-- **Raw control characters:** raw characters U+0000–U+001F MUST NOT appear in `"…"` strings. Block strings allow tab, LF and CR LF.
+- **Raw control characters:** the raw control characters U+0000–U+001F, U+007F (DEL) and U+0080–U+009F (C1) MUST NOT appear anywhere in the input, except tab and line breaks (LF, CR LF) where whitespace, block strings and comments allow them. A carriage return is only allowed directly before a line feed. Control characters can rewrite what a terminal displays (ESC and CSI sequences) or truncate text (NUL), so a file could show different content from what it contains. Inside strings, write them as escapes, e.g. `\u{1B}`.
 - **Bidirectional controls:** the raw characters U+202A–U+202E and U+2066–U+2069 MUST NOT appear anywhere in the input, including strings, block strings and comments. They can make source text display differently from what is parsed ("Trojan Source"). Inside strings, write them as escapes, e.g. `\u{202E}`.
 - **Key comparison:** keys are compared by code point, with **no normalization**. `"café"` (NFC) and `"café"` (NFD) are different keys. Producers that need normalized keys must normalize before writing.
 - **NUL characters:** `\u{0}` is allowed. Consumers that pass strings to C APIs must handle embedded NUL characters.

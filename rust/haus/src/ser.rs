@@ -236,7 +236,7 @@ fn quote(s: &str, out: &mut String) {
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
-            c if u32::from(c) < 0x20 || matches!(c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}') => {
+            c if matches!(u32::from(c), 0..0x20 | 0x7F..=0x9F) || matches!(c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}') => {
                 let _ = write!(out, "\\u{{{:X}}}", u32::from(c));
             }
             c => out.push(c),

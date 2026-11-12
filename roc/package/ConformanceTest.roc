@@ -5,11 +5,13 @@ import "../../test-suite/valid/bidi-escaped.haus" as valid_bidi_escaped : List(U
 import "../../test-suite/valid/block-strings.haus" as valid_block_strings : List(U8)
 import "../../test-suite/valid/bom.haus" as valid_bom : List(U8)
 import "../../test-suite/valid/bytes.haus" as valid_bytes : List(U8)
+import "../../test-suite/valid/comments-tabs-crlf.haus" as valid_comments_tabs_crlf : List(U8)
 import "../../test-suite/valid/comments.haus" as valid_comments : List(U8)
 import "../../test-suite/valid/crlf-line-endings.haus" as valid_crlf_line_endings : List(U8)
 import "../../test-suite/valid/deep-nesting.haus" as valid_deep_nesting : List(U8)
 import "../../test-suite/valid/empty-containers.haus" as valid_empty_containers : List(U8)
 import "../../test-suite/valid/empty-file.haus" as valid_empty_file : List(U8)
+import "../../test-suite/valid/escaped-controls.haus" as valid_escaped_controls : List(U8)
 import "../../test-suite/valid/keys.haus" as valid_keys : List(U8)
 import "../../test-suite/valid/limits-boundary.haus" as valid_limits_boundary : List(U8)
 import "../../test-suite/valid/numbers.haus" as valid_numbers : List(U8)
@@ -44,7 +46,13 @@ import "../../test-suite/invalid/bytes-space-after-prefix.haus" as invalid_bytes
 import "../../test-suite/invalid/bytes-split-byte.haus" as invalid_bytes_split_byte : List(U8)
 import "../../test-suite/invalid/bytes-unterminated.haus" as invalid_bytes_unterminated : List(U8)
 import "../../test-suite/invalid/colon-in-array.haus" as invalid_colon_in_array : List(U8)
+import "../../test-suite/invalid/control-c1-in-block-string.haus" as invalid_control_c1_in_block_string : List(U8)
+import "../../test-suite/invalid/control-c1-in-string.haus" as invalid_control_c1_in_string : List(U8)
 import "../../test-suite/invalid/control-char-in-string.haus" as invalid_control_char_in_string : List(U8)
+import "../../test-suite/invalid/control-del-in-string.haus" as invalid_control_del_in_string : List(U8)
+import "../../test-suite/invalid/control-esc-in-line-comment.haus" as invalid_control_esc_in_line_comment : List(U8)
+import "../../test-suite/invalid/control-in-quoted-key.haus" as invalid_control_in_quoted_key : List(U8)
+import "../../test-suite/invalid/control-nul-in-block-comment.haus" as invalid_control_nul_in_block_comment : List(U8)
 import "../../test-suite/invalid/double-comma-top-level.haus" as invalid_double_comma_top_level : List(U8)
 import "../../test-suite/invalid/double-comma.haus" as invalid_double_comma : List(U8)
 import "../../test-suite/invalid/double-separator.haus" as invalid_double_separator : List(U8)
@@ -65,6 +73,8 @@ import "../../test-suite/invalid/leading-comma-array.haus" as invalid_leading_co
 import "../../test-suite/invalid/leading-comma-file.haus" as invalid_leading_comma_file : List(U8)
 import "../../test-suite/invalid/leading-dot.haus" as invalid_leading_dot : List(U8)
 import "../../test-suite/invalid/leading-zero.haus" as invalid_leading_zero : List(U8)
+import "../../test-suite/invalid/lone-carriage-return-in-block-comment.haus" as invalid_lone_carriage_return_in_block_comment : List(U8)
+import "../../test-suite/invalid/lone-carriage-return-in-line-comment.haus" as invalid_lone_carriage_return_in_line_comment : List(U8)
 import "../../test-suite/invalid/lone-carriage-return-in-record.haus" as invalid_lone_carriage_return_in_record : List(U8)
 import "../../test-suite/invalid/lone-carriage-return.haus" as invalid_lone_carriage_return : List(U8)
 import "../../test-suite/invalid/lone-comma-record.haus" as invalid_lone_comma_record : List(U8)
@@ -135,6 +145,9 @@ expect ConformanceTest.run(valid_bom) == "[{\"rec\":{\"a\":{\"num\":\"1\"}}}]"
 # valid/bytes.haus
 expect ConformanceTest.run(valid_bytes) == "[{\"bytes\":\"\"},{\"bytes\":\"00\"},{\"bytes\":\"0b34ff\"},{\"bytes\":\"9f86d081884c7d65\"},{\"rec\":{\"key\":{\"bytes\":\"deadbeef\"}}},{\"tag\":\"Blob\",\"args\":[{\"bytes\":\"ff\"}]}]"
 
+# valid/comments-tabs-crlf.haus
+expect ConformanceTest.run(valid_comments_tabs_crlf) == "[{\"num\":\"1\"}]"
+
 # valid/comments.haus
 expect ConformanceTest.run(valid_comments) == "[{\"rec\":{\"a\":{\"num\":\"1\"},\"b\":{\"tag\":\"Some\",\"args\":[{\"num\":\"2\"}]},\"c\":{\"num\":\"3\"}}}]"
 
@@ -149,6 +162,9 @@ expect ConformanceTest.run(valid_empty_containers) == "[{\"rec\":{\"r\":{\"rec\"
 
 # valid/empty-file.haus
 expect ConformanceTest.run(valid_empty_file) == "[]"
+
+# valid/escaped-controls.haus
+expect ConformanceTest.run(valid_escaped_controls) == "[\"\\u001b[2K \u(007F) \u(0085) \u(009B) \\u0000\"]"
 
 # valid/keys.haus
 expect ConformanceTest.run(valid_keys) == "[{\"rec\":{\"snake_case\":{\"num\":\"1\"},\"camelCase\":{\"num\":\"2\"},\"_private\":{\"num\":\"3\"},\"x9\":{\"num\":\"4\"},\"content-type\":{\"num\":\"5\"},\"Upper\":{\"num\":\"6\"},\"\":{\"num\":\"7\"},\"with space\":{\"num\":\"8\"}}}]"
@@ -252,8 +268,26 @@ expect ConformanceTest.rejects(invalid_bytes_unterminated)
 # invalid/colon-in-array.haus
 expect ConformanceTest.rejects(invalid_colon_in_array)
 
+# invalid/control-c1-in-block-string.haus
+expect ConformanceTest.rejects(invalid_control_c1_in_block_string)
+
+# invalid/control-c1-in-string.haus
+expect ConformanceTest.rejects(invalid_control_c1_in_string)
+
 # invalid/control-char-in-string.haus
 expect ConformanceTest.rejects(invalid_control_char_in_string)
+
+# invalid/control-del-in-string.haus
+expect ConformanceTest.rejects(invalid_control_del_in_string)
+
+# invalid/control-esc-in-line-comment.haus
+expect ConformanceTest.rejects(invalid_control_esc_in_line_comment)
+
+# invalid/control-in-quoted-key.haus
+expect ConformanceTest.rejects(invalid_control_in_quoted_key)
+
+# invalid/control-nul-in-block-comment.haus
+expect ConformanceTest.rejects(invalid_control_nul_in_block_comment)
 
 # invalid/double-comma-top-level.haus
 expect ConformanceTest.rejects(invalid_double_comma_top_level)
@@ -314,6 +348,12 @@ expect ConformanceTest.rejects(invalid_leading_dot)
 
 # invalid/leading-zero.haus
 expect ConformanceTest.rejects(invalid_leading_zero)
+
+# invalid/lone-carriage-return-in-block-comment.haus
+expect ConformanceTest.rejects(invalid_lone_carriage_return_in_block_comment)
+
+# invalid/lone-carriage-return-in-line-comment.haus
+expect ConformanceTest.rejects(invalid_lone_carriage_return_in_line_comment)
 
 # invalid/lone-carriage-return-in-record.haus
 expect ConformanceTest.rejects(invalid_lone_carriage_return_in_record)

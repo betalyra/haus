@@ -18,12 +18,12 @@ def ident(kind: str, name: str) -> str:
     return f"{kind}_{re.sub(r'[^a-z0-9]', '_', name.lower())}"
 
 
-BIDI = re.compile("[\u202a-\u202e\u2066-\u2069]")
+BIDI = re.compile("[\u202a-\u202e\u2066-\u2069\x7f-\x9f]")
 
 
 def roc_str(s: str) -> str:
     s = s.replace("\\", "\\\\").replace('"', '\\"').replace("$", "\\$")
-    # Roc (like haus) rejects raw bidi controls in source; write them as escapes.
+    # Roc (like haus) rejects raw bidi and control characters in source; write them as escapes.
     s = BIDI.sub(lambda m: f"\\u({ord(m.group()):04X})", s)
     return '"' + s + '"'
 

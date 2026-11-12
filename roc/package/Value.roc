@@ -415,6 +415,25 @@ bidi_at = |src, p|
 		(b1 == 0x80 and b2 >= 0xAA and b2 <= 0xAE) or (b1 == 0x81 and b2 >= 0xA6 and b2 <= 0xA9)
 	}
 
+## Raw control characters (C0, DEL, C1: U+0000–U+001F, U+007F, U+0080–U+009F)
+## are allowed outside escapes only as tab and line breaks, where the grammar
+## says. In UTF-8, C1 is C2 80–9F.
+control_at : List(U8), U64 -> Bool
+control_at = |src, p| {
+	c = at(src, p)
+	c < 0x20 or c == 0x7F or (c == 0xC2 and at(src, p + 1) >= 0x80 and at(src, p + 1) <= 0x9F)
+}
+
+## A control character that is allowed in comments: tab, LF, and CR before LF.
+comment_control_ok : List(U8), U64 -> Bool
+comment_control_ok = |src, p| {
+	c = at(src, p)
+	c == '\t' or c == '\n' or (c == '\r' and at(src, p + 1) == '\n')
+}
+
+control_error : U64, Str -> Fail
+control_error = |pos, place| { reason: "raw control character in ${place} (write it as an escape, e.g. \\u{1B})", pos }
+
 bidi_error : U64 -> Fail
 bidi_error = |pos| { reason: "raw bidirectional control character (write it as an escape, e.g. \\u{202E})", pos }
 
@@ -446,8 +465,8 @@ parse_basic_string = |src, open| {
 			return Err({ reason: "line break in string (use \\n or a \"\"\" block string)", pos: $pos })
 		} else if c == '\t' {
 			return Err({ reason: "raw tab in string (use \\t)", pos: $pos })
-		} else if c < 0x20 {
-			return Err({ reason: "control character in string", pos: $pos })
+		} else if control_at(src, $pos) {
+			return Err(control_error($pos, "string"))
 		} else if bidi_at(src, $pos) {
 			return Err(bidi_error($pos))
 		} else {
@@ -575,8 +594,8 @@ decode_block_line = |src, start, end| {
 			(bytes, after) = read_escape(src, $p)?
 			$out = $out.concat(bytes)
 			$p = after
-		} else if c < 0x20 and c != '\t' {
-			return Err({ reason: "control character in block string", pos: $p })
+		} else if c != '\t' and control_at(src, $p) {
+			return Err(control_error($p, "block string"))
 		} else if bidi_at(src, $p) {
 			return Err(bidi_error($p))
 		} else {
@@ -650,6 +669,9 @@ skip_trivia = |src, start| {
 				if bidi_at(src, $p) {
 					return Err(bidi_error($p))
 				}
+				if control_at(src, $p) and !comment_control_ok(src, $p) {
+					return Err(control_error($p, "comment"))
+				}
 				$p = $p + 1
 			}
 		} else if c == '/' and at(src, $p + 1) == '*' {
@@ -679,6 +701,8 @@ skip_block_comment = |src, open| {
 			}
 		} else if bidi_at(src, $p) {
 			return Err(bidi_error($p))
+		} else if control_at(src, $p) and !comment_control_ok(src, $p) {
+			return Err(control_error($p, "comment"))
 		} else {
 			$p = $p + 1
 		}
@@ -813,9 +837,15 @@ json_str = |s| {
 				$out.concat(['\\', 'r'])
 			} else if b == '\t' {
 				$out.concat(['\\', 't'])
+			} else if b < 0x20 {
+				# Other C0 controls as JSON writes them: \u001b
+				$out.concat(['\\', 'u', '0', '0', hex_digit(b // 16), hex_digit(b % 16)])
 			} else {
 				$out.append(b)
 			}
 	}
 	bytes_to_str($out.append('"'))
 }
+
+hex_digit : U8 -> U8
+hex_digit = |n| if n < 10 '0' + n else 'a' + n - 10

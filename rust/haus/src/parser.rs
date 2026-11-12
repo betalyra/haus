@@ -415,11 +415,14 @@ impl<'a> Parser<'a> {
                 }
                 b'\n' => return Err(self.fail("line break in string (use \\n or a \"\"\" block string)")),
                 b'\t' => return Err(self.fail("raw tab in string (use \\t)")),
-                0..0x20 => return Err(self.fail("control character in string")),
+                0..0x20 | 0x7F => return Err(self.fail(control_message(c as char, "string"))),
                 0x80.. => {
                     let ch = self.peek_char().unwrap_or_default();
                     if is_bidi(ch) {
                         return Err(self.fail(bidi_message(ch)));
+                    }
+                    if is_control(ch) {
+                        return Err(self.fail(control_message(ch, "string")));
                     }
                     self.pos += ch.len_utf8();
                 }
@@ -546,12 +549,15 @@ impl<'a> Parser<'a> {
                 out.push(self.escape()?);
                 i = self.pos - at;
                 chunk = i;
-            } else if c < 0x20 && c != b'\t' {
-                return Err(self.fail_at(at + i, "control character in block string"));
+            } else if (c < 0x20 || c == 0x7F) && c != b'\t' {
+                return Err(self.fail_at(at + i, control_message(c as char, "block string")));
             } else if c >= 0x80 {
                 let ch = text[i..].chars().next().unwrap_or_default();
                 if is_bidi(ch) {
                     return Err(self.fail_at(at + i, bidi_message(ch)));
+                }
+                if is_control(ch) {
+                    return Err(self.fail_at(at + i, control_message(ch, "block string")));
                 }
                 i += ch.len_utf8();
             } else {
@@ -612,13 +618,19 @@ impl<'a> Parser<'a> {
         Err(self.fail_at(open, "unterminated block comment"))
     }
 
-    /// Comments are where "Trojan Source" attacks hide reordered text.
+    /// Comments are where "Trojan Source" attacks hide reordered text, and where control
+    /// characters (ESC, CSI, NUL) can rewrite what a terminal shows. Allowed: tab, and in
+    /// block comments line breaks (CR only before LF).
     fn check_comment(&self, start: usize, end: usize) -> R<()> {
-        match self.src[start..end].char_indices().find(|&(_, c)| is_bidi(c)) {
-            Some((i, c)) => {
-                Err(self
-                    .fail_at(start + i, format!("raw bidirectional control character U+{:04X} in comment", c as u32)))
-            }
+        let text = &self.src[start..end];
+        let bad = text.char_indices().find(|&(i, c)| {
+            is_bidi(c) || (is_control(c) && c != '\t' && c != '\n' && !(c == '\r' && self.src[start + i + 1..].starts_with('\n')))
+        });
+        match bad {
+            Some((i, c)) if is_bidi(c) => Err(self
+                .fail_at(start + i, format!("raw bidirectional control character U+{:04X} in comment", c as u32))),
+            Some((i, '\r')) => Err(self.fail_at(start + i, "carriage return without a line feed (line breaks are LF or CRLF)")),
+            Some((i, c)) => Err(self.fail_at(start + i, format!("raw control character U+{:04X} in comment", c as u32))),
             None => Ok(()),
         }
     }
@@ -658,6 +670,16 @@ impl<'a> Parser<'a> {
     fn fail_at(&self, at: usize, reason: impl Into<String>) -> Error {
         Error::at(self.src, at, reason)
     }
+}
+
+/// A raw control character: C0, DEL or C1 (spec §4).
+fn is_control(c: char) -> bool {
+    matches!(c as u32, 0..0x20 | 0x7F..=0x9F)
+}
+
+fn control_message(c: char, place: &str) -> String {
+    let code = c as u32;
+    format!("raw control character U+{code:04X} in {place} (write it as \\u{{{code:04X}}})")
 }
 
 fn bidi_message(c: char) -> String {

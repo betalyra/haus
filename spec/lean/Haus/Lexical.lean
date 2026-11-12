@@ -27,6 +27,14 @@ structure Limits where
 def isBidi (c : Char) : Bool :=
   (0x202A ≤ c.toNat && c.toNat ≤ 0x202E) || (0x2066 ≤ c.toNat && c.toNat ≤ 0x2069)
 
+/--
+A raw control character: C0 (U+0000–U+001F, including tab and line breaks),
+DEL (U+007F) or C1 (U+0080–U+009F). They can rewrite what a terminal displays
+or truncate text, so they appear in raw text only as tab and line breaks, and
+only where the grammar allows (§4).
+-/
+def isRawControl (c : Char) : Bool := c.toNat < 0x20 || (0x7F ≤ c.toNat && c.toNat ≤ 0x9F)
+
 /-- A space or a tab. -/
 def isBlank (c : Char) : Bool := c == ' ' || c == '\t'
 

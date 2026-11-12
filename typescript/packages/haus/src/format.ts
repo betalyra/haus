@@ -386,6 +386,8 @@ const firstAtOrAfter = (comments: readonly (readonly [number, number])[], offset
 const key = (k: string) => (BARE_KEY.test(k) ? k : quote(k))
 
 const isBidi = (c: number) => (c >= 0x202a && c <= 0x202e) || (c >= 0x2066 && c <= 0x2069)
+/** C0, DEL and C1 control characters: written as escapes (spec §4). */
+const isControl = (c: number) => c < 0x20 || (c >= 0x7f && c <= 0x9f)
 const hexEscape = (c: number) => `\\u{${c.toString(16).toUpperCase()}}`
 
 const HEX = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, "0"))
@@ -407,7 +409,7 @@ export function quote(s: string): string {
     else if (ch === "\n") out += "\\n"
     else if (ch === "\r") out += "\\r"
     else if (ch === "\t") out += "\\t"
-    else if (c < 0x20 || isBidi(c)) out += hexEscape(c)
+    else if (isControl(c) || isBidi(c)) out += hexEscape(c)
     else out += ch
   }
   return out + '"'
@@ -421,7 +423,7 @@ function blockString(s: string, ind: string): string {
       const c = ch.codePointAt(0)!
       if (ch === "\\") out += "\\\\"
       else if (ch === "\r") out += "\\r"
-      else if ((c < 0x20 && ch !== "\t") || isBidi(c)) out += hexEscape(c)
+      else if ((isControl(c) && ch !== "\t") || isBidi(c)) out += hexEscape(c)
       else out += ch
     }
     // A run of three quotes would close the string early: escape every quote

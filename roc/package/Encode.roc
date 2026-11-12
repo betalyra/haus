@@ -160,7 +160,12 @@ quote = |s| {
 			Err(_) => 0
 		}
 		bidi = c == 0xE2 and ((next == 0x80 and third >= 0xAA and third <= 0xAE) or (next == 0x81 and third >= 0xA6 and third <= 0xA9))
-		if bidi {
+		# C1 controls (U+0080–U+009F): C2 80–9F.
+		c1 = c == 0xC2 and next >= 0x80 and next <= 0x9F
+		if c1 {
+			$out = $out.concat("\\u{${hex_upper(next.to_u64())}}".to_utf8())
+			$i = $i + 2
+		} else if bidi {
 			cp = if (next == 0x80) 0x2000 + third.to_u64() - 0x80 else 0x2040 + third.to_u64() - 0x80
 			$out = $out.concat("\\u{${hex_upper(cp)}}".to_utf8())
 			$i = $i + 3
@@ -176,7 +181,7 @@ quote = |s| {
 					$out.concat(['\\', 'r'])
 				} else if c == '\t' {
 					$out.concat(['\\', 't'])
-				} else if c < 0x20 {
+				} else if c < 0x20 or c == 0x7F {
 					$out.concat("\\u{${hex_upper(c.to_u64())}}".to_utf8())
 				} else {
 					$out.append(c)
@@ -233,3 +238,4 @@ expect Encode.to_str(Arr([Bytes([0x0b, 0xff]), Rec([]), Arr([])])) == "[x\"0bff\
 expect Encode.to_str(Text("a\"b\\\n\u(202E)")) == "\"a\\\"b\\\\\\n\\u{202E}\""
 expect Encode.stream([Tag("A", []), Num("1")]) == "A,\n1,\n"
 expect Encode.to_str(Encode.record([("a", Present(Num("1"))), ("b", Missing)])) == "{ a: 1 }"
+expect Encode.to_str(Text("\u(1B)\u(7F)\u(85)")) == "\"\\u{1B}\\u{7F}\\u{85}\""
