@@ -19,7 +19,7 @@ Rust and Roc.
 | Step | |
 |---|---|
 | Generate | [`src/generate.ts`](src/generate.ts): random haus text with varied formatting (spacing, comments, CRLF, byte order mark, number spellings, quoted keys, block strings, both payload forms, trailing commas), values at and just past the limits, the conformance suite as seeds. Half of the inputs are then mutated: bytes deleted, edge characters inserted (quotes, `*/`, control and bidi characters, invalid UTF-8), slices duplicated, cut short. |
-| Run | [`src/runners.ts`](src/runners.ts): each parser reads a batch of files and prints one line per file, `ok <values>` in the test-suite JSON encoding or `err <line> <column> <reason>`. |
+| Run | [`src/runners.ts`](src/runners.ts): each parser reads a batch of files and prints one line per file, `ok <values>` in the test-suite JSON encoding or `err <line> <column> <reason>`. The stream readers of Rust, Roc and TypeScript run too, on the same inputs cut into chunks (sizes 1, 2, 3, 5, 8, 13, 64 in turn), and must give what parsing the whole input gives. A runner that crashes is rerun case by case, and the crash counts as a disagreement. |
 | Compare | [`src/main.ts`](src/main.ts): accept/reject and the values must agree. |
 | Shrink | A disagreeing input is cut down to the smallest input that still disagrees, and saved to `.out/failures/` with every parser's result. |
 
@@ -34,9 +34,19 @@ but not which error a parser reports first, so they may differ.
 | Rust | [`rust/haus/examples/fuzz_runner.rs`](../rust/haus/examples/fuzz_runner.rs) |
 | Roc | [`roc/fuzz/runner.roc`](../roc/fuzz/runner.roc) |
 | TypeScript | in this process ([`src/runners.ts`](src/runners.ts)) |
+| Stream readers | the same runners with `--stream` (TypeScript: in this process) |
 
 A new binding needs a program that reads `DIR/00000.haus` … `DIR/{N-1}.haus`
-and prints those lines, plus an entry in `runners.ts`.
+and prints those lines (with `--stream`: through its stream reader, chunk k
+of case i being `[1, 2, 3, 5, 8, 13, 64][(i + k) % 7]` bytes), plus an entry
+in `runners.ts`.
+
+## Found so far
+
+| | |
+|---|---|
+| Rust stream reader crashed on input ending in `/` | design review S13 |
+| Stream readers accepted a byte order mark after a comma | design review S14 |
 
 ## When it finds something
 

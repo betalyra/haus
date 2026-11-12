@@ -26,7 +26,13 @@ impl Default for Limits {
 
 /// Parse a file with the given limits.
 pub fn parse_with(src: &str, limits: &Limits) -> Result<Vec<Value>, Error> {
-    Parser { src, b: src.as_bytes(), pos: 0, depth: 0, limits }.sequence()
+    Parser { src, b: src.as_bytes(), pos: 0, depth: 0, limits }.sequence(true)
+}
+
+/// The rest of a stream: like `parse_with`, but not at the start of the input,
+/// so a byte order mark is not skipped (the reader removes the one at the start).
+pub(crate) fn parse_rest(src: &str, limits: &Limits) -> Result<Vec<Value>, Error> {
+    Parser { src, b: src.as_bytes(), pos: 0, depth: 0, limits }.sequence(false)
 }
 
 /// Exactly one value, with comments and whitespace around it: one item of a stream.
@@ -71,9 +77,9 @@ fn describe(c: Option<char>) -> String {
 impl<'a> Parser<'a> {
     // ── values ─────────────────────────────────────────────────
 
-    fn sequence(&mut self) -> R<Vec<Value>> {
+    fn sequence(&mut self, at_start: bool) -> R<Vec<Value>> {
         let mut out = Vec::new();
-        if self.src.starts_with('\u{FEFF}') {
+        if at_start && self.src.starts_with('\u{FEFF}') {
             self.pos = 3;
         }
         self.trivia()?;

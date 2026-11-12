@@ -66,7 +66,7 @@ Stream := [].{
 	finish = |state| {
 		(rest, values) = scan(state, True)?
 		text = utf8(rest.buf, rest.origin)?
-		last = Value.parse_all(text).map_err(|e| shift(e, rest.origin))?
+		last = Value.parse_rest(text).map_err(|e| shift(e, rest.origin))?
 		if !last.is_empty() and rest.options.require_terminator {
 			end = after(rest.origin, rest.buf)
 			return Err({ reason: "stream ended without ',' after the last value (truncated?)", line: end.line, column: end.column })
@@ -217,7 +217,7 @@ cut : Stream.Reader, U64 -> Try((Stream.Reader, Value), Value.ParseError)
 cut = |s, comma| {
 	piece = s.buf.sublist({ start: 0, len: comma })
 	text = utf8(piece, s.origin)?
-	value = match Value.parse_all(text) {
+	value = match Value.parse_rest(text) {
 		Ok([v]) => v
 		Ok([]) => {
 			end = after(s.origin, piece)
@@ -237,7 +237,7 @@ unbalanced = |s, i| {
 	match utf8(piece, s.origin) {
 		Err(e) => e
 		Ok(text) =>
-			match Value.parse_all(text) {
+			match Value.parse_rest(text) {
 				Err(e) => shift(e, s.origin)
 				Ok(_) => {
 					end = after(s.origin, s.buf.sublist({ start: 0, len: i }))
@@ -356,3 +356,8 @@ expect {
 expect chunked("1,, 2,", 1).is_err()
 expect chunked("[1, 2,", 2).is_err()
 expect chunked("1 ] 2,", 1).is_err()
+
+# A byte order mark is skipped only at the start of the stream, not after a comma (found by fuzz/).
+expect {
+	Stream.all(["A,\u(FEFF)".to_utf8()]).is_err() and Stream.all(["\u(FEFF)A, B".to_utf8()]).is_ok()
+}

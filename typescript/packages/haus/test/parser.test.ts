@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
-import { MAX_DEPTH, parse, parseAll, StreamReader } from "../src/index.js"
+import { MAX_DEPTH, parse, parseAll, parseStream, StreamReader } from "../src/index.js"
 import { canonical } from "./canonical.js"
 import { parseText, syntax } from "./haus.js"
 
@@ -55,6 +55,26 @@ describe("StreamReader", () => {
     const r = new StreamReader()
     const out = [...r.push('"a,b", /* , */ Pair(1, 2), // ,\n"""\n  x,\n  """,'), ...r.end()]
     expect(out.map(canonical)).toEqual(["a,b", { tag: "Pair", args: [{ num: "1" }, { num: "2" }] }, "x,"])
+  })
+
+  it("skips a byte order mark only at the start, not after a comma (found by fuzz/)", () => {
+    const read = (text: string) => {
+      const r = new StreamReader()
+      return [...r.push(text), ...r.end()]
+    }
+    expect(read("\uFEFFA, B")).toHaveLength(2)
+    expect(() => read("A,\uFEFF")).toThrow()
+    expect(() => read("A,\uFEFF B, C")).toThrow()
+  })
+
+  it("parseStream skips one byte order mark, not two (found by fuzz/)", async () => {
+    const all = async (bytes: number[]) => {
+      const out = []
+      for await (const v of parseStream([Uint8Array.from(bytes)])) out.push(v)
+      return out
+    }
+    expect(await all([0xef, 0xbb, 0xbf, 0x31])).toHaveLength(1)
+    await expect(all([0xef, 0xbb, 0xbf, 0xef, 0xbb, 0xbf, 0x31])).rejects.toThrow()
   })
 
   it("reads comments between values, split anywhere", () => {

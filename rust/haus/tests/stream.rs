@@ -134,3 +134,28 @@ fn encodes_one_value_per_line() {
     encode(&mut out, [Some(1u8), None]).unwrap();
     assert_eq!(String::from_utf8(out).unwrap(), "Some(1),\nNone,\n");
 }
+
+#[test]
+fn a_slash_at_the_end_is_an_error_not_a_panic() {
+    // Found by fuzz/: `finish` read one byte past the end.
+    for text in ["1 /", "/", "[1] /", "1, /"] {
+        let mut r = Reader::default();
+        let pushed = r.push(text.as_bytes());
+        assert!(pushed.is_err() || r.finish().is_err(), "{text:?} should be rejected");
+    }
+}
+
+#[test]
+fn a_byte_order_mark_is_only_skipped_at_the_start() {
+    // Found by fuzz/: the reader skipped one after every comma.
+    let read = |text: &str| {
+        let mut r = Reader::default();
+        r.push(text.as_bytes()).and_then(|mut vs| {
+            vs.extend(r.finish()?);
+            Ok(vs)
+        })
+    };
+    assert!(read("\u{FEFF}A, B").is_ok());
+    assert!(read("A,\u{FEFF}").is_err());
+    assert!(read("A,\u{FEFF} B, C").is_err());
+}

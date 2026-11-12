@@ -22,8 +22,8 @@ const seed = Number(args.seed)
 const out = args.out!
 const BATCH = 5000
 
-/** What must agree: accepted with these values, or rejected. */
-const outcome = (r: Result) => (r.ok ? `ok ${r.json}` : "err")
+/** What must agree: accepted with these values, or rejected. A crash (line -1) never agrees. */
+const outcome = (r: Result) => (r.ok ? `ok ${r.json}` : r.line < 0 ? "crash" : "err")
 const disagrees = (rs: readonly Result[]) => new Set(rs.map(outcome)).size > 1
 /** Positions of the errors, where every parser reports one (line 0: no position, e.g. invalid UTF-8). */
 const positionsDiffer = (rs: readonly Result[]) =>

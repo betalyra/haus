@@ -27,7 +27,8 @@ export const syntax = <A>(f: () => A): Effect.Effect<A, HausSyntaxError> =>
 
 export const decode = (bytes: Uint8Array): Effect.Effect<string, InvalidUtf8> =>
   Effect.try({
-    try: () => new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+    // ignoreBOM: the parser skips a byte order mark; the decoder must not remove one too.
+    try: () => new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes),
     catch: (cause) => new InvalidUtf8({ cause }),
   })
 

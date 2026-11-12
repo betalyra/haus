@@ -38,6 +38,7 @@ import "../../test-suite/invalid/block-content-on-opening-line.haus" as invalid_
 import "../../test-suite/invalid/block-string-key.haus" as invalid_block_string_key : List(U8)
 import "../../test-suite/invalid/block-under-indented.haus" as invalid_block_under_indented : List(U8)
 import "../../test-suite/invalid/block-unterminated.haus" as invalid_block_unterminated : List(U8)
+import "../../test-suite/invalid/bom-after-comma.haus" as invalid_bom_after_comma : List(U8)
 import "../../test-suite/invalid/bytes-escape.haus" as invalid_bytes_escape : List(U8)
 import "../../test-suite/invalid/bytes-newline.haus" as invalid_bytes_newline : List(U8)
 import "../../test-suite/invalid/bytes-non-hex.haus" as invalid_bytes_non_hex : List(U8)
@@ -105,6 +106,8 @@ import "../../test-suite/invalid/too-deep.haus" as invalid_too_deep : List(U8)
 import "../../test-suite/invalid/too-large-escape.haus" as invalid_too_large_escape : List(U8)
 import "../../test-suite/invalid/trailing-dot.haus" as invalid_trailing_dot : List(U8)
 import "../../test-suite/invalid/trailing-separator.haus" as invalid_trailing_separator : List(U8)
+import "../../test-suite/invalid/trailing-slash.haus" as invalid_trailing_slash : List(U8)
+import "../../test-suite/invalid/two-boms.haus" as invalid_two_boms : List(U8)
 import "../../test-suite/invalid/unbalanced-nested-comment.haus" as invalid_unbalanced_nested_comment : List(U8)
 import "../../test-suite/invalid/unclosed-array.haus" as invalid_unclosed_array : List(U8)
 import "../../test-suite/invalid/unclosed-payload.haus" as invalid_unclosed_payload : List(U8)
@@ -243,6 +246,9 @@ expect ConformanceTest.rejects(invalid_block_under_indented)
 
 # invalid/block-unterminated.haus
 expect ConformanceTest.rejects(invalid_block_unterminated)
+
+# invalid/bom-after-comma.haus
+expect ConformanceTest.rejects(invalid_bom_after_comma)
 
 # invalid/bytes-escape.haus
 expect ConformanceTest.rejects(invalid_bytes_escape)
@@ -444,6 +450,12 @@ expect ConformanceTest.rejects(invalid_trailing_dot)
 
 # invalid/trailing-separator.haus
 expect ConformanceTest.rejects(invalid_trailing_separator)
+
+# invalid/trailing-slash.haus
+expect ConformanceTest.rejects(invalid_trailing_slash)
+
+# invalid/two-boms.haus
+expect ConformanceTest.rejects(invalid_two_boms)
 
 # invalid/unbalanced-nested-comment.haus
 expect ConformanceTest.rejects(invalid_unbalanced_nested_comment)

@@ -234,7 +234,8 @@ export type ChunkSource =
  */
 export async function* parseStream(source: ChunkSource, options: StreamOptions = {}): AsyncGenerator<Value, void, undefined> {
   const reader = new StreamReader(options)
-  const decoder = new TextDecoder("utf-8", { fatal: true })
+  // ignoreBOM: the reader skips a byte order mark at the start; the decoder must not remove one too.
+  const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
   for await (const chunk of chunks(source)) {
     yield* reader.push(typeof chunk === "string" ? chunk : decoder.decode(chunk, { stream: true }))
   }

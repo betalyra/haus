@@ -23,6 +23,18 @@ Value := [
 		}
 	}
 
+	## The rest of a stream: like `parse_all`, but not at the start of the input,
+	## so a byte order mark is not skipped (the stream reader removes the one at
+	## the start).
+	parse_rest : Str -> Try(List(Value), ParseError)
+	parse_rest = |text| {
+		src = text.to_utf8()
+		match parse_sequence(src, 0) {
+			Ok(values) => Ok(values)
+			Err(f) => Err(locate(src, f))
+		}
+	}
+
 	## Parse raw bytes, which must be valid UTF-8.
 	parse_bytes : List(U8) -> Try(List(Value), ParseError)
 	parse_bytes = |bytes| match Str.from_utf8(bytes) {
@@ -251,19 +263,15 @@ parse_number = |src, start| {
 	digits_start = if (neg) start + 1 else start
 	(text, end) =
 		if starts_at(src, digits_start, "0x") {
-			radix_literal(src, digits_start + 2, 16, neg)?
+			radix_literal(src, digits_start + 2, 16, neg).map_err(|_| invalid_number(src, start))?
 		} else if starts_at(src, digits_start, "0b") {
-			radix_literal(src, digits_start + 2, 2, neg)?
+			radix_literal(src, digits_start + 2, 2, neg).map_err(|_| invalid_number(src, start))?
 		} else {
 			decimal_literal(src, start, digits_start)?
 		}
 	next = at(src, end)
 	if is_ident_char(next) or next == '.' {
-		var $e = end
-		while is_ident_char(at(src, $e)) or at(src, $e) == '.' {
-			$e = $e + 1
-		}
-		Err({ reason: "invalid number '${slice_str(src, start, $e)}'", pos: start })
+		Err(invalid_number(src, start))
 	} else {
 		Ok((Num(text), end))
 	}
@@ -288,6 +296,16 @@ digit_run = |src, start, is_valid| {
 		}
 	}
 	Ok($p)
+}
+
+## `invalid number '0x'`, at the start of the literal, like the other bindings.
+invalid_number : List(U8), U64 -> Fail
+invalid_number = |src, start| {
+	var $e = start + 1
+	while is_ident_char(at(src, $e)) or at(src, $e) == '.' {
+		$e = $e + 1
+	}
+	{ reason: "invalid number '${slice_str(src, start, $e)}'", pos: start }
 }
 
 decimal_literal : List(U8), U64, U64 -> Try((Str, U64), Fail)

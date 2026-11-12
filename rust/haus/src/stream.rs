@@ -18,8 +18,8 @@
 //! Memory is bounded by the largest single value, not by the stream.
 
 use crate::error::Position;
-use crate::parser::parse_single;
-use crate::{Decode, Encode, Error, Limits, SyntaxError, Value, parse_with, to_string};
+use crate::parser::{parse_rest, parse_single};
+use crate::{Decode, Encode, Error, Limits, SyntaxError, Value, to_string};
 use std::collections::VecDeque;
 use std::io::{self, Read, Write};
 
@@ -108,7 +108,7 @@ impl Reader {
     pub fn finish(mut self) -> Result<Vec<Value>, SyntaxError> {
         let mut out = self.scan(true)?;
         let text = self.text(self.buf.len())?;
-        let rest = parse_with(text, &self.options.limits).map_err(|e| e.from(self.origin))?;
+        let rest = parse_rest(text, &self.options.limits).map_err(|e| e.from(self.origin))?;
         if !rest.is_empty() && self.options.require_terminator {
             let end = self.origin.after(text);
             let reason = "stream ended without ',' after the last value (truncated?)";
@@ -135,12 +135,13 @@ impl Reader {
             let step = match self.mode {
                 Mode::Normal => match c {
                     b'/' if !has(&self.buf, i, 1) => 0,
-                    b'/' => match self.buf[i + 1] {
-                        b'/' => {
+                    // At the end of the input (`last`), there may be no next byte.
+                    b'/' => match self.buf.get(i + 1) {
+                        Some(b'/') => {
                             self.mode = Mode::LineComment;
                             2
                         }
-                        b'*' => {
+                        Some(b'*') => {
                             self.mode = Mode::Comment { depth: 1 };
                             2
                         }

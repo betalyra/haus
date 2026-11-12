@@ -438,8 +438,9 @@ export class Parser {
 
   // ── trivia & helpers ───────────────────────────────────────
 
+  /** A byte order mark is skipped only at the start of the whole input, not of a later stream item. */
   private skipBom() {
-    if (this.src.charCodeAt(0) === 0xfeff && this.pos === 0) this.pos = 1
+    if (this.origin.offset === 0 && this.pos === 0 && this.src.charCodeAt(0) === 0xfeff) this.pos = 1
   }
 
   private skipTrivia() {

@@ -74,18 +74,21 @@ Two properties already hold by construction and need no proof:
 
 ## G. Differential testing
 
-In [`fuzz/`](../../fuzz). Runners for all four parsers, a generator with
-mutations, comparison and shrinking are done. 100,000 cases run in about a
-minute; so far no disagreement on acceptance or values.
+In [`fuzz/`](../../fuzz): runners for all four parsers and for the three
+stream readers (inputs split into chunks), a generator with mutations,
+comparison and shrinking. 100,000 cases through all seven run in about 80
+seconds.
+
+Found so far: a crash in the Rust stream reader on input ending in `/`, and
+stream readers accepting a byte order mark after a comma (design review S13,
+S14). Both fixed; two seeds of 100,000 cases now run clean.
 
 Open:
-- Streams: the same inputs through each binding's stream reader, in random
-  chunks, compared with parsing the whole input.
 - CI: build all four, `lake build` (so a broken proof fails), ~100k cases
-  per pull request, more nightly.
-- Error positions differ in ~1% of rejected inputs: Lean reports errors in
-  block strings at the block's start, Roc reports `0x` without digits after
-  the prefix. Decide whether §8 should fix which position is reported.
+  per pull request, more nightly. Deferred for now.
+- Error positions differ in ~1% of rejected inputs, mostly Lean reporting
+  errors inside block strings at the block's start. Decide whether §8 should
+  fix which position is reported.
 
 ## Also
 
@@ -94,4 +97,5 @@ Open:
 - Every disagreement found (by a proof or by testing) becomes a conformance
   case. So far: the lone carriage return (now an error everywhere), the
   string limit counting UTF-16 units in TypeScript (fixed), and raw control
-  characters in comments and strings (now an error everywhere).
+  characters in comments and strings (now an error everywhere), the Rust
+  stream crash and the byte order mark in streams (fixed).
