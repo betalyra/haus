@@ -5,10 +5,11 @@ import Wash from "./Wash.astro";
 import { links } from "@/lib/links";
 ---
 
-<section class="relative mx-auto flex min-h-[calc(100svh-5.5rem)] w-full max-w-6xl items-center px-6 pt-4 pb-16 lg:pb-20">
-  <div class="grid w-full grid-cols-1 items-center gap-12 md:grid-cols-12 md:gap-8 lg:gap-10">
+<section class="relative mx-auto flex w-full max-w-6xl items-center px-6 pt-2 pb-20 md:min-h-[calc(100svh-5.5rem)] md:pt-4 md:pb-16 lg:pb-20">
+  <!-- On phones the painting comes first, small and centred, with the words under it. -->
+  <div class="grid w-full grid-cols-1 items-center gap-6 md:grid-cols-12 md:gap-8 lg:gap-10">
     <div class="relative md:col-span-7">
-      <h1 class="text-[2.6rem] leading-[1.03] sm:text-[3.4rem] md:text-[3.2rem] lg:text-[4rem] xl:text-[4.5rem]">
+      <h1 class="text-[clamp(2rem,9.6vw,2.6rem)] leading-[1.06] text-balance sm:text-[3.4rem] md:text-[3.2rem] lg:text-[4rem] xl:text-[4.5rem]">
         A data format that feels like{" "}
         <span class="brush">
           home.
@@ -23,32 +24,32 @@ import { links } from "@/lib/links";
         </span>
       </h1>
 
-      <p class="mt-7 max-w-[35rem] text-[1.2rem] leading-[1.55] text-ink-2 sm:text-[1.3rem]">
+      <p class="mt-5 max-w-[35rem] text-[1.1rem] leading-[1.55] text-ink-2 sm:mt-7 sm:text-[1.3rem]">
         Clean to write, with real types built in: variants, dates and times, exact numbers.
         And your data can grow without breaking the code that reads it.
       </p>
 
-      <div class="mt-10 flex flex-wrap items-center gap-x-2 gap-y-3 sm:gap-3">
+      <div class="mt-8 flex flex-wrap items-center gap-x-2 gap-y-3 sm:mt-10 sm:gap-3">
         <a
           href={links.quickstart}
-          class="inline-flex h-12 items-center gap-2 rounded-full bg-ink px-5 text-[1.02rem] sm:px-6 font-medium text-paper no-underline transition-[background-color,transform] duration-200 ease-out hover:bg-ultramarine-ink active:translate-y-px"
+          class="inline-flex h-12 items-center gap-2 rounded-full bg-ink px-5 text-[0.98rem] font-medium max-[380px]:px-4 sm:px-6 sm:text-[1.02rem] text-paper no-underline transition-[background-color,transform] duration-200 ease-out hover:bg-ultramarine-ink active:translate-y-px"
         >
           Try it in VS Code
         </a>
         <a
           href={links.spec}
-          class="group inline-flex h-12 items-center gap-1.5 px-3 text-[1.02rem] font-medium text-ink sm:px-4"
+          class="group inline-flex h-12 items-center gap-1.5 px-3 text-[0.98rem] font-medium text-ink max-[380px]:px-1.5 sm:px-4 sm:text-[1.02rem]"
         >
           <span class="brush-hover">Read the spec</span>
           <PiArrowRightBold size={16} aria-hidden="true" className="transition-transform duration-200 ease-out group-hover:translate-x-0.5" />
         </a>
       </div>
 
-      <p class="mt-8 text-[0.92rem] text-ink-3">Draft 0.1. Still changing, so don't use it in production yet.</p>
+      <p class="mt-6 text-[0.88rem] text-ink-3 sm:mt-8 sm:text-[0.92rem]">Draft 0.1. Still changing, so don't use it in production yet.</p>
     </div>
 
-    <div class="relative md:col-span-5">
-      <Painting class="mx-auto aspect-square w-full max-w-[34rem]" />
+    <div class="relative order-first md:order-none md:col-span-5">
+      <Painting class="mx-auto aspect-square w-[68%] max-w-[34rem] md:w-full" />
     </div>
   </div>
 </section>

@@ -11,18 +11,18 @@ import { links } from "@/lib/links";
       <div class="mt-8 flex flex-wrap items-center gap-x-2 gap-y-3 sm:gap-3">
         <a
           href={links.quickstart}
-          class="inline-flex h-12 items-center gap-2 rounded-full bg-ink px-5 text-[1.02rem] sm:px-6 font-medium text-paper transition-[background-color,transform] duration-200 ease-out hover:bg-ultramarine-ink active:translate-y-px"
+          class="inline-flex h-12 items-center gap-2 rounded-full bg-ink px-5 text-[0.98rem] max-[380px]:px-4 sm:px-6 sm:text-[1.02rem] font-medium text-paper transition-[background-color,transform] duration-200 ease-out hover:bg-ultramarine-ink active:translate-y-px"
         >
           Read the quick start
         </a>
-        <a href={links.repo} class="group inline-flex h-12 items-center gap-1.5 px-3 text-[1.02rem] font-medium text-ink sm:px-4">
+        <a href={links.repo} class="group inline-flex h-12 items-center gap-1.5 px-3 text-[0.98rem] font-medium text-ink max-[380px]:px-1.5 sm:px-4 sm:text-[1.02rem]">
           <span class="brush-hover">View on GitHub</span>
           <PiArrowRightBold size={16} aria-hidden="true" className="transition-transform duration-200 ease-out group-hover:translate-x-0.5" />
         </a>
       </div>
     </div>
     <div class="md:col-span-5">
-      <Painting light="dusk" class="mx-auto aspect-square w-full max-w-[26rem]" />
+      <Painting light="dusk" class="mx-auto aspect-square w-[68%] max-w-[26rem] md:w-full" />
     </div>
   </div>
 </section>

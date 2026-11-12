@@ -6,7 +6,7 @@ import { links } from "@/lib/links";
 const items = [
   { label: "Spec", href: links.spec },
   { label: "Languages", href: "#languages" },
-  { label: "Editors", href: links.editors },
+  { label: "Editors", href: links.editors, wide: true },
 ];
 ---
 
@@ -20,7 +20,7 @@ const items = [
     {items.map((item) => (
       <a
         href={item.href}
-        class="inline-block px-1.5 py-1.5 text-[0.92rem] text-ink-2 sm:px-2.5 sm:text-[0.95rem]"
+        class:list={["px-2 py-1.5 text-[0.95rem] text-ink-2 sm:px-2.5", item.wide ? "hidden sm:inline-block" : "inline-block"]}
       >
         <span class="brush-hover">{item.label}</span>
       </a>

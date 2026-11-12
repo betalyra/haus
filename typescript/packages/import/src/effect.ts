@@ -16,11 +16,7 @@ import { checkData, HausSyntaxError, parseSchemaFile, parseWithLocations, schema
 import { schemaOptions } from "@haus-fmt/haus/node"
 import * as Haus from "@haus-fmt/effect"
 
-export interface Diagnostic {
-  readonly message: string
-  readonly offset: number
-  readonly length: number
-}
+import type { Diagnostic } from "./generate.ts"
 
 /** The schema of a data file: the file and the type that describes the whole file. */
 export interface SchemaLink {
@@ -51,7 +47,7 @@ function specifier(fileName: string, pkg: string): string {
   return fileURLToPath(import.meta.resolve(pkg))
 }
 
-export const effectSpecifier = (fileName: string): string => specifier(fileName, "effect")
+const effectSpecifier = (fileName: string): string => specifier(fileName, "effect")
 
 /** Declarations for a `.schema.haus` file: its types and their Effect schemas (imports resolved from its place). */
 export function schemaModule(text: string, fileName: string): string {
