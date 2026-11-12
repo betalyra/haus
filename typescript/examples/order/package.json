@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "prestart": "pnpm --filter @haus-fmt/haus --filter @haus-fmt/effect build",
+    "prestart": "pnpm --filter @haus-fmt/haus --filter @haus-fmt/effect --filter @haus-fmt/import build",
     "start": "tsx --import @haus-fmt/import/register/effect src/main.ts",
     "typecheck": "tsc --noEmit --runExternalCode"
   },

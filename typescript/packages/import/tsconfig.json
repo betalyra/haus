@@ -6,9 +6,8 @@
     "moduleResolution": "NodeNext",
     "strict": true,
     "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
     "verbatimModuleSyntax": true,
-    "allowImportingTsExtensions": true,
-    "noEmit": true,
     "skipLibCheck": true,
     "types": ["node"]
   },

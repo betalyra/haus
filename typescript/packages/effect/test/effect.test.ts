@@ -42,6 +42,14 @@ describe("decode", () => {
       expect(order.origin).toEqual({ _tag: "Point", x: 1, y: 2 })
     }))
 
+  it.effect("a BigDecimal keeps its scale when encoded (spec §3), though BigDecimal.format drops it", () =>
+    Effect.gen(function* () {
+      const S = Schema.Struct({ amount: Schema.BigDecimal })
+      const v = yield* Haus.decode(S)("{ amount: 19.90 }")
+      expect(BigDecimal.format(v.amount)).toBe("19.9")
+      expect(yield* Haus.encode(S, { style: "compact" })(v)).toBe("{ amount: 19.90 }")
+    }))
+
   it.effect("bytes decode to Uint8Array and back", () =>
     Effect.gen(function* () {
       const S = Schema.Struct({ key: Schema.Uint8Array })

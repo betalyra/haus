@@ -21,12 +21,17 @@ Two parts make an import work, and both come from one generator
 
 | Target | `.schema.haus` | data with a schema | data without a schema | needs |
 |---|---|---|---|---|
-| `"plain"` (default) | not yet | not yet | plain JS values | nothing |
+| `"plain"` (default) | haus schemas (Standard Schemas) | decoded with them | plain JS values | nothing |
 | `"effect"` | Effect schemas | decoded with Effect | plain JS values | `effect`, `@haus-fmt/effect` |
 
-Plain values: strings, `number` for whole numbers, `string` for decimals (exact),
-`boolean`, `Uint8Array`, `T | null` for `Maybe`, string literal unions for tags without
-payload, `{ _tag, … }` for other variants, `key?:` for fields only some records have.
+Plain, without a schema: strings, `number` for whole numbers, `string` for decimals
+(exact), `boolean`, `Uint8Array`, `T | null` for `Maybe`, string literal unions for
+tags without payload, `{ _tag, … }` for other variants, `key?:` for fields only some
+records have.
+
+Plain, with a schema: the same, plus `Int64` → `bigint`, `Instant` → `Date`,
+`Map` → `ReadonlyMap`, and open variants add `Unknown`
+(see [`@haus-fmt/haus`](../haus)).
 With Effect: `Int` → `bigint`, `Decimal` → `BigDecimal`, `Maybe` → `Option`,
 `Instant` → `DateTime.Utc` (see [`@haus-fmt/effect`](../effect)).
 
@@ -52,8 +57,8 @@ import haus from "@haus-fmt/import/vite"
 export default { plugins: [haus({ target: "effect" })] }
 ```
 
-With Vite, plain data is baked into the bundle as JavaScript values, so no haus
-parser ships to the browser. Schema imports (`import @haus/money`) are resolved at
+With Vite, data without a schema is baked into the bundle as JavaScript values,
+so no haus parser ships for it. Schema imports (`import @haus/money`) are resolved at
 build time, and the schema files are watched.
 
 In VS Code, typed imports need the TypeScript native preview extension, a trusted

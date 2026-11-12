@@ -4,12 +4,12 @@
   "description": "Presentation material: the live demo, the video script and a tour of the content mapper.",
   "type": "module",
   "scripts": {
-    "predemo": "pnpm --filter @haus-fmt/haus --filter @haus-fmt/effect build",
+    "predemo": "pnpm --filter @haus-fmt/haus --filter @haus-fmt/effect --filter @haus-fmt/import build",
     "demo": "tsx --import @haus-fmt/import/register/effect src/demo/demo.ts",
     "demo:watch": "tsx watch --include 'src/**/*.haus' --import @haus-fmt/import/register/effect src/demo/demo.ts",
-    "prevideo": "pnpm --filter @haus-fmt/haus --filter @haus-fmt/effect build",
+    "prevideo": "pnpm --filter @haus-fmt/haus --filter @haus-fmt/effect --filter @haus-fmt/import build",
     "video": "tsx --import @haus-fmt/import/register/effect src/video/main.ts",
-    "pretour": "pnpm --filter @haus-fmt/haus --filter @haus-fmt/effect build",
+    "pretour": "pnpm --filter @haus-fmt/haus --filter @haus-fmt/effect --filter @haus-fmt/import build",
     "tour": "tsx --import @haus-fmt/import/register/effect src/tour.ts",
     "typecheck": "tsc --noEmit --runExternalCode"
   },

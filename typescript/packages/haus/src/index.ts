@@ -47,3 +47,4 @@ export { checkData, schemaReference, type CheckIssue, type SchemaReference } fro
 export { completeAt, type Completion } from "./complete.js"
 export { HausValidationError, parseWith, parseWithAsync, type StandardSchemaV1 } from "./standard.js"
 export { parsePlain, toPlain } from "./plain.js"
+export { compileSchemaFile, fromSchemaFile, schemaDeclarations, definitionDoc, type CompiledSchemaFile, type DeclarationOptions } from "./schema-compile.js"

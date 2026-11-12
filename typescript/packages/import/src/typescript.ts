@@ -10,24 +10,17 @@
  */
 import { HausSyntaxError } from "@haus-fmt/haus"
 import { runContentMapper, stringIndexToPosition } from "ts-content-mapper"
-import { loadEffect, targetOf, typesFor, type ImportOptions, type Target } from "./generate.ts"
+import { backend, targetOf, typesFor, type Backend, type ImportOptions } from "./generate.js"
 
-interface Project {
-  readonly target: Target
-  readonly effect: Awaited<ReturnType<typeof loadEffect>> | undefined
-}
-
-runContentMapper<ImportOptions, Project>({
+runContentMapper<ImportOptions, Backend>({
   diagnosticSource: "haus",
   async openProject(params) {
-    const target = targetOf(params.options)
-    return { project: { target, effect: target === "effect" ? await loadEffect() : undefined } }
+    return { project: await backend(targetOf(params.options)) }
   },
   transform(params, context) {
     const at = (offset: number) => stringIndexToPosition(params.content, offset, context.positionEncoding)
-    const { target, effect } = context.project
     try {
-      const { text, diagnostics } = typesFor(params.content, params.fileName, target, effect)
+      const { text, diagnostics } = typesFor(params.content, params.fileName, context.project)
       return {
         text,
         extension: ".mts",

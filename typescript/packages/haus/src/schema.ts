@@ -20,7 +20,7 @@
 import { format, stringify as stringifyValue, type FormatOptions } from "./format.js"
 import { Parser } from "./parser.js"
 import { parseStream, type ChunkSource } from "./stream.js"
-import { checkStdTime } from "./std-time.js"
+import { checkStdTime, type StdTimeType } from "./std-time.js"
 import { arr, bytes as bytesValue, num, rec, str, variant, type HRecord, type HVariant, type Value } from "./value.js"
 import { issuesOf, type StandardSchemaV1 } from "./standard.js"
 
@@ -271,6 +271,12 @@ const standard = <A>(self: () => Schema<A>): StandardSchemaV1.Props<string | Val
   },
 })
 
+/** A schema written by hand (`expected`, `decode`, `encode`), made a Standard Schema too. */
+export const withStandard = <A, S extends Omit<Schema<A>, "~standard">>(schema: S & Omit<Schema<A>, "~standard">): S & Schema<A> => {
+  const self = { ...schema, "~standard": standard(() => self) } as S & Schema<A>
+  return self
+}
+
 const make = <A>(expected: string, decode: (value: Value, at: At) => A, encode: (value: A, at: At) => Value): Schema<A> => {
   const self: Schema<A> = {
   "~standard": standard(() => self),
@@ -381,6 +387,13 @@ const instant = taggedString(
   (d) => (d instanceof globalThis.Date && !isNaN(d.getTime()) ? d.toISOString() : String(d)),
 )
 
+/**
+ * Any std/time type as its validated ISO text: `Time("09:30:00")` → "09:30:00",
+ * `Duration("PT48H")` → "PT48H". (`h.Instant` gives a JS Date instead.)
+ */
+export const StdTime = (type: StdTimeType): Schema<string> =>
+  taggedString(type, /^/, (s) => (checkStdTime(type, s) === undefined ? s : undefined), (s) => s)
+
 export {
   bigint_ as BigInt,
   bool as Bool,
@@ -471,7 +484,7 @@ export interface OptionalSchema<A> extends Schema<A> {
 
 // ── records ──────────────────────────────────────────────────
 
-type Fields = Readonly<Record<string, AnySchema>>
+export type Fields = Readonly<Record<string, AnySchema>>
 type OptionalKeys<F extends Fields> = { [K in keyof F]: F[K] extends { readonly optional: true } ? K : never }[keyof F]
 type Simplify<T> = { [K in keyof T]: T[K] } & {}
 /** Required fields as `key: T`, `h.Optional` fields as `key?: T`. */

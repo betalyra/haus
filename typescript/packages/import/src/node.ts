@@ -10,17 +10,16 @@
 import { readFileSync } from "node:fs"
 import { registerHooks } from "node:module"
 import { fileURLToPath } from "node:url"
-import { loadEffect, moduleFor, targetOf, type ImportOptions } from "./generate.ts"
+import { backend, moduleFor, targetOf, type ImportOptions } from "./generate.js"
 
 export async function register(options: ImportOptions = {}): Promise<void> {
-  const target = targetOf(options)
-  const effect = target === "effect" ? await loadEffect() : undefined
-  const runtime = import.meta.resolve("./runtime.ts")
+  const b = await backend(targetOf(options))
+  const importRuntime = (path: string) => import.meta.resolve(`./${path}.js`)
   registerHooks({
     load(url, context, nextLoad) {
       if (!url.startsWith("file:") || !url.endsWith(".haus")) return nextLoad(url, context)
       const path = fileURLToPath(url)
-      const { code } = moduleFor(readFileSync(path, "utf8"), path, target, runtime, effect)
+      const { code } = moduleFor(readFileSync(path, "utf8"), path, b, importRuntime)
       return { format: "module", source: code, shortCircuit: true }
     },
   })

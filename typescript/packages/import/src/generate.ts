@@ -8,15 +8,16 @@
  *
  * The target decides what schemas become:
  *
- *   "plain"   data → plain JS values (the plain view of @haus-fmt/haus); no dependencies
- *   "effect"  `.schema.haus` → Effect schemas; data with a schema is decoded with it
+ *   "plain"   haus schemas (Standard Schemas) from @haus-fmt/haus; no other dependencies
+ *   "effect"  Effect schemas from @haus-fmt/effect
  *
- * Data files without a schema are plain in both targets.
+ * Data files without a schema are plain values in both targets; data files
+ * with a schema are decoded with it.
  */
-import { plainDeclarations, parsePlain } from "@haus-fmt/haus/plain"
-import { existsSync } from "node:fs"
-import { dirname, resolve } from "node:path"
-import { schemaReference } from "@haus-fmt/haus"
+import { parseSchemaFile, schemaDeclarations } from "@haus-fmt/haus"
+import { schemaOptions } from "@haus-fmt/haus/node"
+import { parsePlain, plainDeclarations } from "@haus-fmt/haus/plain"
+import { dataModule, dataModuleSource, schemaFor, schemaModuleSource, specifier, type Diagnostic } from "./schemas.js"
 
 export type Target = "plain" | "effect"
 
@@ -25,60 +26,55 @@ export interface ImportOptions {
   readonly target?: Target
 }
 
+export type { Diagnostic }
+
 export const targetOf = (options: { readonly target?: unknown } | undefined): Target => {
   const t = options?.target ?? "plain"
   if (t !== "plain" && t !== "effect") throw new Error(`@haus-fmt/import: target must be "plain" or "effect", found ${JSON.stringify(t)}`)
   return t
 }
 
-export interface Diagnostic {
-  readonly message: string
-  readonly offset: number
-  readonly length: number
+/** What differs between the targets. */
+export interface Backend {
+  readonly target: Target
+  /** Declarations for a `.schema.haus` file: its types and schemas. */
+  readonly schemaTypes: (text: string, fileName: string) => string
+  /** The runtime generated modules import (runtime/plain.ts or runtime/effect.ts), as `@haus-fmt/import/runtime/<target>`. */
+  readonly runtime: string
 }
 
-/** The schema of a data file, without loading Effect: named in a comment, or the `.schema.haus` file next to it. */
-export function schemaPathFor(dataFile: string, text: string): string | undefined {
-  if (dataFile.endsWith(".schema.haus")) return undefined
-  const ref = schemaReference(text)
-  if (ref) return resolve(dirname(dataFile), ref.path)
-  const path = dataFile.replace(/\.haus$/, ".schema.haus")
-  return existsSync(path) ? path : undefined
+const plain: Backend = {
+  target: "plain",
+  schemaTypes: (text, fileName) =>
+    schemaDeclarations(parseSchemaFile(text, schemaOptions(fileName)), { haus: specifier(fileName, "@haus-fmt/haus/schema") }),
+  runtime: "runtime/plain",
 }
 
-const NEEDS_EFFECT = 'schema files need { target: "effect" } (schemas for the plain target are not built yet)'
-
-type EffectModule = typeof import("./effect.ts")
-
-/** Load the Effect side only when a project asks for it, so plain projects need no Effect. */
-export const loadEffect = (): Promise<EffectModule> => import("./effect.ts")
+/** The backend for a target. The Effect one is loaded only when a project asks for it, so plain projects need no Effect. */
+export async function backend(target: Target): Promise<Backend> {
+  if (target === "plain") return plain
+  const { effectSchemaTypes } = await import("./effect.js")
+  return { target, schemaTypes: effectSchemaTypes, runtime: "runtime/effect" }
+}
 
 /** TypeScript declarations for an imported `.haus` file, with diagnostics for the file. */
-export function typesFor(text: string, fileName: string, target: Target, effect?: EffectModule): { text: string; diagnostics: Diagnostic[] } {
-  if (target === "effect" && effect) {
-    if (fileName.endsWith(".schema.haus")) return { text: effect.schemaModule(text, fileName), diagnostics: [] }
-    const link = effect.schemaFor(fileName, text)
-    if (link) return effect.dataModule(text, fileName, link)
-  } else if (fileName.endsWith(".schema.haus")) {
-    return { text: "export {};\n", diagnostics: [{ message: NEEDS_EFFECT, offset: 0, length: 1 }] }
-  } else if (schemaPathFor(fileName, text)) {
-    return { text: plainDeclarations(text, fileName), diagnostics: [{ message: `this file has a schema, but ${NEEDS_EFFECT}`, offset: 0, length: 1 }] }
-  }
+export function typesFor(text: string, fileName: string, b: Backend): { text: string; diagnostics: Diagnostic[] } {
+  if (fileName.endsWith(".schema.haus")) return { text: b.schemaTypes(text, fileName), diagnostics: [] }
+  const link = schemaFor(fileName, text)
+  if (link) return dataModule(text, fileName, link)
   return { text: plainDeclarations(text, fileName), diagnostics: [] }
 }
 
 /**
  * JavaScript for an imported `.haus` file, and the files it was built from
- * (to watch). `runtime` is how the module imports @haus-fmt/import/runtime.
+ * (to watch). `importRuntime` turns `runtime/<target>` into the specifier the
+ * module imports it by.
  */
-export function moduleFor(text: string, fileName: string, target: Target, runtime: string, effect?: EffectModule): { code: string; files: string[] } {
-  if (target === "effect" && effect) {
-    if (fileName.endsWith(".schema.haus")) return effect.schemaModuleSource(fileName, runtime)
-    const link = effect.schemaFor(fileName, text)
-    if (link) return effect.dataModuleSource(text, fileName, link, runtime)
-  } else if (fileName.endsWith(".schema.haus") || schemaPathFor(fileName, text)) {
-    throw new Error(`${fileName}: ${NEEDS_EFFECT}`)
-  }
+export function moduleFor(text: string, fileName: string, b: Backend, importRuntime: (path: string) => string): { code: string; files: string[] } {
+  const runtime = importRuntime(b.runtime)
+  if (fileName.endsWith(".schema.haus")) return schemaModuleSource(fileName, runtime)
+  const link = schemaFor(fileName, text)
+  if (link) return dataModuleSource(text, fileName, link, runtime)
   return { code: `export default ${js(parsePlain(text))};\n`, files: [] }
 }
 

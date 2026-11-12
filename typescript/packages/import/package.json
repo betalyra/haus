@@ -4,17 +4,36 @@
   "description": "Import .haus files in TypeScript: typed imports (TypeScript 7.1 content mapper), a Node loader and a Vite plugin",
   "type": "module",
   "exports": {
-    "./register": "./src/register/plain.ts",
-    "./register/effect": "./src/register/effect.ts",
-    "./node": "./src/node.ts",
-    "./vite": "./src/vite.ts",
-    "./runtime": "./src/runtime.ts"
+    "./register": {
+      "types": "./dist/register/plain.d.ts",
+      "default": "./dist/register/plain.js"
+    },
+    "./register/effect": {
+      "types": "./dist/register/effect.d.ts",
+      "default": "./dist/register/effect.js"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "default": "./dist/node.js"
+    },
+    "./vite": {
+      "types": "./dist/vite.d.ts",
+      "default": "./dist/vite.js"
+    },
+    "./runtime/plain": {
+      "types": "./dist/runtime/plain.d.ts",
+      "default": "./dist/runtime/plain.js"
+    },
+    "./runtime/effect": {
+      "types": "./dist/runtime/effect.d.ts",
+      "default": "./dist/runtime/effect.js"
+    }
   },
   "typescript": {
     "contentMapper": {
       "exec": [
         "node",
-        "src/typescript.ts"
+        "dist/typescript.js"
       ],
       "compilerOptions": [],
       "dynamicConfig": false
@@ -49,7 +68,15 @@
     }
   },
   "scripts": {
-    "test": "vitest run",
-    "typecheck": "tsc --noEmit"
-  }
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": [
+    "./dist/register/*.js",
+    "./dist/typescript.js"
+  ]
 }

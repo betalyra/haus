@@ -70,6 +70,8 @@ Two values are equal when they have the same kind and:
 ## 3. Numbers
 
 - **Precision:** a number literal denotes an exact decimal. Parsers MUST keep it without loss, e.g. as the normalized literal text. Converting it to a binary float is a decoding decision made by the schema (`Float64`), never by the parser.
+- **Scale:** encoders MUST keep the scale of a decimal: a `Decimal` decoded from `19.90` is written back as `19.90`. Library formatters often drop trailing zeros (Effect's `BigDecimal.format` writes `19.9`), so implementations write the literal themselves.
+- **Native equality:** a language's decimal type may ignore scale when comparing (Effect `BigDecimal`, Java `BigDecimal.compareTo`, Python `Decimal` all treat `19.90` and `19.9` as equal), while haus doesn't (§2). Use haus equality, not the native one, for hashing and deduplication.
 - **NaN and infinities:** there are no `NaN` or infinity literals. The prelude tags `NaN`, `Infinity` and `NegInfinity` are accepted where the schema says `Float32` or `Float64`.
 - **Limits:** a number literal is at most 1000 characters, and its exponent at most ±6144 (§7).
 
