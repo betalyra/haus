@@ -3,18 +3,10 @@
 version = 4
 
 [[package]]
-name = "haus"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "haus-build"
 version = "0.1.0"
 dependencies = [
- "haus",
+ "haus-fmt",
  "prettyplease",
  "proc-macro2",
  "quote",
@@ -26,24 +18,24 @@ dependencies = [
 name = "haus-build-tests"
 version = "0.0.0"
 dependencies = [
- "haus",
  "haus-build",
+ "haus-fmt",
 ]
 
 [[package]]
 name = "haus-example-logs"
 version = "0.0.0"
 dependencies = [
- "haus",
  "haus-build",
+ "haus-fmt",
 ]
 
 [[package]]
 name = "haus-example-order"
 version = "0.0.0"
 dependencies = [
- "haus",
  "haus-build",
+ "haus-fmt",
  "haus-geo",
  "haus-money",
  "jiff",
@@ -53,24 +45,32 @@ dependencies = [
 name = "haus-example-quickstart"
 version = "0.0.0"
 dependencies = [
- "haus",
  "haus-build",
+ "haus-fmt",
+]
+
+[[package]]
+name = "haus-fmt"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "haus-geo"
 version = "1.0.0"
 dependencies = [
- "haus",
  "haus-build",
+ "haus-fmt",
 ]
 
 [[package]]
 name = "haus-money"
 version = "1.0.0"
 dependencies = [
- "haus",
  "haus-build",
+ "haus-fmt",
 ]
 
 [[package]]

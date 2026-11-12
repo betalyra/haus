@@ -2,12 +2,17 @@
 name = "haus-build"
 version = "0.1.0"
 description = "Rust types from haus schemas, generated in build.rs"
+readme = "../README.md"
+keywords = ["haus", "codegen", "build-script", "schema"]
+categories = ["development-tools::build-utils", "encoding"]
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
 
 [dependencies]
-haus = { path = "../haus" }
+haus = { package = "haus-fmt", path = "../haus", version = "0.1.0" }
 prettyplease = "0.3.0"
 proc-macro2 = "1.0.107"
 quote = "1.0.47"

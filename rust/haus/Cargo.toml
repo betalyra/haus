@@ -1,10 +1,19 @@
 [package]
-name = "haus"
+# Published as haus-fmt (the name haus is taken on crates.io), imported as haus.
+name = "haus-fmt"
 version = "0.1.0"
 description = "The haus data format: parser and data model"
+readme = "../README.md"
+keywords = ["haus", "data-format", "parser", "serialization", "schema"]
+categories = ["parser-implementations", "encoding"]
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+
+[lib]
+name = "haus"
 
 [dependencies]
 

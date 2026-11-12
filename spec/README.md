@@ -1,4 +1,4 @@
-# haus specification — draft 0.2
+# haus specification — draft 0.1
 
 The syntax is defined in [`grammar.ebnf`](grammar.ebnf). This document defines
 what the syntax means and the rules every implementation must follow. The

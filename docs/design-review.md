@@ -1,6 +1,6 @@
 # haus design review
 
-Date: 2026-11-07 (status updated the same day) · Scope: spec draft 0.1, now 0.2 (`spec/`), TypeScript packages, Effect adapter, Roc package.
+Date: 2026-11-07 (status updated the same day) · Scope: spec draft 0.1 (`spec/`), TypeScript packages, Effect adapter, Roc package.
 
 **Status legend:** ✅ done · 🟡 partly done · ⬜ open · — decided not to change
 
@@ -83,7 +83,7 @@ Ecosystem gotchas, documented in the examples:
 |---|---|---|
 | ✅ | **Serializer** | `format` / `stringify` (standard layout, spec §11), comments and blank lines kept, round-trip and idempotence tested on every conformance file; Format Document in VS Code. Schema-aware encoding: `h.stringify` / `h.encodeStream`, Effect `Haus.encode` / `Haus.encodeStream`. **Open:** encoding in Roc. |
 | ✅ | **Limits API and spec defaults** | See S4. Configurable limits in Roc are still open. |
-| 🟡 | **Spec prose** | [`spec/README.md`](../spec/README.md), draft 0.2: data model, equality, numbers, Unicode, variants, streams, limits, error positions, security, evolution. **Open:** the schema language and the canonical form. |
+| 🟡 | **Spec prose** | [`spec/README.md`](../spec/README.md), draft 0.1: data model, equality, numbers, Unicode, variants, streams, limits, error positions, security, evolution. **Open:** the schema language and the canonical form. |
 | 🟡 | **Conformance suite expansion** | Added: limits at and just past the boundary, bidi controls, the D1 cases (now 93 files: 23 valid, 70 invalid). **Open:** NFC/NFD keys, `\u{0}`, the largest code point, expected error positions, and differential fuzzing (random inputs, checking that TypeScript and Roc agree). |
 
 ### 3.2 Should have

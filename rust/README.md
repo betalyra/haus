@@ -2,7 +2,7 @@
 
 | Crate | What it is |
 |---|---|
-| [`haus`](haus) | Parser, data model (`haus::Value`), `Decode`/`Encode`, std/time, codecs, compact writer. Passes the [conformance suite](../test-suite). |
+| [`haus-fmt`](haus) | Imported as `haus`. Parser, data model (`haus::Value`), `Decode`/`Encode`, std/time, codecs, compact writer. Passes the [conformance suite](../test-suite). |
 | [`haus-build`](haus-build) | Rust types from `.schema.haus` files, generated in `build.rs`. Also `haus-gen`, which generates the Roc modules. |
 | [`haus-build-tests`](haus-build-tests) | Tests of the generated code. |
 | [`haus-money`, `haus-geo`](../extensions) | The official schema packages, as crates. |

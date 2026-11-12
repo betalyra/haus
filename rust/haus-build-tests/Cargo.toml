@@ -6,7 +6,7 @@ edition.workspace = true
 publish = false
 
 [dependencies]
-haus = { path = "../haus" }
+haus = { package = "haus-fmt", path = "../haus" }
 
 [build-dependencies]
 haus-build = { path = "../haus-build" }

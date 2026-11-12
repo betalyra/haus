@@ -1,0 +1,33 @@
+[project]
+name = "haus-fmt"
+version = "0.0.1"
+description = "The haus data format for Python. Early placeholder: the parser is on its way."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["haus", "data format", "parser", "serialization", "schema"]
+classifiers = [
+  "Development Status :: 1 - Planning",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Topic :: Software Development :: Libraries",
+  "Typing :: Typed",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/betalyra/haus-fmt"
+Repository = "https://github.com/betalyra/haus-fmt"
+Specification = "https://github.com/betalyra/haus-fmt/tree/main/spec"
+
+[build-system]
+requires = ["uv_build>=0.13.8,<0.14"]
+build-backend = "uv_build"
+
+# Installed as `haus-fmt`, imported as `haus`.
+[tool.uv.build-backend]
+module-name = "haus"
+
+[dependency-groups]
+dev = ["pytest>=8"]

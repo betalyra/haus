@@ -1,4 +1,4 @@
-(* haus data grammar, draft 0.2 (prose: spec/README.md)
+(* haus data grammar, draft 0.1 (prose: spec/README.md)
    Notation: W3C EBNF (as used in the XML spec).
    Input is UTF-8 text. A leading byte order mark (U+FEFF) is ignored.
 

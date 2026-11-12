@@ -6,7 +6,7 @@ edition.workspace = true
 publish = false
 
 [dependencies]
-haus = { path = "../../haus" }
+haus = { package = "haus-fmt", path = "../../haus" }
 # Schema packages are ordinary dependencies (spec §13.3).
 haus-money = { path = "../../../extensions/money" }
 haus-geo = { path = "../../../extensions/geo" }
