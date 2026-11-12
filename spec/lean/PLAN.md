@@ -30,10 +30,13 @@ prototype, …) is outside Lean and stays covered by tests.
 | ⬜ | **F. Streams** | The stream reader returns the same values however the input is split | 1–2 weeks |
 | ⬜ | **H. Canonical form** (spec §12, once specified) | Equal values (§2) give identical bytes, so hashes and signatures are well defined | 1–2 weeks |
 | ⬜ | **I. Schema language** (separate project) | Decoding with any schema terminates in linear time (§9.8–10) | months |
+| ⬜ | **T. std/time** | A reference model of the profile (spec §13.2, `std/time.md`), the bindings' time checkers fuzzed against it, and its security and calendar properties proven | 1–3 weeks |
 
-Recommended order: A and G first (quick, immediately useful), then B → C →
-D, then E and F. H waits for the canonical form, I for a stable schema
-language.
+Order: A, G and B are done. Next C, then D, which follows from B and C.
+Then T1–T4 (the std/time model, fuzzing it, and its two cheap security
+properties): independent of the parser proofs, and the next most likely
+place for real bugs. Then E and F. T5 and T6 together with H, which waits
+for the canonical form; I for a stable schema language.
 
 ## A. Security properties of the grammar
 
@@ -71,14 +74,16 @@ Mismatches found while proving: none between parser and grammar. Two grammar
 rules were restated in an equivalent, simpler form (block string text joined
 with `List.intercalate`; the closing `"""` stated over content and indent).
 
-## C. Completeness
+## C. Completeness (next)
+
+The other direction from B: when the grammar derives `File L t vs`, then
+`parse L t = .ok vs`. Approach:
 
 | Part | Notes |
 |---|---|
-| Follow sets | In every derivation, what follows a number or tag never starts with `[A-Za-z0-9_.]`. This is what makes the parser's greedy choices safe. |
-| Lexical | The parser finds every grammatical number, string, comment |
-| Values and files | Mutual induction over derivations |
-| Fuel | `4 × (length + 1)` is always enough |
+| Follow conditions | The parser reads greedily, so each lemma needs a condition on what follows: a number or tag is not followed by `[A-Za-z0-9_.]`; a bare tag not by blanks then `(` or `{`; whitespace not by whitespace or `/`. Then show the grammar only puts constructs where these hold: after a value comes whitespace, `,`, a closing bracket or the end. |
+| Lexical | For each part, the reverse of its soundness lemma: `sepTail` stops where the digits stop, `lexNumber` reads exactly the literal, `escape` and `chars` read exactly the string, `findClose` finds the right `"""`, `splitLines` gives back the lines, `blockComment` reads exactly a nested comment, `ws` reads exactly `WS`. |
+| Values and files | Induction over grammar derivations (the mirror of `values_ok`), with a fuel bound: fuel ≥ 3·length + 3 is enough, since each call uses at most three units per character read; the parser's 4·(length + 1) satisfies it. Plus fuel monotonicity. |
 
 ## G. Differential testing
 
@@ -97,6 +102,25 @@ Open:
 - Error positions differ in ~1% of rejected inputs, mostly Lean reporting
   errors inside block strings at the block's start. Decide whether §8 should
   fix which position is reported.
+
+## T. std/time
+
+The profile in [`std/time.md`](../std/time.md) is small and every rule is
+decidable, so it can be modelled completely. What depends on the tz database
+(does a zone exist, does an offset match its zone) is outside the profile by
+design, and so outside the model.
+
+| | Step | Gives | Effort |
+|---|---|---|---|
+| ⬜ | T1. Reference model | Each type's rules as a definition, and a checker that computes it | days |
+| ⬜ | T2. Fuzzing | The TypeScript, Rust and Roc std/time checkers against the model, on generated dates, times, offsets, zones and durations (leap years, `24:00:00`, `-00:00`, the 2⁵³ duration bound) | 1–2 days |
+| ⬜ | T3. Zone names can't traverse paths | No accepted zone has a `.` or `..` part, so looking one up as a tz database file can't escape it (`Europe/../../etc/passwd`) | ~1 day |
+| ⬜ | T4. Durations can't overflow | Every accepted duration fits in 64-bit nanoseconds | 1–2 days |
+| ⬜ | T5. The calendar is right | Valid `Date` strings correspond exactly to the days from 0000-01-01 to 9999-12-31 | ~1 week |
+| ⬜ | T6. One spelling per value | Formatting a parsed value gives back the same string; the only spellings of the same value are those the profile names (`Instant` offsets, `.250` and `.25`) | ~1 week |
+
+Order: T1–T4 after D (see the order above); T5 and T6 with the canonical
+form (H).
 
 ## Also
 
