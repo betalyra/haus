@@ -3,121 +3,38 @@
  * A painted plate: the haus mark drawn large in ink, with loose washes laid in
  * behind it the way a line-and-wash sketch is coloured. The washes
  * deliberately miss the lines. `day` opens the page, `dusk` closes it.
- *
- * Wash coordinates are fractions of the plate; the mark's 64-unit grid sits in
- * a viewBox of -4 -8 72 72, so grid (u, v) lands at ((u + 4) / 72, (v + 8) / 72).
+ * The layers live in src/lib/painting.ts, shared with the Open Graph images.
  */
 import Wash from "./Wash.astro";
 import { mark } from "@/lib/mark";
-import type { Stroke } from "@/lib/pigments";
+import { inkWidth, layerSeed, smoke, washes, type Light } from "@/lib/painting";
 
 interface Props {
   class?: string;
-  light?: "day" | "dusk";
+  light?: Light;
 }
 
 const { class: className, light = "day" } = Astro.props;
-
-// Each layer is its own canvas and soaks into the paper slowly. The layers
-// start a little apart but overlap for most of their time, so the plate reads
-// as one painting settling, not a sequence: by day the roof leads, then the
-// sky, the garden and the lamplight; at dusk the sunset, the garden, the sky
-// and the lamps.
-type Layer = { delay: number; strokes: Stroke[] };
-
-const washes: Record<"day" | "dusk", Layer[]> = {
-  day: [
-    {
-      delay: 200,
-      strokes: [
-        { x: 0.52, y: 0.2, rx: 0.36, ry: 0.15, rot: -0.08, color: "cerulean", strength: 0.7, wobble: 1.1 },
-        { x: 0.3, y: 0.24, rx: 0.13, ry: 0.08, rot: -0.2, color: "ultramarine", strength: 0.6 },
-        { x: 0.2, y: 0.15, rx: 0.12, ry: 0.07, color: "violet", strength: 0.4 },
-      ],
-    },
-    {
-      delay: 0,
-      strokes: [
-        { x: 0.46, y: 0.44, rx: 0.26, ry: 0.09, rot: -0.1, color: "rose", strength: 1.1 },
-        { x: 0.65, y: 0.4, rx: 0.08, ry: 0.05, rot: 0.3, color: "sienna", strength: 0.7 },
-      ],
-    },
-    {
-      delay: 600,
-      strokes: [
-        { x: 0.5, y: 0.7, rx: 0.2, ry: 0.14, color: "gold", strength: 1 },
-        { x: 0.55, y: 0.76, rx: 0.08, ry: 0.08, color: "yellow", strength: 0.9 },
-      ],
-    },
-    {
-      delay: 400,
-      strokes: [
-        { x: 0.5, y: 0.87, rx: 0.42, ry: 0.04, rot: 0.02, color: "sap", strength: 1.1, wobble: 0.8 },
-        { x: 0.2, y: 0.86, rx: 0.12, ry: 0.035, color: "gold", strength: 0.5, wobble: 0.8 },
-      ],
-    },
-  ],
-  // Evening: a violet sky, the last light low behind the house, lamps on.
-  dusk: [
-    {
-      delay: 400,
-      strokes: [
-        { x: 0.5, y: 0.17, rx: 0.4, ry: 0.13, rot: 0.05, color: "violet", strength: 0.75, wobble: 1.1 },
-        { x: 0.24, y: 0.24, rx: 0.17, ry: 0.1, color: "ultramarine", strength: 0.75 },
-      ],
-    },
-    {
-      delay: 0,
-      strokes: [
-        { x: 0.76, y: 0.5, rx: 0.2, ry: 0.13, rot: -0.1, color: "rose", strength: 0.9 },
-        { x: 0.84, y: 0.62, rx: 0.12, ry: 0.1, color: "gold", strength: 1 },
-        { x: 0.45, y: 0.43, rx: 0.22, ry: 0.08, rot: -0.1, color: "sienna", strength: 0.75 },
-      ],
-    },
-    {
-      delay: 600,
-      strokes: [
-        { x: 0.5, y: 0.72, rx: 0.15, ry: 0.11, color: "yellow", strength: 1.1 },
-        { x: 0.52, y: 0.76, rx: 0.08, ry: 0.07, color: "gold", strength: 1 },
-      ],
-    },
-    {
-      delay: 200,
-      strokes: [
-        { x: 0.5, y: 0.87, rx: 0.42, ry: 0.04, rot: -0.02, color: "sap", strength: 1.15, wobble: 0.8 },
-        { x: 0.78, y: 0.86, rx: 0.13, ry: 0.035, color: "ultramarine", strength: 0.45, wobble: 0.8 },
-      ],
-    },
-  ],
-};
 
 const titleId = `painting-${light}`;
 ---
 
 <div class:list={["painting relative", className]}>
   {washes[light].map((layer, i) => (
-    <Wash seed={(light === "day" ? 4 : 91) + i * 13} delay={layer.delay} soak class="inset-0 h-full w-full" strokes={layer.strokes} />
+    <Wash seed={layerSeed(light, i)} delay={layer.delay} soak class="inset-0 h-full w-full" strokes={layer.strokes} />
   ))}
 
   <!-- Smoke: two soft grey washes taking turns, each born small at the chimney,
        swelling as it rises and fading while the next one starts (.puff). -->
   {[0, 1].map((i) => (
     <div class:list={["puff", { "puff--2": i === 1 }]} aria-hidden="true">
-      <Wash
-        seed={(light === "day" ? 7 : 93) + i * 5}
-        instant
-        class="inset-0 h-full w-full"
-        strokes={[
-          { x: 0.5, y: 0.52, rx: 0.34, ry: 0.3, color: "payne", strength: 1.25, wobble: 1.2 },
-          { x: 0.42, y: 0.44, rx: 0.16, ry: 0.14, color: light === "day" ? "ultramarine" : "violet", strength: 0.5 },
-        ]}
-      />
+      <Wash {...smoke(light, i)} instant class="inset-0 h-full w-full" />
     </div>
   ))}
 
   <svg class="relative h-full w-full" viewBox="-4 -8 72 72" fill="none" role="img" aria-labelledby={titleId}>
     <title id={titleId}>The haus mark: a little house with smoke rising from its chimney</title>
-    <g stroke="var(--ink)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <g stroke="var(--ink)" stroke-width={inkWidth} stroke-linecap="round" stroke-linejoin="round">
       <path d={mark.roof} />
       <path d={mark.chimney} />
       <path d={mark.body} />

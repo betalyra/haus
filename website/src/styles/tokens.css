@@ -1,0 +1,108 @@
+/* ---------------------------------------------------------------------------
+   haus design tokens: ink, paper, pigments, fonts and the shadcn roles.
+   Shared by the site (global.css) and the docs (docs.css).
+   --------------------------------------------------------------------------- */
+
+:root {
+  --ink: #26231f;
+  --ink-2: #57514a;
+  --ink-3: #7a726a;
+  --paper: #ffffff;
+  --line: color-mix(in oklab, var(--ink) 15%, white);
+  --line-soft: color-mix(in oklab, var(--ink) 8%, white);
+
+  /* pigments, as washes (see src/lib/pigments.ts) */
+  --cerulean: #1f8fc4;
+  --ultramarine: #3a4fb8;
+  --violet: #6b4bb0;
+  --rose: #d93d78;
+  --sienna: #c0582a;
+  --gold: #e39b16;
+  --sap: #5d9a2f;
+
+  /* the same pigments, mixed dark enough to write with (all >= 4.5:1 on white) */
+  --cerulean-ink: #17658e;
+  --ultramarine-ink: #2d3f9c;
+  --violet-ink: #5a3b9e;
+  --rose-ink: #ab2a5d;
+  --sienna-ink: #9a4019;
+  --gold-ink: #8a5800;
+  --sap-ink: #3c6a1e;
+
+  /* shadcn roles, mapped onto the page */
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: var(--paper);
+  --card-foreground: var(--ink);
+  --popover: var(--paper);
+  --popover-foreground: var(--ink);
+  --primary: var(--ink);
+  --primary-foreground: var(--paper);
+  --secondary: color-mix(in oklab, var(--cerulean) 12%, white);
+  --secondary-foreground: var(--ink);
+  --muted: color-mix(in oklab, var(--ink) 6%, white);
+  --muted-foreground: var(--ink-2);
+  --accent: color-mix(in oklab, var(--ultramarine) 12%, white);
+  --accent-foreground: var(--ink);
+  --destructive: var(--rose-ink);
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--ultramarine-ink);
+  --radius: 0.75rem;
+
+  --font-sans: "Geist Variable", "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-heading: "Albert Sans Variable", "Albert Sans", var(--font-sans);
+  --font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+@theme inline {
+  --font-sans: var(--font-sans);
+  --font-heading: var(--font-heading);
+  --font-mono: var(--font-mono);
+
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-paper: var(--paper);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+  --color-cerulean: var(--cerulean);
+  --color-ultramarine: var(--ultramarine);
+  --color-violet: var(--violet);
+  --color-rose: var(--rose);
+  --color-sienna: var(--sienna);
+  --color-gold: var(--gold);
+  --color-sap: var(--sap);
+  --color-cerulean-ink: var(--cerulean-ink);
+  --color-ultramarine-ink: var(--ultramarine-ink);
+  --color-violet-ink: var(--violet-ink);
+  --color-rose-ink: var(--rose-ink);
+  --color-sienna-ink: var(--sienna-ink);
+  --color-gold-ink: var(--gold-ink);
+  --color-sap-ink: var(--sap-ink);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+}

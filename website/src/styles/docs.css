@@ -1,0 +1,300 @@
+/* ---------------------------------------------------------------------------
+   The docs: Starlight with Tailwind 4 (@astrojs/starlight-tailwind), in the
+   site's own ink-on-white look. Starlight's grays and accent come from the
+   Tailwind theme below, so its UI and any Tailwind / shadcn component in a
+   page share one palette.
+
+   The layer order is pinned first, so Starlight's styles sit above the
+   preflight subset and below Tailwind utilities whichever file loads first.
+   --------------------------------------------------------------------------- */
+
+@layer base, starlight, theme, components, utilities;
+
+@import "@astrojs/starlight-tailwind";
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@import "tw-animate-css";
+
+@import "@fontsource-variable/albert-sans";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+
+@import "./tokens.css";
+
+/* Tell Tailwind where utilities are used: the docs' components and pages. */
+@source "../components";
+@source "../../../docs";
+
+@theme {
+  /* Warm grays mixed from the ink, so the UI chrome matches the text. */
+  --color-gray-50: #faf9f7;
+  --color-gray-100: #f4f2ef;
+  --color-gray-200: #e8e4df;
+  --color-gray-300: #d6d0c9;
+  --color-gray-400: #aaa29a;
+  --color-gray-500: #7a726a;
+  --color-gray-600: #625b54;
+  --color-gray-700: #57514a;
+  --color-gray-800: #3b3631;
+  --color-gray-900: #26231f;
+  --color-gray-950: #1a1815;
+
+  /* Accent: ultramarine, as a wash (light) and as ink (dark). */
+  --color-accent-50: #f2f4fb;
+  --color-accent-100: #e4e8f6;
+  --color-accent-200: #d2d8f0;
+  --color-accent-300: #aab5e2;
+  --color-accent-400: #7385cc;
+  --color-accent-500: #3a4fb8;
+  --color-accent-600: #2d3f9c;
+  --color-accent-700: #26357f;
+  --color-accent-800: #1f2c6a;
+  --color-accent-900: #1a2558;
+  --color-accent-950: #111838;
+}
+
+:root {
+  --sl-font: var(--font-sans);
+  --sl-font-mono: var(--font-mono);
+  --sl-text-h1: 2.6rem;
+  --sl-text-h2: 1.75rem;
+  --sl-text-h3: 1.3rem;
+  --sl-line-height-headings: 1.15;
+  --sl-content-width: 46rem;
+  --sl-color-hairline: var(--line-soft);
+  --sl-color-hairline-light: var(--line-soft);
+  --sl-color-hairline-shade: var(--line);
+  --sl-nav-height: 4.5rem;
+}
+
+/* White paper everywhere: header, sidebar and page, divided by hairlines only. */
+:root[data-theme="light"] {
+  --sl-color-bg: var(--paper);
+  --sl-color-bg-nav: var(--paper);
+  --sl-color-bg-sidebar: var(--paper);
+  --sl-color-bg-inline-code: color-mix(in oklab, var(--ink) 6%, white);
+  --sl-color-text: var(--ink-2);
+  --sl-color-text-accent: var(--ink);
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    font-size: 1.0625rem;
+    font-feature-settings: "ss01";
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    caret-color: var(--ultramarine-ink);
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--cerulean) 26%, white);
+    color: var(--ink);
+  }
+}
+
+/* Headings in Albert Sans, like the landing page. */
+h1,
+.sl-markdown-content :is(h2, h3, h4),
+.site-title {
+  font-family: var(--font-heading);
+  font-weight: 650;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+
+/* The header, like the landing page's nav: the mark and the wordmark, no fill. */
+.site-title {
+  gap: 0.625rem;
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  color: var(--ink);
+}
+.site-title img {
+  height: 2.125rem;
+}
+
+/* Search: a quiet pill on white. */
+site-search button[data-open-modal] {
+  border-color: var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink-3);
+}
+site-search button[data-open-modal]:hover {
+  border-color: color-mix(in oklab, var(--ink) 30%, white);
+  color: var(--ink-2);
+}
+site-search kbd {
+  background: color-mix(in oklab, var(--ink) 5%, white);
+  border-radius: 0.4rem;
+}
+
+/* Sidebar: ink text; the current page gets the ultramarine stroke the landing
+   page uses for the active tab, other links the rose stroke on hover. */
+.sidebar-content {
+  --sl-sidebar-item-padding-inline: 0.5rem;
+}
+.sidebar-content .group-label .large {
+  font-family: var(--font-heading);
+  font-weight: 650;
+  font-size: 1rem;
+  color: var(--ink);
+}
+.sidebar-content a {
+  color: var(--ink-2);
+  font-size: 0.95rem;
+}
+.sidebar-content a > span {
+  background-repeat: no-repeat;
+  background-position: 0 92%;
+  background-image: url("/strokes/rose.svg");
+  background-size: 0% 0.42em;
+  transition: background-size 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.sidebar-content a:hover {
+  background: transparent;
+  color: var(--ink);
+}
+.sidebar-content a:hover > span {
+  background-size: 100% 0.42em;
+}
+.sidebar-content a[aria-current="page"],
+.sidebar-content a[aria-current="page"]:hover,
+.sidebar-content a[aria-current="page"]:focus {
+  background: transparent;
+  color: var(--ink);
+  font-weight: 600;
+}
+.sidebar-content a[aria-current="page"] > span {
+  background-image: url("/strokes/ultramarine.svg");
+  background-size: 100% 0.5em;
+}
+.sidebar-content ul ul {
+  border-inline-start-color: var(--line-soft);
+}
+
+/* On this page: ink, with the current heading in full ink. */
+starlight-toc a {
+  color: var(--ink-3);
+}
+starlight-toc a:hover,
+starlight-toc a[aria-current="true"] {
+  color: var(--ink);
+}
+starlight-toc h2,
+mobile-starlight-toc .toggle {
+  font-family: var(--font-heading);
+  color: var(--ink);
+}
+
+.sl-markdown-content p {
+  text-wrap: pretty;
+}
+
+/* No rule between the page title and the page: one sheet of paper. */
+.content-panel + .content-panel {
+  border-top: 0;
+  padding-top: 0;
+}
+
+/* The landing page's hover stroke (.brush-hover in global.css), for the header links. */
+.brush-hover {
+  background-image: url("/strokes/rose.svg");
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 0% 0.42em;
+  transition: background-size 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+a:hover > .brush-hover,
+a:focus-visible > .brush-hover {
+  background-size: 100% 0.42em;
+}
+
+/* Links: ink on a painted rose stroke, as in the landing page's prose (.prose-link). */
+.sl-markdown-content a:not(:where(.not-content *)) {
+  color: var(--ink);
+  text-decoration: none;
+  background-image: url("/strokes/rose.svg");
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 100% 0.42em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  transition: background-size 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.sl-markdown-content a:not(:where(.not-content *)):hover {
+  background-size: 100% 0.95em;
+}
+
+/* Emphasis: ink, not paint. */
+.sl-markdown-content strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* Notes: a pale pigment wash with the pigment's ink, no heavy bar. */
+.starlight-aside {
+  border-inline-start: 0;
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+  color: var(--ink-2);
+}
+.starlight-aside--note {
+  --sl-color-asides-text-accent: var(--cerulean-ink);
+  background-color: color-mix(in oklab, var(--cerulean) 9%, white);
+}
+.starlight-aside--tip {
+  --sl-color-asides-text-accent: var(--sap-ink);
+  background-color: color-mix(in oklab, var(--sap) 10%, white);
+}
+.starlight-aside--caution {
+  --sl-color-asides-text-accent: var(--gold-ink);
+  background-color: color-mix(in oklab, var(--gold) 12%, white);
+}
+.starlight-aside--danger {
+  --sl-color-asides-text-accent: var(--rose-ink);
+  background-color: color-mix(in oklab, var(--rose) 9%, white);
+}
+
+/* Pagination ("Next"): white cards with a hairline, like the code. */
+.pagination-links a {
+  border-color: var(--line);
+  border-radius: 0.875rem;
+  box-shadow: none;
+  color: var(--ink);
+}
+.pagination-links a:hover {
+  border-color: color-mix(in oklab, var(--ink) 30%, white);
+}
+
+/* Code: white cards with a hairline, the way code sits on the landing page. */
+.expressive-code {
+  --ec-brdRad: 0.75rem;
+  --ec-brdCol: var(--line);
+  --ec-codeBg: var(--paper);
+  --ec-frm-edBg: var(--paper);
+  --ec-frm-trmBg: var(--paper);
+  --ec-frm-edActTabBg: var(--paper);
+  --ec-frm-edTabBarBg: color-mix(in oklab, var(--ink) 3%, white);
+  --ec-frm-edTabBarBrdBtmCol: var(--line);
+  --ec-frm-frameBoxShdCssVal: none;
+  --ec-codeFontFml: var(--font-mono);
+}
+
+.sl-markdown-content :not(pre) > code {
+  font-size: 0.88em;
+  border-radius: 0.35em;
+  padding: 0.05em 0.35em;
+  color: var(--ink);
+}
+
+/* No theme picker, so no divider after the header links. */
+.social-icons::after {
+  display: none;
+}

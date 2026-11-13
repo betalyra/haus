@@ -1,0 +1,23 @@
+---
+/** The right side of the docs header: the landing page's nav links, then GitHub. */
+import { PiGithubLogoLight } from "react-icons/pi";
+import { links } from "@/lib/links";
+
+const items = [
+  { label: "Home", href: "/" },
+  { label: "Playground", href: "/play" },
+  { label: "Spec", href: links.spec },
+];
+---
+
+<nav aria-label="Site" class="flex items-center gap-1">
+  {items.map((item) => (
+    <a href={item.href} class="hidden px-2.5 py-1.5 text-[0.95rem] text-ink-2 no-underline hover:text-ink md:inline-block">
+      <span class="brush-hover">{item.label}</span>
+    </a>
+  ))}
+  <a href={links.repo} class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[0.95rem] text-ink no-underline" aria-label="GitHub">
+    <PiGithubLogoLight size={22} aria-hidden="true" />
+    <span class="brush-hover hidden lg:inline">GitHub</span>
+  </a>
+</nav>

@@ -1,0 +1,14 @@
+---
+/** Starlight's head, plus the page's Open Graph image (src/pages/og/[...slug].png.ts). */
+import Default from "@astrojs/starlight/components/Head.astro";
+import { ogImageUrl } from "@/lib/og/routes";
+
+const ogImage = ogImageUrl(Astro.locals.starlightRoute.id, Astro.site);
+---
+
+<Default />
+<meta property="og:image" content={ogImage} />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:image" content={ogImage} />
