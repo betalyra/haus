@@ -590,7 +590,9 @@ impl<'a> Parser<'a> {
             match (self.peek(), self.at(1)) {
                 (Some(b' ' | b'\t' | b'\n'), _) => self.pos += 1,
                 (Some(b'\r'), Some(b'\n')) => self.pos += 2,
-                (Some(b'\r'), _) => return Err(self.fail("carriage return without a line feed (line breaks are LF or CRLF)")),
+                (Some(b'\r'), _) => {
+                    return Err(self.fail("carriage return without a line feed (line breaks are LF or CRLF)"));
+                }
                 (Some(b'/'), Some(b'/')) => {
                     let end = self.src[self.pos..].find('\n').map_or(self.b.len(), |n| self.pos + n);
                     self.check_comment(self.pos, end)?;
@@ -630,13 +632,23 @@ impl<'a> Parser<'a> {
     fn check_comment(&self, start: usize, end: usize) -> R<()> {
         let text = &self.src[start..end];
         let bad = text.char_indices().find(|&(i, c)| {
-            is_bidi(c) || (is_control(c) && c != '\t' && c != '\n' && !(c == '\r' && self.src[start + i + 1..].starts_with('\n')))
+            is_bidi(c)
+                || (is_control(c)
+                    && c != '\t'
+                    && c != '\n'
+                    && !(c == '\r' && self.src[start + i + 1..].starts_with('\n')))
         });
         match bad {
-            Some((i, c)) if is_bidi(c) => Err(self
-                .fail_at(start + i, format!("raw bidirectional control character U+{:04X} in comment", c as u32))),
-            Some((i, '\r')) => Err(self.fail_at(start + i, "carriage return without a line feed (line breaks are LF or CRLF)")),
-            Some((i, c)) => Err(self.fail_at(start + i, format!("raw control character U+{:04X} in comment", c as u32))),
+            Some((i, c)) if is_bidi(c) => {
+                Err(self
+                    .fail_at(start + i, format!("raw bidirectional control character U+{:04X} in comment", c as u32)))
+            }
+            Some((i, '\r')) => {
+                Err(self.fail_at(start + i, "carriage return without a line feed (line breaks are LF or CRLF)"))
+            }
+            Some((i, c)) => {
+                Err(self.fail_at(start + i, format!("raw control character U+{:04X} in comment", c as u32)))
+            }
             None => Ok(()),
         }
     }

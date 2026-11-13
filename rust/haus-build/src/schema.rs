@@ -64,16 +64,9 @@ pub struct TypeDef {
 #[derive(Debug, Clone)]
 pub enum Ty {
     /// A named type, applied to arguments: `Array Point`, `Int`.
-    Name {
-        name: String,
-        args: Vec<Ty>,
-        pos: usize,
-    },
+    Name { name: String, args: Vec<Ty>, pos: usize },
     /// A type parameter: `a`.
-    Param {
-        name: String,
-        pos: usize,
-    },
+    Param { name: String, pos: usize },
     Record {
         closed: bool,
         fields: Vec<Field>,
@@ -314,9 +307,8 @@ fn split<T>(members: Vec<Member<T>>) -> (Vec<T>, Vec<Spread>) {
 
 fn record<'a>(closed: bool) -> impl Parser<Input<'a>, Ty, E> {
     let key = alt((lower, string)).context(expected("a field name"));
-    let field = (pos, key, cut_err((opt(sym("?")), preceded(sym(":"), ty)))).map(|(pos, key, (optional, ty))| {
-        Member::Own(Field { key, optional: optional.is_some(), ty, pos })
-    });
+    let field = (pos, key, cut_err((opt(sym("?")), preceded(sym(":"), ty))))
+        .map(|(pos, key, (optional, ty))| Member::Own(Field { key, optional: optional.is_some(), ty, pos }));
     let body = terminated(separated(0.., alt((spread, field)), sym(",")), opt(sym(",")));
     (pos, preceded(sym("{"), cut_err(terminated(body, sym("}"))))).map(move |(pos, members)| {
         let (fields, spreads) = split(members);
@@ -398,11 +390,8 @@ fn expand(file: File) -> Result<File, Fail> {
         done: HashMap::new(),
         busy: vec![],
     };
-    let types = file
-        .types
-        .iter()
-        .map(|d| Ok(TypeDef { ty: x.ty(&d.ty)?, ..d.clone() }))
-        .collect::<Result<Vec<_>, Fail>>()?;
+    let types =
+        file.types.iter().map(|d| Ok(TypeDef { ty: x.ty(&d.ty)?, ..d.clone() })).collect::<Result<Vec<_>, Fail>>()?;
     Ok(File { types, ..file })
 }
 
@@ -436,7 +425,12 @@ impl Expander {
                 if let Some((key, pos)) = duplicate(fields.iter().map(|(f, from)| (f.key.as_str(), f.pos, *from))) {
                     return Err((pos, format!("duplicate field {key}")));
                 }
-                Ty::Record { closed: *closed, fields: fields.into_iter().map(|(f, _)| f).collect(), spreads: vec![], pos: *pos }
+                Ty::Record {
+                    closed: *closed,
+                    fields: fields.into_iter().map(|(f, _)| f).collect(),
+                    spreads: vec![],
+                    pos: *pos,
+                }
             }
             Ty::Variant { closed, cases, spreads, pos } => {
                 let own = cases
@@ -453,7 +447,12 @@ impl Expander {
                 if let Some((tag, pos)) = duplicate(cases.iter().map(|(c, from)| (c.tag.as_str(), c.pos, *from))) {
                     return Err((pos, format!("duplicate tag {tag}")));
                 }
-                Ty::Variant { closed: *closed, cases: cases.into_iter().map(|(c, _)| c).collect(), spreads: vec![], pos: *pos }
+                Ty::Variant {
+                    closed: *closed,
+                    cases: cases.into_iter().map(|(c, _)| c).collect(),
+                    spreads: vec![],
+                    pos: *pos,
+                }
             }
         })
     }
@@ -493,13 +492,19 @@ impl Expander {
             };
             if !def.params.is_empty() {
                 let params = def.params.join(" ");
-                return Err((s.pos, format!("{name} has parameters ({name} {params}); only a type without parameters can be spread")));
+                return Err((
+                    s.pos,
+                    format!("{name} has parameters ({name} {params}); only a type without parameters can be spread"),
+                ));
             }
             let body = match self.done.get(&name) {
                 Some(t) => t.clone(),
                 None => {
                     if self.busy.contains(&name) {
-                        return Err((def.pos, format!("type {name} spreads itself (directly or through another type)")));
+                        return Err((
+                            def.pos,
+                            format!("type {name} spreads itself (directly or through another type)"),
+                        ));
                     }
                     self.busy.push(name.clone());
                     let t = self.ty(&def.ty)?;

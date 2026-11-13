@@ -5,12 +5,15 @@ import { fileURLToPath } from "node:url"
 
 const haus = fileURLToPath(new URL("../../typescript/packages/haus/src/index.ts", import.meta.url))
 const hausNode = fileURLToPath(new URL("../../typescript/packages/haus/src/node.ts", import.meta.url))
+// --production (run by `vsce package` / `vsce publish`) minifies and drops source maps.
+const production = process.argv.includes("--production")
 const options = {
   bundle: true,
   platform: "node",
   target: "node20",
   format: "cjs",
-  sourcemap: true,
+  minify: production,
+  sourcemap: !production,
   external: ["vscode"],
   alias: { "@haus-fmt/haus/node": hausNode, "@haus-fmt/haus": haus },
   logLevel: "info",

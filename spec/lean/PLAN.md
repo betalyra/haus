@@ -22,7 +22,7 @@ prototype, …) is outside Lean and stays covered by tests.
 |---|---|---|---|
 | ✅ | **0. Model** | Data model, equality, grammar, reference parser, `haus-ref` (103/103 conformance cases) | — |
 | ✅ | **A. Security properties of the grammar** | Theorems about every valid file, independent of any parser (below) | days |
-| 🟡 | **G. Differential testing** | The bindings agree with `haus-ref` on generated and mutated inputs, in CI | ~1 week, can start any time |
+| ✅ | **G. Differential testing** | The bindings agree with `haus-ref` on generated and mutated inputs, in CI | ~1 week, can start any time |
 | ✅ | **B. Soundness** | The parser only accepts what the grammar allows. A's properties then hold for its output. | 2–3 weeks |
 | ✅ | **C. Completeness** | The parser accepts everything the grammar allows: `parse L t = .ok vs ↔ File L t vs` | 3–5 weeks |
 | ✅ | **D. Unambiguity** | Every valid text has exactly one meaning. Follows from B + C, since the parser is a function. | days |
@@ -100,9 +100,12 @@ Found so far: a crash in the Rust stream reader on input ending in `/`, and
 stream readers accepting a byte order mark after a comma (design review S13,
 S14). Both fixed; two seeds of 100,000 cases now run clean.
 
+CI ([`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)) runs every
+binding's tests, `lake build --wfail` (a broken proof or a `sorry` fails it)
+and the conformance suite, and fuzzes 100,000 parser cases and 2 million
+std/time cases per pull request; 1 million and 20 million nightly.
+
 Open:
-- CI: build all four, `lake build` (so a broken proof fails), ~100k cases
-  per pull request, more nightly. Deferred for now.
 - Error positions differ in ~1% of rejected inputs, mostly Lean reporting
   errors inside block strings at the block's start. Decide whether §8 should
   fix which position is reported.
@@ -117,7 +120,7 @@ design, and so outside the model.
 | | Step | Gives | Effort |
 |---|---|---|---|
 | ✅ | T1. Reference model | Each type's rules as a definition, and a checker proven to compute them (`check_iff`); `haus-ref --time` | days |
-| ⬜ | T2. Fuzzing | The TypeScript, Rust and Roc std/time checkers against the model, on generated dates, times, offsets, zones and durations (leap years, `24:00:00`, `-00:00`, the 2⁵³ duration bound) | 1–2 days |
+| ✅ | T2. Fuzzing | The TypeScript, Rust and Roc std/time checkers against the model ([`fuzz/src/time.ts`](../../fuzz/src/time.ts)): 2 million cases, no disagreements. It finds the Roc bound bug when run against the old code. | 1–2 days |
 | ⬜ | T3. Zone names can't traverse paths | No accepted zone has a `.` or `..` part, so looking one up as a tz database file can't escape it (`Europe/../../etc/passwd`) | ~1 day |
 | ⬜ | T4. Durations can't overflow | Years, months and weeks fit in 32 bits; days and time together fit in a signed 64-bit count of seconds plus nanoseconds, and exactly in a JavaScript number of seconds. (Not in 64-bit nanoseconds, which end at about 292 years: the profile allows up to 2⁵³ seconds.) | ~1 day |
 | ⬜ | T5. The calendar is right | Valid `Date` strings correspond exactly to the days from 0000-01-01 to 9999-12-31 | ~1 week |
@@ -128,8 +131,6 @@ form (H).
 
 ## Also
 
-- Run `lake build` in CI, so a change to the grammar or parser that breaks a
-  proof fails the build.
 - Every disagreement found (by a proof or by testing) becomes a conformance
   case. So far: the lone carriage return (now an error everywhere), the
   string limit counting UTF-16 units in TypeScript (fixed), and raw control

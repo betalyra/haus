@@ -1,0 +1,172 @@
+# Tests for every binding, the Lean proofs, and differential fuzzing.
+#
+# Pull requests and pushes to main run everything with a modest fuzzing
+# budget; the nightly run fuzzes much longer. A fuzzing failure prints its
+# seed: `node fuzz/src/main.ts --seed S` (or fuzz/src/time.ts) repeats it.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The Roc compiler is pre-release: pin the nightly the code is written for.
+  ROC_NIGHTLY: nightly-2026-11-03-34bd006
+  NODE_VERSION: "26"
+  PNPM_VERSION: "12.4.1"
+
+jobs:
+  lean:
+    name: Lean proofs and reference parser
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: leanprover/lean-action@v1
+        with:
+          lake-package-directory: spec/lean
+          auto-config: false
+          build: true
+          # A warning fails the build, so a proof left as `sorry` can't slip in.
+          build-args: "--wfail"
+      - name: Conformance suite
+        working-directory: spec/lean
+        run: .lake/build/bin/haus-ref --suite ../../test-suite
+
+  rust:
+    name: Rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+      - name: Format
+        working-directory: rust
+        run: cargo fmt --all --check
+      - name: Clippy
+        working-directory: rust
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Test
+        working-directory: rust
+        run: cargo test --workspace
+
+  typescript:
+    name: TypeScript
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: typescript/pnpm-lock.yaml
+      - name: Install
+        working-directory: typescript
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        working-directory: typescript
+        run: pnpm typecheck
+      - name: Test
+        working-directory: typescript
+        run: pnpm test
+
+  roc:
+    name: Roc
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Roc
+        run: sh .github/install-roc.sh
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+      - name: Generated code is up to date
+        run: |
+          python3 roc/scripts/gen_conformance.py
+          sh roc/examples/gen.sh
+          git diff --exit-code
+      - name: Test
+        working-directory: roc
+        run: |
+          (cd package && roc test ConformanceTest.roc && roc test TimeTest.roc)
+          (cd package && roc test Decode.roc && roc test Encode.roc && roc test Stream.roc)
+          (cd examples/shop && roc test main.roc)
+
+  python:
+    name: Python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+      - name: Test
+        working-directory: python
+        run: uv run pytest
+
+  fuzz:
+    name: Differential fuzzing
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: leanprover/lean-action@v1
+        with:
+          lake-package-directory: spec/lean
+          auto-config: false
+          build: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: typescript/pnpm-lock.yaml
+      - name: Install Roc
+        run: sh .github/install-roc.sh
+      - name: Build the parsers and checkers under test
+        run: |
+          (cd typescript && pnpm install --frozen-lockfile)
+          sh fuzz/build.sh
+      - name: Budget
+        id: budget
+        run: |
+          if [ "${{ github.event_name }}" = schedule ]; then
+            echo "parser=1000000" >> "$GITHUB_OUTPUT"; echo "time=20000000" >> "$GITHUB_OUTPUT"
+          else
+            echo "parser=100000" >> "$GITHUB_OUTPUT"; echo "time=2000000" >> "$GITHUB_OUTPUT"
+          fi
+          # A new seed every run, printed in the log.
+          echo "seed=$(( ${{ github.run_id }} % 1000000 ))" >> "$GITHUB_OUTPUT"
+      - name: Parsers
+        run: node fuzz/src/main.ts --count ${{ steps.budget.outputs.parser }} --seed ${{ steps.budget.outputs.seed }}
+      - name: std/time checkers
+        if: ${{ !cancelled() }}
+        run: node fuzz/src/time.ts --count ${{ steps.budget.outputs.time }} --seed ${{ steps.budget.outputs.seed }}
+      - name: Keep the failures
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-failures
+          path: fuzz/.out/**/failures*

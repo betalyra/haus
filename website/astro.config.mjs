@@ -5,7 +5,7 @@ import tailwindcss from '@tailwindcss/vite';
 
 // https://astro.build/config
 export default defineConfig({
-  site: 'https://haus-fmt.dev',
+  site: 'https://haus-fmt.org',
   // Keep the spaces between words and inline links/code.
   compressHTML: false,
   integrations: [react()],

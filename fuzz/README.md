@@ -12,7 +12,9 @@ node fuzz/src/main.ts --seed 7         # repeat a run
 ```
 
 Needs Node 23.6 or later (it runs the TypeScript directly), Lean (elan),
-Rust and Roc.
+Rust and Roc. CI ([`ci.yml`](../.github/workflows/ci.yml)) runs both
+fuzzers on every pull request with a new seed, and much longer every night;
+a failure prints the seed and keeps the shrunk inputs as an artifact.
 
 ## How it works
 
@@ -47,6 +49,35 @@ in `runners.ts`.
 |---|---|
 | Rust stream reader crashed on input ending in `/` | design review S13 |
 | Stream readers accepted a byte order mark after a comma | design review S14 |
+| Roc's std/time check accepted durations with more than ~309 digits (too large for a float) | fixed: exact integers |
+
+## std/time
+
+The same idea for the std/time checkers (spec §13.2,
+[`std/time.md`](../spec/std/time.md)): generated strings through the Lean
+model ([`spec/lean/Haus/Time`](../spec/lean/Haus/Time), proven to compute
+the rules) and the TypeScript, Rust and Roc checkers, which must agree on
+every one.
+
+```sh
+node fuzz/src/time.ts --count 2000000   # about half a minute
+```
+
+[`src/time.ts`](src/time.ts) builds strings for each type from their parts,
+weighted towards the edges: leap and century years, day 29–32, `24:00:00`
+and `:60`, fractions of 0, 9 and 10 digits, `-00:00` and `+24:00`, zones
+with `.`, `..` and empty parts or 255–256 characters, durations at the 2³²
+and 2⁵³ bounds and with hundreds of digits. Some are given to the wrong
+type, and 40% are then mutated (characters removed, inserted or replaced
+with separators, `NUL`, non-ASCII). A disagreeing string is shrunk like
+above.
+
+| Checker | Runner (`FILE` of lines `TYPE HEX`, the text as hex UTF-8; prints `ok` or `no`) |
+|---|---|
+| Lean | `haus-ref --time-batch FILE` ([`spec/lean/Main.lean`](../spec/lean/Main.lean)) |
+| Rust | [`rust/haus/examples/time_runner.rs`](../rust/haus/examples/time_runner.rs) |
+| Roc | [`roc/fuzz/time_runner.roc`](../roc/fuzz/time_runner.roc) |
+| TypeScript | in this process |
 
 ## When it finds something
 

@@ -9,7 +9,8 @@ import Lean.Data.Json
     haus-ref --batch DIR N for DIR/00000.haus … DIR/{N-1}.haus, one line each:
                            `ok <values>` or `err <line> <column> <reason>` (fuzz/)
     haus-ref --time TYPE TEXT     whether TEXT is a valid std/time TYPE (exit 0 or 1)
-    haus-ref --time-batch FILE    for each line `["TYPE", "TEXT"]` of FILE: `ok` or `no`
+    haus-ref --time-batch FILE    for each line `TYPE HEX` of FILE (the text as hex-encoded
+                                  UTF-8): `ok` or `no` (fuzz/)
 -/
 
 open Haus Lean
@@ -90,13 +91,20 @@ def runSuite (dir : System.FilePath) : IO UInt32 := do
 def timeType? (name : String) : Option Time.TimeType :=
   Time.TimeType.all.find? (·.name == name)
 
-/-- One line of `--time-batch`: `["TYPE", "TEXT"]`. -/
+/-- The bytes of hex text. -/
+def unhex (hex : String) : ByteArray :=
+  let digit (c : Char) : Nat := if c.isDigit then c.toNat - '0'.toNat else c.toNat - 'a'.toNat + 10
+  let cs := hex.toList.toArray
+  ⟨(Array.range (cs.size / 2)).map fun i => UInt8.ofNat (digit cs[2 * i]! * 16 + digit cs[2 * i + 1]!)⟩
+
+/-- One line of `--time-batch`: `TYPE HEX`. -/
 def timeLine (line : String) : String :=
-  match Json.parse line with
-  | .ok (.arr #[.str ty, .str text]) =>
-      match timeType? ty with
-      | some t => if Time.check t text.toList then "ok" else "no"
-      | none => s!"err unknown type {ty}"
+  match line.splitOn " " with
+  | [ty, hex] =>
+      match timeType? ty, String.fromUTF8? (unhex hex) with
+      | some t, some text => if Time.check t text.toList then "ok" else "no"
+      | none, _ => s!"err unknown type {ty}"
+      | _, none => "err invalid UTF-8"
   | _ => "err bad line"
 
 def runTimeBatch (file : System.FilePath) : IO UInt32 := do
