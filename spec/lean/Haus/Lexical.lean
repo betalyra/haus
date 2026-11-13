@@ -64,6 +64,12 @@ def isScalar (n : Nat) : Bool := n ≤ 0x10FFFF && !(0xD800 ≤ n && n ≤ 0xDFF
 /-- The magnitude of an exponent part such as `e+1_0`, for the limit (§7). -/
 def expMagnitude (e : Text) : Nat := digitsValue 10 (e.filter isDigit)
 
+/-- Digits without leading zeros: `007` is `7`, `000` is `0`. -/
+def stripZeros (ds : Text) : Text :=
+  match ds.dropWhile (· == '0') with
+  | [] => ['0']
+  | z => z
+
 /--
 An exponent's digits and sign, as its value: `+05` is `5`, `-0` is `0`.
 The marker `e` is written by the caller.
@@ -73,23 +79,16 @@ def normalizeExponent (e : Text) : Text :=
     | '-' :: r => (true, r)
     | '+' :: r => (false, r)
     | r => (false, r)
-  let ds := match ds.dropWhile (· == '0') with
-    | [] => ['0']
-    | ds => ds
+  let ds := stripZeros ds
   if neg && ds != ['0'] then '-' :: ds else ds
 
 /--
-The normalized literal of a number (§2): digit separators removed, the
-exponent written `e` and its value (`E+05` is `e5`), hex and binary
-converted to decimal integers. `-0x0` is `0`; a decimal `-0` stays `-0`.
+A number's literal after its sign: digit separators removed, the exponent
+written `e` and its value, hex and binary converted to decimal integers.
 -/
-def normalizeNumber (lit : Text) : String :=
-  let (neg, body) := match lit with
-    | '-' :: r => (true, r)
-    | r => (false, r)
-  let body := body.filter (· != '_')
+def normalizeBody (neg : Bool) (body : Text) : String :=
   let integer (n : Nat) := (if neg && n != 0 then "-" else "") ++ toString n
-  match body with
+  match body.filter (· != '_') with
   | '0' :: 'x' :: ds => integer (digitsValue 16 ds)
   | '0' :: 'b' :: ds => integer (digitsValue 2 ds)
   | ds =>
@@ -98,6 +97,15 @@ def normalizeNumber (lit : Text) : String :=
       | _ :: e => 'e' :: normalizeExponent e
       | [] => []
     String.ofList ((if neg then ['-'] else []) ++ mantissa ++ exponent)
+
+/--
+The normalized literal of a number (§2): digit separators removed, the
+exponent written `e` and its value (`E+05` is `e5`), hex and binary
+converted to decimal integers. `-0x0` is `0`; a decimal `-0` stays `-0`.
+-/
+def normalizeNumber : Text → String
+  | '-' :: r => normalizeBody true r
+  | r => normalizeBody false r
 
 #guard normalizeNumber "1E+0_5".toList == "1e5"
 #guard normalizeNumber "-2.50e-03".toList == "-2.50e-3"

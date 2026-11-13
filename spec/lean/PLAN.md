@@ -26,15 +26,15 @@ prototype, …) is outside Lean and stays covered by tests.
 | ✅ | **B. Soundness** | The parser only accepts what the grammar allows. A's properties then hold for its output. | 2–3 weeks |
 | ✅ | **C. Completeness** | The parser accepts everything the grammar allows: `parse L t = .ok vs ↔ File L t vs` | 3–5 weeks |
 | ✅ | **D. Unambiguity** | Every valid text has exactly one meaning. Follows from B + C, since the parser is a function. | days |
-| ⬜ | **E. Encoder round trip** | `parse (encode vs) = .ok vs`: encoded strings can't break out (no injection) | 1–2 weeks |
+| ✅ | **E. Encoder round trip** | `parse_canonical`: for every value a parser returns, its canonical form parses back to that value (in canonical order), so no string, key or number can break out of its syntax. Holds for number limits of at least the default (spec §12 writes long integers by the default limit). In [`Haus/RoundTrip/`](Haus/RoundTrip). | 1–2 weeks |
 | ⬜ | **F. Streams** | The stream reader returns the same values however the input is split | 1–2 weeks |
-| 🟡 | **H. Canonical form** (spec §12) | Equal values (§2) give identical bytes and vice versa, so hashes and signatures are well defined; done together with E. Done so far: the reference encoder ([`Haus/Canonical.lean`](Haus/Canonical.lean)), expected `.canonical` files in the suite, `canonical`/`equals`/`hash` in TypeScript, Rust and Roc (no `hash` in Roc yet), fuzzed against each other. Open: the proofs. | 1–2 weeks |
+| ✅ | **H. Canonical form** (spec §12) | `canonical_eq_iff`: two parsed values have the same canonical form exactly when they are equal (§2), so `hash` is well defined. Reference encoder in [`Haus/Canonical.lean`](Haus/Canonical.lean), implemented in TypeScript, Rust and Roc and fuzzed against it. | 1–2 weeks |
 | ⬜ | **I. Schema language** (separate project) | Decoding with any schema terminates in linear time (§9.8–10) | months |
 | 🟡 | **T. std/time** | A reference model of the profile (spec §13.2, `std/time.md`), the bindings' time checkers fuzzed against it, and its security and calendar properties proven | 1–3 weeks |
 
-Order: A, B, C, D, G and T1–T4 are done. Next E (encoder round trip), then
-F (streams). T5 and T6 together with H, which waits for the canonical form;
-I for a stable schema language.
+Order: A, B, C, D, E, G, H and T1–T4 are done. Next F (streams). T5 and
+T6 can start now that the canonical form exists; I waits for a stable schema
+language.
 
 ## A. Security properties of the grammar
 
@@ -128,7 +128,7 @@ design, and so outside the model.
 | ⬜ | T5. The calendar is right | Valid `Date` strings correspond exactly to the days from 0000-01-01 to 9999-12-31 | ~1 week |
 | ⬜ | T6. One spelling per value | Formatting a parsed value gives back the same string; the only spellings of the same value are those the profile names (`Instant` offsets, `.250` and `.25`) | ~1 week |
 
-T5 and T6 wait for the canonical form (H).
+T5 and T6 can start now that the canonical form (H) exists.
 
 ## Also
 

@@ -22,3 +22,8 @@ import Haus.Time.Check
 import Haus.Time.Correct
 import Haus.Time.Props
 import Haus.Canonical
+import Haus.RoundTrip.Digits
+import Haus.RoundTrip.Strings
+import Haus.RoundTrip.Numbers
+import Haus.RoundTrip.Values
+import Haus.RoundTrip.File

@@ -128,6 +128,7 @@ export const runners: readonly Runner[] = [
   external("rust", join(root, "rust/target/release/examples/fuzz_runner")),
   external("roc", join(root, "fuzz/.build/roc-runner")),
   typescript,
+  external("python", join(root, "python/.venv/bin/python"), [join(root, "python/fuzz/runner.py")]),
   // The stream readers, on the same inputs in chunks: they must give what parsing the whole input gives.
   external("rust-stream", join(root, "rust/target/release/examples/fuzz_runner"), ["--stream"]),
   external("roc-stream", join(root, "fuzz/.build/roc-runner"), ["--stream"]),

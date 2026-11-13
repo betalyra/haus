@@ -12,6 +12,7 @@ and a reference parser that computes it.
 | [`Haus/Sound/`](Haus/Sound) | Proofs that the parser only accepts what the grammar allows |
 | [`Haus/Complete/`](Haus/Complete) | Proofs that the parser accepts everything the grammar allows |
 | [`Haus/Correct.lean`](Haus/Correct.lean) | Both together, and unambiguity |
+| [`Haus/Canonical.lean`](Haus/Canonical.lean), [`Haus/RoundTrip/`](Haus/RoundTrip) | The canonical form (spec §12), and the proofs that it parses back and is unique |
 | [`Haus/Time/`](Haus/Time) | The std/time profile ([`std/time.md`](../std/time.md)): the rules, a checker, and the proof that it computes them |
 | [`Main.lean`](Main.lean) | `haus-ref`, the parser on the command line |
 
@@ -77,4 +78,15 @@ guarantee: a zone name looked up as a file under a directory stays inside
 it (`ZoneName.lookup_eq`), and a duration's fields fit in 32 bits, 2⁵³
 seconds and 10⁹ nanoseconds (`Duration.fits`, `Fraction.nanos_lt`).
 
-Next: encoding round trips and stream splitting.
+**About the canonical form** (spec §12), in [`Haus/RoundTrip/`](Haus/RoundTrip):
+
+| Theorem | Says |
+|---|---|
+| `parse_canonical` | The canonical form of a parsed value parses back to that value: nothing can break out of its quotes (E) |
+| `canonical_eq_iff` | Two parsed values have the same canonical form exactly when they are equal (§2), so hashes are well defined (H) |
+
+Both assume a number limit of at least the default: the canonical form
+writes integers longer than 1000 digits in hex, so under a stricter limit a
+hex literal's canonical decimal form could be too long.
+
+Next: stream splitting.
