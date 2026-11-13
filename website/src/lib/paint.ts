@@ -5,7 +5,7 @@
  * into view; it is then revealed with a CSS transition (opacity, a growing
  * soft mask), with no script running per frame. The paintings (.is-soak) take
  * their time and spread from the middle of their strokes. A paper-grain mask
- * (set once as --grain) granulates the pigment.
+ * (set once as --grain, in a stylesheet of its own) granulates the pigment.
  */
 import { EDGE_WIDTH, GRAIN_SIZE, grain as grainTile, marks as washMarks, type Pt, type Spec } from "./wash";
 
@@ -75,7 +75,14 @@ const grain = () => {
   const ctx = cv.getContext("2d");
   if (!ctx) return;
   ctx.putImageData(new ImageData(grainTile(), GRAIN_SIZE, GRAIN_SIZE), 0, 0);
-  document.documentElement.style.setProperty("--grain", `url(${cv.toDataURL()})`);
+  // A blob URL in a stylesheet of its own, so <html> doesn't carry a 100 kB
+  // data URL in its style attribute.
+  cv.toBlob((blob) => {
+    if (!blob) return;
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(`:root { --grain: url(${URL.createObjectURL(blob)}); }`);
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+  });
 };
 
 export function paintAll() {
