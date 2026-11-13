@@ -27,14 +27,13 @@ prototype, …) is outside Lean and stays covered by tests.
 | ✅ | **C. Completeness** | The parser accepts everything the grammar allows: `parse L t = .ok vs ↔ File L t vs` | 3–5 weeks |
 | ✅ | **D. Unambiguity** | Every valid text has exactly one meaning. Follows from B + C, since the parser is a function. | days |
 | ✅ | **E. Encoder round trip** | `parse_canonical`: for every value a parser returns, its canonical form parses back to that value (in canonical order), so no string, key or number can break out of its syntax. Holds for number limits of at least the default (spec §12 writes long integers by the default limit). In [`Haus/RoundTrip/`](Haus/RoundTrip). | 1–2 weeks |
-| ⬜ | **F. Streams** | The stream reader returns the same values however the input is split | 1–2 weeks |
+| ✅ | **F. Streams** | A model of the bindings' stream readers: `read_chunks`, any split gives the same values and errors; `read_correct`, the reader returns `vs` exactly when `parse` accepts the whole text with `vs`. In [`Haus/Stream/`](Haus/Stream). | 1–2 weeks |
 | ✅ | **H. Canonical form** (spec §12) | `canonical_eq_iff`: two parsed values have the same canonical form exactly when they are equal (§2), so `hash` is well defined. Reference encoder in [`Haus/Canonical.lean`](Haus/Canonical.lean), implemented in TypeScript, Rust and Roc and fuzzed against it. | 1–2 weeks |
 | ⬜ | **I. Schema language** (separate project) | Decoding with any schema terminates in linear time (§9.8–10) | months |
 | 🟡 | **T. std/time** | A reference model of the profile (spec §13.2, `std/time.md`), the bindings' time checkers fuzzed against it, and its security and calendar properties proven | 1–3 weeks |
 
-Order: A, B, C, D, E, G, H and T1–T4 are done. Next F (streams). T5 and
-T6 can start now that the canonical form exists; I waits for a stable schema
-language.
+Order: A–H and T1–T4 are done. Next T5 and T6 (std/time calendar and
+spellings); I waits for a stable schema language.
 
 ## A. Security properties of the grammar
 
@@ -87,6 +86,25 @@ the same text give the same values. In [`Haus/Complete/`](Haus/Complete):
 
 Nothing in the parser or the grammar had to change: no valid input is
 rejected.
+
+## F. Streams ✅
+
+The readers of all three bindings work the same way, and
+[`Haus/Stream.lean`](Haus/Stream.lean) models it: a scanner finds the commas
+between top-level values, tracking only bracket depth, strings, block strings
+and comments, and each piece before such a comma is parsed on its own. The
+scanner looks up to three characters ahead (`"""`, `//`, `*/`, `\"`) and
+waits when a chunk ends before it can decide.
+
+| Part | File |
+|---|---|
+| A decision the scanner makes on part of the input is the same on any continuation (`step_stable`); so scanning in parts is scanning the whole (`scan_append`), and any chunks give the same pieces (`split_chunks`, `read_chunks`) | `Stream/Chunks.lean` |
+| On valid text the scanner passes over every value, string, comment and bracketed part without cutting, and cuts exactly at the commas between top-level values | `Stream/Scan.lean` |
+| Valid text is read correctly; what the reader accepts is valid, since a piece that ends in a line comment or has a comma of its own can't occur (the scanner would not have cut there) | `Stream/Correct.lean` |
+
+Pieces after the first may not start with a byte order mark: the model
+rejects one, as the bindings do since S14. Without that rule `read_correct`
+would be false.
 
 ## G. Differential testing
 

@@ -13,6 +13,7 @@ and a reference parser that computes it.
 | [`Haus/Complete/`](Haus/Complete) | Proofs that the parser accepts everything the grammar allows |
 | [`Haus/Correct.lean`](Haus/Correct.lean) | Both together, and unambiguity |
 | [`Haus/Canonical.lean`](Haus/Canonical.lean), [`Haus/RoundTrip/`](Haus/RoundTrip) | The canonical form (spec §12), and the proofs that it parses back and is unique |
+| [`Haus/Stream.lean`](Haus/Stream.lean), [`Haus/Stream/`](Haus/Stream) | A model of the bindings' stream readers (spec §6), and the proofs that the chunks don't matter and that it reads what `parse` does |
 | [`Haus/Time/`](Haus/Time) | The std/time profile ([`std/time.md`](../std/time.md)): the rules, a checker, and the proof that it computes them |
 | [`Main.lean`](Main.lean) | `haus-ref`, the parser on the command line |
 
@@ -89,4 +90,18 @@ Both assume a number limit of at least the default: the canonical form
 writes integers longer than 1000 digits in hex, so under a stricter limit a
 hex literal's canonical decimal form could be too long.
 
-Next: stream splitting.
+**About streams** (spec §6), in [`Haus/Stream/`](Haus/Stream). The model in
+[`Haus/Stream.lean`](Haus/Stream.lean) works like the readers of all three
+bindings: a scanner finds the commas between top-level values (it tracks
+brackets, strings and comments, and waits when a chunk ends before it can
+decide), and each piece is parsed on its own.
+
+| Theorem | Says |
+|---|---|
+| `read_chunks` | However the text is split into chunks, the reader returns the same values and the same error |
+| `pieces_prefix` | A value returned after some of the chunks is never taken back: it is one of the final values |
+| `read_correct` | The reader returns `vs` without an error exactly when `parse` accepts the whole text with `vs` |
+| `read_error` | When `parse` rejects a text, the reader reports an error |
+
+Not modelled: the limit on one value's length (§7), strict mode, UTF-8
+decoding and error positions.

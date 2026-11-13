@@ -27,3 +27,7 @@ import Haus.RoundTrip.Strings
 import Haus.RoundTrip.Numbers
 import Haus.RoundTrip.Values
 import Haus.RoundTrip.File
+import Haus.Stream
+import Haus.Stream.Chunks
+import Haus.Stream.Scan
+import Haus.Stream.Correct
