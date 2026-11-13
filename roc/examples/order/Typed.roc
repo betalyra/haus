@@ -2,6 +2,7 @@
 import haus.Value
 import haus.Decode
 import haus.Encode
+import haus.Int
 import money.HausMoney
 import geo.HausGeo
 import Cents
@@ -55,7 +56,7 @@ Typed := [].{
 	}
 
 	## haus type `order#Root`.
-	Root : { id : I128, customer : UserId, placed : CivilDate.Target, total : Cents.Target, deliver_to : GeoJson.Target, status : Status }
+	Root : { id : Int, customer : UserId, placed : CivilDate.Target, total : Cents.Target, deliver_to : GeoJson.Target, status : Status }
 
 	decode_root : Value -> Try(Root, Decode.Error)
 	decode_root = |v| {
@@ -64,6 +65,6 @@ Typed := [].{
 	}
 
 	encode_root : Root -> Value
-	encode_root = |v| Encode.record([("id", Present(Num(v.id.to_str()))), ("customer", Present(encode_user_id(v.customer))), ("placed", Present(Encode.time("Date")(CivilDate.encode(v.placed)))), ("total", Present(HausMoney.encode_money(Cents.encode(v.total)))), ("deliverTo", Present(HausGeo.encode_lat_lng(GeoJson.encode(v.deliver_to)))), ("status", Present(encode_status(v.status)))])
+	encode_root = |v| Encode.record([("id", Present(Encode.int(v.id))), ("customer", Present(encode_user_id(v.customer))), ("placed", Present(Encode.time("Date")(CivilDate.encode(v.placed)))), ("total", Present(HausMoney.encode_money(Cents.encode(v.total)))), ("deliverTo", Present(HausGeo.encode_lat_lng(GeoJson.encode(v.deliver_to)))), ("status", Present(encode_status(v.status)))])
 
 }

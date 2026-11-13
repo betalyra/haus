@@ -43,8 +43,14 @@ type Result e a = closed < Err e | Ok a >
 //                          also accept the tags NaN, Infinity, NegInfinity
 //   Decimal                exact decimal, scale preserved (19.90 != 19.9)
 //
+// `Int` decodes to an arbitrary-size integer in every binding; for a native
+// fixed-size integer, write `Int32`, `Int64`, ….
+//
 // A schemaless decoder must not lose precision or reject large numbers (spec §3):
-// it returns big integers, exact decimals or the literal text, never a lossy float.
+// every integer becomes an arbitrary-size integer (bigint in JavaScript), never
+// a type chosen by looking at the data, so types don't depend on the document
+// (a stream reader can't look ahead). Other numbers become exact decimals or
+// the literal text, never a lossy float.
 
 // ── Streams ──────────────────────────────────────────────────
 // `Stream a` describes a whole file as a sequence of `a`s, rather than a

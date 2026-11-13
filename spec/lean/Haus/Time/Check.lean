@@ -121,32 +121,46 @@ def checkZoned (s : Text) : Bool :=
 
 /-! ## Durations -/
 
+/-- No leading zero: `0` itself is fine. -/
+def noLeadingZero : Text → Bool
+  | '0' :: _ :: _ => false
+  | _ => true
+
 /-- An optional component `n U`: its value if it is there, and the rest. -/
 def component (u : Char) (t : Text) : Option Nat × Text :=
   let ds := t.takeWhile isDigit
   match t.dropWhile isDigit with
-  | c :: r => if ds != [] && c == u then (some (num ds), r) else (none, t)
+  | c :: r => if ds != [] && noLeadingZero ds && c == u then (some (num ds), r) else (none, t)
   | [] => (none, t)
 
 /-- The seconds `n[.f]S`, if they are there, and the rest. -/
 def seconds (t : Text) : Option Nat × Text :=
   let ds := t.takeWhile isDigit
   match fraction (t.dropWhile isDigit) with
-  | some (_, 'S' :: r) => if ds != [] then (some (num ds), r) else (none, t)
+  | some (_, 'S' :: r) => if ds != [] && noLeadingZero ds then (some (num ds), r) else (none, t)
   | _ => (none, t)
 
 def durationBounds (y mo w d h mi se : Option Nat) : Bool :=
   y.getD 0 < 2 ^ 32 && mo.getD 0 < 2 ^ 32 && w.getD 0 < 2 ^ 32 &&
     d.getD 0 * 86400 + h.getD 0 * 3600 + mi.getD 0 * 60 + se.getD 0 < 2 ^ 53
 
-/-- After the date components: the time part, and the checks. -/
+/-- Text with digits, none of them other than `0`. -/
+def zeroText (t : Text) : Bool := !t.isEmpty && t.all fun c => !isDigit c || c == '0'
+
+/-- Not a component that is zero. -/
+def nonzero : Option Nat → Bool
+  | some 0 => false
+  | _ => true
+
+/-- After the date components: the time part, and the checks. Zero seconds come alone. -/
 def durationTime (y mo w d : Option Nat) : Text → Bool
   | [] => (y.isSome || mo.isSome || w.isSome || d.isSome) && durationBounds y mo w d none none none
   | 'T' :: t =>
     let (h, t) := component 'H' t
-    let (mi, t) := component 'M' t
-    let (se, t) := seconds t
-    t.isEmpty && (h.isSome || mi.isSome || se.isSome) && durationBounds y mo w d h mi se
+    let (mi, t2) := component 'M' t
+    let (se, t) := seconds t2
+    t.isEmpty && (h.isSome || mi.isSome || se.isSome) && nonzero h && nonzero mi &&
+      (!zeroText t2 || (h.isNone && mi.isNone)) && durationBounds y mo w d h mi se
   | _ => false
 
 /-- After the sign. -/
@@ -156,11 +170,13 @@ def checkDurationBody : Text → Bool
     let (mo, t) := component 'M' t
     let (w, t) := component 'W' t
     let (d, t) := component 'D' t
-    durationTime y mo w d t
+    nonzero y && nonzero mo && nonzero w && nonzero d &&
+      (!zeroText t || (y.isNone && mo.isNone && w.isNone && d.isNone)) && durationTime y mo w d t
   | _ => false
 
+/-- A `-` only before a duration that isn't zero. -/
 def checkDuration : Text → Bool
-  | '-' :: t => checkDurationBody t
+  | '-' :: t => checkDurationBody t && t.any fun c => isDigit c && c != '0'
   | t => checkDurationBody t
 
 /-! ## All types -/
@@ -232,6 +248,11 @@ private def no (ty : TimeType) (s : String) : Bool := !check ty s.toList
 #guard ok .duration "PT9007199254740991S" && no .duration "PT9007199254740992S"
 #guard ok .duration "PT9007199254740991.999999999S"
 #guard ok .duration "P104249991374D" && no .duration "P104249991375D"
+#guard no .duration "P01D" && no .duration "PT00S" && no .duration "PT01.5S" && ok .duration "PT0.05S"
+#guard no .duration "-P0D" && no .duration "-PT0S" && no .duration "-PT0.000S" && no .duration "-P0Y0M"
+#guard ok .duration "-PT0.001S" && ok .duration "-P10D"
+#guard no .duration "P0D" && no .duration "P1DT0S" && no .duration "P0Y1D" && no .duration "PT1H0M" && no .duration "PT1M0.0S"
+#guard ok .duration "PT0S" && ok .duration "PT0.000S" && ok .duration "P1DT0.5S" && ok .duration "PT0.5S" && no .duration "P1DT0.00S"
 -- Other ISO 8601 forms
 #guard no .date "2026-W45-1" && no .date "2026-313" && no .date "20261109"
 #guard no .duration "R5/PT1H" && no .instant "2026-11-09T14:30:00Z/2026-11-10T14:30:00Z"

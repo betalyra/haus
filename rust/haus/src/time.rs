@@ -165,20 +165,32 @@ fn time_zone(c: &mut Cursor) -> Check {
 
 /// `-?P[nY][nM][nW][nD][T[nH][nM][n[.f]S]]`.
 fn duration(c: &mut Cursor) -> Check {
-    c.opt(b'-');
+    let negative = c.opt(b'-');
     c.lit(b'P')?;
     let date = b"YMWD".map(|unit| c.component(unit, false));
     let has_time = c.opt(b'T');
     let ends_with_t = has_time && c.at_end();
     let time = b"HMS".map(|unit| if has_time { c.component(unit, unit == b'S') } else { Ok(None) });
-    // Years, months, weeks, days, hours, minutes, seconds.
-    let values = date.into_iter().chain(time).collect::<Result<Vec<_>, _>>()?;
+    // Years, months, weeks, days, hours, minutes, seconds (with their fraction).
+    let texts = date.into_iter().chain(time).collect::<Result<Vec<_>, _>>()?;
     c.finish()?;
+    let values: Vec<_> = texts.iter().map(|t| t.map(|x| x.split_once('.').map_or(x, |(n, _)| n))).collect();
     if values.iter().all(Option::is_none) {
         return invalid("a duration needs at least one component, like PT0S");
     }
     if ends_with_t {
         return invalid("T must be followed by hours, minutes or seconds");
+    }
+    if let Some(x) = values.iter().flatten().find(|x| x.len() > 1 && x.starts_with('0')) {
+        return invalid(format!("{x} has a leading zero"));
+    }
+    let zero = |x: &&str| x.bytes().all(|b| b == b'0' || b == b'.');
+    let others = || texts[..6].iter().flatten();
+    if others().any(zero) || (texts[6].as_ref().is_some_and(zero) && others().next().is_some()) {
+        return invalid("a duration leaves out components that are zero (zero is PT0S)");
+    }
+    if negative && !c.s.iter().any(|b| (b'1'..=b'9').contains(b)) {
+        return invalid("a zero duration has no sign");
     }
     let number = |v: &str| v.parse::<f64>().unwrap_or(f64::INFINITY);
     if let Some(x) = values[..3].iter().flatten().find(|x| number(x) >= 2f64.powi(32)) {
@@ -376,14 +388,17 @@ impl<'a> Cursor<'a> {
         Ok(self.text(start))
     }
 
-    /// A duration component: digits and its unit letter, if the next one is
-    /// that unit (otherwise nothing is read).
+    /// A duration component: digits (and a fraction, if allowed) and its unit
+    /// letter, if the next one is that unit (otherwise nothing is read).
     fn component(&mut self, unit: u8, fraction: bool) -> Result<Option<&'a str>, Invalid> {
         let start = self.i;
-        let Some(n) = self.run() else { return Ok(None) };
+        if self.run().is_none() {
+            return Ok(None);
+        }
         if fraction {
             self.fraction()?;
         }
+        let n = self.text(start);
         if self.opt(unit) {
             Ok(Some(n))
         } else {

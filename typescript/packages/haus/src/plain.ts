@@ -6,11 +6,10 @@
  * (@haus-fmt/import) and `parseWith` (standard.ts) use this view.
  *
  *   String            → string            Bytes          → Uint8Array
- *   whole numbers     → number            decimals       → string (exact: "19.90")
- *   whole numbers beyond ±2^53, anywhere in the field → bigint
+ *   whole numbers     → bigint (any size) decimals       → string (exact: "19.90")
  *   True / False      → boolean           None / Some(x) → T | null
  *   bare tags only    → "A" | "B"         Date("…") etc. → string
- *   other variants    → { _tag: "Circle"; radius: number } | { _tag: "Point"; values: [number, number] }
+ *   other variants    → { _tag: "Circle"; radius: string } | { _tag: "Point"; values: [bigint, bigint] }
  *   fields missing from some records → key?: T
  *   types nested in themselves       → named type aliases (type Comment = …)
  */
@@ -19,6 +18,7 @@ import { infer, printShape, recursiveNames, resolve, type RecordShape, type Shap
 import type { Value } from "./value.js"
 
 const parseAll = (text: string): Value[] => new Parser(text).parseSequence()
+const INTEGER = /^-?\d+$/
 
 const TIME_TAGS = new Set(["Date", "Time", "DateTime", "Instant", "ZonedDateTime", "Duration", "YearMonth", "TimeZone"])
 const BOOL = new Set(["True", "False"])
@@ -72,7 +72,8 @@ class TypePrinter {
     const parts: string[] = []
     if (s.strings) parts.push("string")
     if (s.bytes) parts.push("Uint8Array")
-    if (s.numbers) parts.push(s.decimal ? "string" : s.big ? "bigint" : "number")
+    if (s.integer) parts.push("bigint")
+    if (s.decimal) parts.push("string")
     if (s.arrays) parts.push(`ReadonlyArray<${s.element ? this.type(s.element) : "never"}>`)
     if (s.records) parts.push(this.record(s.records))
     if (s.variants.size) parts.push(this.variants(s))
@@ -148,11 +149,9 @@ function plain(v: Value, shape: Shape): unknown {
   switch (v.kind) {
     case "string": return v.value
     case "bytes": return v.bytes
-    case "number": {
-      if (s.decimal) return v.text
-      // A field with any integer beyond ±2^53 is bigint throughout, so its type holds for every value.
-      return s.big ? BigInt(v.text) : Number(v.text)
-    }
+    // Each number by itself: a whole number is a bigint, a decimal its exact text. A value's
+    // type never depends on the other values (a stream reader can't look ahead).
+    case "number": return INTEGER.test(v.text) ? BigInt(v.text) : v.text
     case "array": return v.items.map((x) => plain(x, s.element!))
     case "record": return fields(v, s.records!)
     case "variant": {

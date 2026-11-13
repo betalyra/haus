@@ -34,9 +34,27 @@ const Shape = h.Variant({
 
 describe("decoding", () => {
   it("scalars", () => {
-    expect(h.parse(h.Record({ n: h.Int, b: h.BigInt, f: h.Float64, d: h.Decimal, ok: h.Bool, s: h.String, day: h.Date }),
-      '{ n: 42, b: 123456789012345678901, f: 0.5, d: 19.90, ok: True, s: "x", day: Date("2026-11-07") }'))
-      .toEqual({ n: 42, b: 123456789012345678901n, f: 0.5, d: "19.90", ok: true, s: "x", day: "2026-11-07" })
+    expect(h.parse(h.Record({ n: h.Int, i: h.Int32, b: h.Int64, f: h.Float64, d: h.Decimal, ok: h.Bool, s: h.String, day: h.Date }),
+      '{ n: 42, i: -7, b: 1234567890123456789, f: 0.5, d: 19.90, ok: True, s: "x", day: Date("2026-11-07") }'))
+      .toEqual({ n: 42n, i: -7, b: 1234567890123456789n, f: 0.5, d: "19.90", ok: true, s: "x", day: "2026-11-07" })
+  })
+
+  it("Int is a bigint of any size, and writes back unchanged", () => {
+    const text = "340282366920938463463374607431768211457" // 2^128 + 1
+    expect(h.parse(h.Int, text)).toBe(2n ** 128n + 1n)
+    expect(h.stringify(h.Int, h.parse(h.Int, text))).toBe(text)
+    expect(h.parse(h.Int, "-" + "9".repeat(500))).toBe(-(10n ** 500n - 1n))
+  })
+
+  it("Int8 … UInt64 are bounded: JS numbers up to 32 bits, bigints for 64", () => {
+    expect(h.parse(h.Array(h.UInt8), "[0, 255]")).toEqual([0, 255])
+    expect(h.parse(h.Int32, "-2147483648")).toBe(-2147483648)
+    expect(h.parse(h.UInt64, "18446744073709551615")).toBe(2n ** 64n - 1n)
+    expect(() => h.parse(h.UInt8, "256")).toThrow("256 is out of range for UInt8 (0 to 255)")
+    expect(() => h.parse(h.Int32, "9".repeat(400))).toThrow("is out of range for Int32")
+    expect(() => h.parse(h.Int64, "9223372036854775808")).toThrow("out of range for Int64")
+    expect(() => h.encode(h.Int16, 40000)).toThrow("expected an integer from -32768 to 32767, got 40000")
+    expect(h.stringify(h.UInt64, 2n ** 64n - 1n)).toBe("18446744073709551615")
   })
 
   it("variant cases: unit, record, tuple, single value", () => {
@@ -56,18 +74,18 @@ describe("decoding", () => {
 
   it("Maybe is always written: None and Some(…); a missing field is an error", () => {
     const S = h.Array(h.Record({ v: h.Maybe(h.Int) }))
-    expect(h.parse(S, "[{ v: None }, { v: Some(1) }]")).toEqual([{ v: null }, { v: 1 }])
+    expect(h.parse(S, "[{ v: None }, { v: Some(1) }]")).toEqual([{ v: null }, { v: 1n }])
     expect(() => h.parse(S, "[{}]")).toThrow("missing field 'v' at $[0]")
     expect(() => h.parse(S, "[{ v: 1 }]")).toThrow("expected None | Some(Int), found number 1")
   })
 
   it("Optional: a field that may be missing stays missing", () => {
-    const Person = h.Record({ name: h.String, age: h.Optional(h.Int) })
+    const Person = h.Record({ name: h.String, age: h.Optional(h.UInt8) })
     const people = h.parse(h.Array(Person), '[{ name: "Hans", age: 32 }, { name: "Mickey" }]')
     expect(people).toEqual([{ name: "Hans", age: 32 }, { name: "Mickey" }])
     expect(Object.hasOwn(people[1]!, "age")).toBe(false)
-    // None is not "missing": for an Optional(Int) it's simply not an Int.
-    expect(() => h.parse(Person, '{ name: "Mickey", age: None }')).toThrow("expected Int, found variant None")
+    // None is not "missing": for an Optional(UInt8) it's simply not a UInt8.
+    expect(() => h.parse(Person, '{ name: "Mickey", age: None }')).toThrow("expected UInt8, found variant None")
   })
 
   it("Optional(Maybe(…)): not given, None and Some stay apart (partial updates)", () => {
@@ -92,13 +110,13 @@ describe("decoding", () => {
   })
 
   it("records are open unless closed", () => {
-    expect(h.parse(h.Record({ a: h.Int }), "{ a: 1, extra: 2 }")).toEqual({ a: 1 })
+    expect(h.parse(h.Record({ a: h.Int }), "{ a: 1, extra: 2 }")).toEqual({ a: 1n })
   })
 
   it.effect("decodeStream yields typed values", () =>
     Effect.gen(function* () {
       const events = yield* collect(h.decodeStream(Event, ['UserCreated { id: 1, email: "a@b" },', " Heartbeat,"]))
-      expect(events).toEqual([{ _tag: "UserCreated", id: 1, email: "a@b" }, { _tag: "Heartbeat" }])
+      expect(events).toEqual([{ _tag: "UserCreated", id: 1n, email: "a@b" }, { _tag: "Heartbeat" }])
     }))
 })
 
@@ -106,7 +124,7 @@ describe("errors", () => {
   it.effect.each([
     { schema: h.Record({ id: h.Int }), src: '{ id: "1" }', reason: 'expected Int, found string "1"', path: "$.id" },
     { schema: h.Record({ id: h.Int }), src: "{}", reason: "missing field 'id'", path: "$" },
-    { schema: h.Int, src: "9007199254740993", reason: "use BigInt", path: "$" },
+    { schema: h.Int32, src: "2147483648", reason: "2147483648 is out of range for Int32", path: "$" },
     { schema: h.Int, src: "1.5", reason: "expected Int, found number 1.5", path: "$" },
     { schema: h.Record({ a: h.Int }, { closed: true }), src: "{ a: 1, b: 2 }", reason: "unexpected field 'b'", path: "$.b" },
     { schema: Shape, src: "Square { side: 1 }", reason: "unknown tag 'Square', expected one of Circle | Point | Label", path: "$" },
@@ -130,8 +148,8 @@ describe("errors", () => {
 
 describe("encoding", () => {
   const Order = h.Record({
-    id: h.Int,
-    big: h.BigInt,
+    id: h.Int32,
+    big: h.Int,
     price: h.Decimal,
     ratio: h.Float64,
     paid: h.Bool,
@@ -187,7 +205,8 @@ describe("encoding", () => {
   })
 
   it.effect.each([
-    { schema: h.Int, value: 1.5, reason: "expected a safe integer, got 1.5" },
+    { schema: h.Int, value: 1, reason: "expected a bigint, got 1" },
+    { schema: h.Int32, value: 1.5, reason: "expected an integer from -2147483648 to 2147483647, got 1.5" },
     { schema: h.Decimal, value: "1e3", reason: 'expected a decimal string like "19.90", got "1e3"' },
     { schema: h.Date, value: "2026-02-30", reason: 'expected a valid Date, got "2026-02-30"' },
     { schema: Shape, value: { _tag: "Square" }, reason: 'expected one of Circle | Point | Label, got "Square"' },
@@ -199,9 +218,9 @@ describe("encoding", () => {
 
   it.effect("encodeStream writes comma-terminated values that parse back", () =>
     Effect.gen(function* () {
-      const chunks = yield* Stream.runCollect(Stream.fromAsyncIterable(h.encodeStream(Event, [{ _tag: "Heartbeat" }, { _tag: "UserCreated", id: 1, email: "a@b" }]), (e) => e))
+      const chunks = yield* Stream.runCollect(Stream.fromAsyncIterable(h.encodeStream(Event, [{ _tag: "Heartbeat" }, { _tag: "UserCreated", id: 1n, email: "a@b" }]), (e) => e))
       expect(chunks.join("")).toBe('Heartbeat,\nUserCreated { id: 1, email: "a@b" },\n')
       const back = yield* collect(h.decodeStream(Event, [chunks.join("")]))
-      expect(back).toEqual([{ _tag: "Heartbeat" }, { _tag: "UserCreated", id: 1, email: "a@b" }])
+      expect(back).toEqual([{ _tag: "Heartbeat" }, { _tag: "UserCreated", id: 1n, email: "a@b" }])
     }))
 })

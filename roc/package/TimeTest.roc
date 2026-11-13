@@ -24,7 +24,13 @@ expect Time.check("ZonedDateTime", "2026-11-09T14:30:00-05:00[America/Port-au-Pr
 expect Time.check("Duration", "PT30S") == Ok({})
 expect Time.check("Duration", "P1Y2M3W4DT5H6M7.5S") == Ok({})
 expect Time.check("Duration", "-PT1H") == Ok({})
-expect Time.check("Duration", "P0D") == Ok({})
+expect Time.check("Duration", "PT0S") == Ok({})
+expect Time.check("Duration", "PT0.000S") == Ok({})
+expect Time.check("Duration", "P1DT0.5S") == Ok({})
+expect Time.check("Duration", "PT0.5S") == Ok({})
+expect Time.check("Duration", "PT0.05S") == Ok({})
+expect Time.check("Duration", "-PT0.001S") == Ok({})
+expect Time.check("Duration", "-P10D") == Ok({})
 expect Time.check("YearMonth", "2026-11") == Ok({})
 expect Time.check("TimeZone", "Europe/Lisbon") == Ok({})
 expect Time.check("TimeZone", "UTC") == Ok({})
@@ -170,6 +176,70 @@ expect match Time.check("Duration", "P4294967296Y") {
 expect match Time.check("Duration", "P104249991375D") {
 	Ok(_) => False
 	Err(e) => e.contains("below 2^53 seconds")
+}
+expect match Time.check("Duration", "P01D") {
+	Ok(_) => False
+	Err(e) => e.contains("leading zero")
+}
+expect match Time.check("Duration", "PT00S") {
+	Ok(_) => False
+	Err(e) => e.contains("leading zero")
+}
+expect match Time.check("Duration", "PT01.5S") {
+	Ok(_) => False
+	Err(e) => e.contains("leading zero")
+}
+expect match Time.check("Duration", "-P0D") {
+	Ok(_) => False
+	Err(e) => e.contains("a duration leaves out components that are zero")
+}
+expect match Time.check("Duration", "-PT0S") {
+	Ok(_) => False
+	Err(e) => e.contains("a zero duration has no sign")
+}
+expect match Time.check("Duration", "-PT0.000S") {
+	Ok(_) => False
+	Err(e) => e.contains("a zero duration has no sign")
+}
+expect match Time.check("Duration", "-P0Y0M") {
+	Ok(_) => False
+	Err(e) => e.contains("a duration leaves out components that are zero")
+}
+expect match Time.check("Duration", "P0D") {
+	Ok(_) => False
+	Err(e) => e.contains("a duration leaves out components that are zero")
+}
+expect match Time.check("Duration", "P1DT0S") {
+	Ok(_) => False
+	Err(e) => e.contains("a duration leaves out components that are zero")
+}
+expect match Time.check("Duration", "P0Y1D") {
+	Ok(_) => False
+	Err(e) => e.contains("a duration leaves out components that are zero")
+}
+expect match Time.check("Duration", "PT1H0M") {
+	Ok(_) => False
+	Err(e) => e.contains("a duration leaves out components that are zero")
+}
+expect match Time.check("Duration", "PT1M0.0S") {
+	Ok(_) => False
+	Err(e) => e.contains("a duration leaves out components that are zero")
+}
+expect match Time.check("Duration", "P1DT0.00S") {
+	Ok(_) => False
+	Err(e) => e.contains("a duration leaves out components that are zero")
+}
+expect match Time.check("Duration", "P1Y0W") {
+	Ok(_) => False
+	Err(e) => e.contains("a duration leaves out components that are zero")
+}
+expect match Time.check("Duration", "PT0H1S") {
+	Ok(_) => False
+	Err(e) => e.contains("a duration leaves out components that are zero")
+}
+expect match Time.check("Duration", "PT0M0S") {
+	Ok(_) => False
+	Err(e) => e.contains("a duration leaves out components that are zero")
 }
 expect match Time.check("YearMonth", "2026-13") {
 	Ok(_) => False

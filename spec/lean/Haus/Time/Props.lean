@@ -127,7 +127,7 @@ theorem Duration.fits {s : Text} (h : Duration s) :
       d.getD 0 * 86400 + hh.getD 0 * 3600 + mi.getD 0 * 60 + se.getD 0 < 2 ^ 53 ∧
       -- so the seconds fit a signed 64-bit integer, with either sign
       d.getD 0 * 86400 + hh.getD 0 * 3600 + mi.getD 0 * 60 + se.getD 0 < 2 ^ 63 := by
-  obtain ⟨sg, ty, tm, tw, td, tt, y, mo, w, d, hh, mi, se, hs, -, hy, hm, hw, hd, ht, -, b1, b2, b3, b4⟩ := h
+  obtain ⟨sg, ty, tm, tw, td, tt, y, mo, w, d, hh, mi, se, hs, -, hy, hm, hw, hd, ht, -, -, -, -, b1, b2, b3, b4⟩ := h
   exact ⟨y, mo, w, d, hh, mi, se, ⟨sg, ty, tm, tw, td, tt, hs, hy, hm, hw, hd, ht⟩, b1, b2, b3, b4,
     Nat.lt_of_lt_of_le b4 (Nat.pow_le_pow_right (by decide) (by decide))⟩
 

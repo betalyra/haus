@@ -24,12 +24,12 @@ Two parts make an import work, and both come from one generator
 | `"plain"` (default) | haus schemas (Standard Schemas) | decoded with them | plain JS values | nothing |
 | `"effect"` | Effect schemas | decoded with Effect | plain JS values | `effect`, `@haus-fmt/effect` |
 
-Plain, without a schema: strings, `number` for whole numbers, `string` for decimals
+Plain, without a schema: strings, `bigint` for whole numbers, `string` for decimals
 (exact), `boolean`, `Uint8Array`, `T | null` for `Maybe`, string literal unions for
 tags without payload, `{ _tag, … }` for other variants, `key?:` for fields only some
 records have.
 
-Plain, with a schema: the same, plus `Int64` → `bigint`, `Instant` → `Date`,
+Plain, with a schema: the same, plus `Int8` … `UInt32` and floats → `number`, `Instant` → `Date`,
 `Map` → `ReadonlyMap`, and open variants add `Unknown`
 (see [`@haus-fmt/haus`](../haus)).
 With Effect: `Int` → `bigint`, `Decimal` → `BigDecimal`, `Maybe` → `Option`,

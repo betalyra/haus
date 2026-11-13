@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 import { suiteJson } from "./suite-json.js"
-import { canonical } from "../src/index.js"
+import { canonical, HausSyntaxError } from "../src/index.js"
 import { fixtures, parseBytes, repoFile, streamBytes } from "./haus.js"
 
 const chunkSizes = (bytes: Uint8Array) => [1, 2, 3, 7, 64, Math.max(bytes.length, 1)]
@@ -38,6 +38,19 @@ describe("invalid", () => {
 
   it.effect.each(invalid)("$name: stream rejects", ({ bytes }) =>
     Effect.forEach([1, 5, Math.max(bytes.length, 1)], (size) => Effect.flip(streamBytes(bytes, size))))
+
+  // With a byte order mark in front, the stream reader reports the error where the whole-text parser does (S18).
+  it.effect.each(invalid)("$name: stream positions after a byte order mark", ({ bytes }) =>
+    Effect.gen(function* () {
+      const withBom = new Uint8Array([0xef, 0xbb, 0xbf, ...bytes])
+      const whole = yield* Effect.flip(parseBytes(withBom))
+      if (!(whole instanceof HausSyntaxError)) return
+      yield* Effect.forEach([1, 5, withBom.length], (size) =>
+        Effect.gen(function* () {
+          const e = yield* Effect.flip(streamBytes(withBom, size))
+          expect(e instanceof HausSyntaxError && [e.line, e.column], `chunk size ${size}`).toEqual([whole.line, whole.column])
+        }))
+    }))
 })
 
 describe("repository examples", () => {

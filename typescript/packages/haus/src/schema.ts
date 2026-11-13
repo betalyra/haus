@@ -7,8 +7,8 @@
  *   type User = h.Infer<typeof User>
  *   const user = h.parse(User, text)
  *
- * Decoding never loses precision silently: `Int` fails on integers beyond
- * 2^53 (use `BigInt`), `Decimal` keeps the exact literal text.
+ * Decoding never loses precision silently: `Int` is a bigint of any size,
+ * `Int32` etc. are JS numbers in their range, `Decimal` keeps the exact literal text.
  *
  * Every schema also encodes: `h.stringify(User, user)` writes haus text,
  * `h.encodeStream(Event, events)` writes a stream.
@@ -305,20 +305,42 @@ const string_ = make(
 
 const INTEGER = /^-?\d+$/
 
-/** An integer that fits a JS number exactly (|n| <= 2^53 - 1). */
-const int = make("Int", (v, p) => {
-  if (v.kind !== "number" || !INTEGER.test(v.text)) return mismatch("Int", v, p)
-  const n = Number(v.text)
-  if (!Number.isSafeInteger(n)) p.fail(`integer ${v.text.length > 30 ? v.text.slice(0, 30) + "…" : v.text} does not fit a JS number exactly (use BigInt)`)
-  return n
-}, (n, p) => (Number.isSafeInteger(n) ? num(String(n)) : invalid("a safe integer", n, p)))
+const short = (text: string) => (text.length > 30 ? text.slice(0, 30) + "…" : text)
 
-/** Any integer, as a bigint. */
-const bigint_ = make(
-  "BigInt",
-  (v, p) => (v.kind === "number" && INTEGER.test(v.text) ? BigInt(v.text) : mismatch("BigInt", v, p)),
+/** Any integer, as a bigint (the prelude's arbitrary-size `Int`). */
+const int = make(
+  "Int",
+  (v, p) => (v.kind === "number" && INTEGER.test(v.text) ? BigInt(v.text) : mismatch("Int", v, p)),
   (n, p) => (typeof n === "bigint" ? num(n.toString()) : invalid("a bigint", n, p)),
 )
+
+/** A bounded integer as a JS number (Int8 … UInt32). Out of range is an error. */
+const smallInt = (name: string, min: number, max: number) =>
+  make(name, (v, p) => {
+    if (v.kind !== "number" || !INTEGER.test(v.text)) return mismatch(name, v, p)
+    const n = Number(v.text) // exact within these ranges; a longer literal is out of range anyway
+    return n >= min && n <= max ? n : p.fail(`${short(v.text)} is out of range for ${name} (${min} to ${max})`)
+  }, (n, p) => (typeof n === "number" && Number.isInteger(n) && n >= min && n <= max ? num(String(n)) : invalid(`an integer from ${min} to ${max}`, n, p)))
+
+/** A bounded integer as a bigint (Int64, UInt64). Out of range is an error. */
+const bigInt = (name: string, min: bigint, max: bigint) =>
+  make(name, (v, p) => {
+    if (v.kind !== "number" || !INTEGER.test(v.text)) return mismatch(name, v, p)
+    const n = BigInt(v.text)
+    return n >= min && n <= max ? n : p.fail(`${short(v.text)} is out of range for ${name} (${min} to ${max})`)
+  }, (n, p) => (typeof n === "bigint" && n >= min && n <= max ? num(n.toString()) : invalid(`a bigint from ${min} to ${max}`, n, p)))
+
+const int8 = smallInt("Int8", -128, 127)
+const int16 = smallInt("Int16", -32768, 32767)
+const int32 = smallInt("Int32", -2147483648, 2147483647)
+const uint8 = smallInt("UInt8", 0, 255)
+const uint16 = smallInt("UInt16", 0, 65535)
+const uint32 = smallInt("UInt32", 0, 4294967295)
+const int64 = bigInt("Int64", -(2n ** 63n), 2n ** 63n - 1n)
+const uint64 = bigInt("UInt64", 0n, 2n ** 64n - 1n)
+
+/** @deprecated Use `Int`, which is a bigint of any size. */
+const bigint_ = int
 
 /** Binary floating point. Rounding is accepted. Also `NaN`, `Infinity`, `NegInfinity` (prelude). */
 const float64 = make("Float64", (v, p) => {
@@ -403,7 +425,15 @@ export {
   float64 as Float64,
   instant as Instant,
   int as Int,
+  int8 as Int8,
+  int16 as Int16,
+  int32 as Int32,
+  int64 as Int64,
   string_ as String,
+  uint8 as UInt8,
+  uint16 as UInt16,
+  uint32 as UInt32,
+  uint64 as UInt64,
 }
 
 // ── containers ───────────────────────────────────────────────

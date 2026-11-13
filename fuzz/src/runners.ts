@@ -133,6 +133,7 @@ export const runners: readonly Runner[] = [
   external("rust-stream", join(root, "rust/target/release/examples/fuzz_runner"), ["--stream"]),
   external("roc-stream", join(root, "fuzz/.build/roc-runner"), ["--stream"]),
   typescriptStream,
+  external("python-stream", join(root, "python/.venv/bin/python"), [join(root, "python/fuzz/runner.py"), "--stream"]),
 ]
 
 /**
@@ -144,6 +145,7 @@ export const canonicalRunners: readonly Runner[] = [
   external("rust", join(root, "rust/target/release/examples/fuzz_runner"), ["--canonical"]),
   external("roc", join(root, "fuzz/.build/roc-runner"), ["--canonical"]),
   { name: "typescript", run: (_dir, cases) => cases.map((bytes) => result(() => parseAll(utf8.decode(bytes)), canonical)) },
+  external("python", join(root, "python/.venv/bin/python"), [join(root, "python/fuzz/runner.py"), "--canonical"]),
 ]
 
 /** The runners in use: the parsers, or with `--canonical` the canonical forms. */

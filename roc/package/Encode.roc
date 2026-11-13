@@ -2,6 +2,7 @@
 ## spacing), and the building blocks that generated encoders use.
 ##
 ##     Encode.to_str(Rec([("name", Text("Ada"))]))   # { name: "Ada" }
+import Int
 import Value
 
 Encode := [].{
@@ -40,6 +41,10 @@ Encode := [].{
 
 	bool : Bool -> Value
 	bool = |b| Tag(if (b) "True" else "False", [])
+
+	## `Int`: an integer of any size, as its digits.
+	int : Int -> Value
+	int = |n| Num(n.to_str())
 
 	## An exact decimal, as its text: `19.90`.
 	decimal : Str -> Value
@@ -363,6 +368,7 @@ expect Encode.to_str(Tag("Money", [Num("44.40"), Tag("EUR", [])])) == "Money(44.
 expect Encode.to_str(Arr([Bytes([0x0b, 0xff]), Rec([]), Arr([])])) == "[x\"0bff\", {}, []]"
 expect Encode.to_str(Text("a\"b\\\n\u(202E)")) == "\"a\\\"b\\\\\\n\\u{202E}\""
 expect Encode.stream([Tag("A", []), Num("1")]) == "A,\n1,\n"
+expect Int.from_str("340282366920938463463374607431768211457").map_ok(|n| Encode.to_str(Encode.int(n))) == Ok("340282366920938463463374607431768211457")
 expect Encode.to_str(Encode.record([("a", Present(Num("1"))), ("b", Missing)])) == "{ a: 1 }"
 expect Encode.to_str(Text("\u(1B)\u(7F)\u(85)")) == "\"\\u{1B}\\u{7F}\\u{85}\""
 

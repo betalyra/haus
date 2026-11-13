@@ -110,7 +110,7 @@ function note(v: Value): string | undefined {
     // Trailing zeros don't count: 30.30 is the float 30.3 exactly.
     const canonical = (t: string) => (t.includes(".") ? t.replace(/\.?0+$/, "") : t)
     const exact = text.includes(".") ? canonical(text) === canonical(String(asFloat)) : Number.isSafeInteger(asFloat)
-    return exact ? undefined : `As a Float64 this would be ${asFloat} (not exact; use Decimal or BigInt).`
+    return exact ? undefined : `As a Float64 this would be ${asFloat} (not exact; use Decimal or Int).`
   }
   return undefined
 }

@@ -4,7 +4,7 @@ Built against the Roc nightly compiler (2026-11-03) and basic-cli 0.26.0.
 
 | Path | Contents |
 |---|---|
-| [`package/`](package) | The haus package: `Value` (data model and parser), `Decode`, `Encode` (compact writer), `Stream` (reads a stream chunk by chunk), `Time` (the std/time profile) |
+| [`package/`](package) | The haus package: `Value` (data model and parser), `Decode`, `Encode` (compact writer), `Int` (integers of any size), `Stream` (reads a stream chunk by chunk), `Time` (the std/time profile) |
 | [`examples/`](examples) | The same examples as in TypeScript and Rust, on the same files in [`../examples`](../examples), plus `shop`, a Roc showcase |
 
 ## Examples
@@ -50,8 +50,13 @@ examples/gen.sh
 | `< A \| B T \| C { … } >` | `[A, B(T), C({ … }), Unknown(Str, List(Value))]`, without `Unknown` when closed |
 | `Maybe a`, `Result e a` | `[None, Some(a)]`, `Try(a, e)` |
 | `Array a`, `Map v` | `List(a)`, `List((Str, v))` |
-| `Int`, `Int8`…`UInt64`, `Float64` | `I128`, `I8`…`U64`, `F64` |
+| `Int`, `Int8`…`UInt64`, `Float64` | `Int`, `I8`…`U64`, `F64` |
 | `Decimal`, `Date`, `Instant`, … | `Str`: exact text, std/time checked by its profile |
+
+`Int` (the package's `Int` module) is an integer of any size, kept as its digits
+and written back unchanged, like `haus::Int` in Rust. `to_i64` / `to_i128` convert
+it and fail with `OutOfRange` when it doesn't fit. For a native integer that must
+fit, the schema says `Int64` (out of range is a decode error).
 
 A codec is a Roc module with a `Target` type, `decode : Base -> Try(Target, Str)`
 and `encode : Target -> Base` ([`Cents.roc`](examples/order/Cents.roc)), chosen
@@ -61,7 +66,7 @@ with `--codec ID=MODULE` when generating.
 
 ```sh
 cd package && roc test ConformanceTest.roc && roc test TimeTest.roc
-cd package && roc test Decode.roc && roc test Encode.roc && roc test Stream.roc
+cd package && roc test Decode.roc && roc test Encode.roc && roc test Int.roc && roc test Stream.roc
 cd examples/shop && roc test main.roc
 ```
 

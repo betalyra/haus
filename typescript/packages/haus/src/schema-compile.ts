@@ -9,7 +9,7 @@
  * imports of schema files. Both follow the same mapping, close to the plain
  * view of data without a schema:
  *
- *   String → string             Int, Int8 … UInt32 → number (safe integers)   Int64, UInt64 → bigint
+ *   String → string             Int, Int64, UInt64 → bigint                    Int8 … UInt32 → number
  *   Decimal → string ("19.90")  Float32, Float64 → number                     Bool → boolean
  *   Bytes → Uint8Array          Maybe a → A | null                            Array a → readonly A[]
  *   Map v → ReadonlyMap<string, V>                                            Instant → Date, other std/time types → string
@@ -36,43 +36,21 @@ export const compileSchemaFile = (text: string, options: ParseSchemaOptions = {}
 
 const isEnum = (cases: readonly Case[]) => cases.length > 0 && cases.every((c) => c.payload.kind === "none")
 
-const INTS: Partial<Record<Builtin, readonly [number, number]>> = {
-  Int8: [-128, 127],
-  Int16: [-32768, 32767],
-  Int32: [-2147483648, 2147483647],
-  UInt8: [0, 255],
-  UInt16: [0, 65535],
-  UInt32: [0, 4294967295],
-}
-const BIGINTS: Partial<Record<Builtin, readonly [bigint, bigint]>> = {
-  Int64: [-(2n ** 63n), 2n ** 63n - 1n],
-  UInt64: [0n, 2n ** 64n - 1n],
-}
-
-/** `inner` restricted to a range (checked when decoding and encoding). */
-const between = <A extends number | bigint>(inner: h.Schema<A>, name: string, [min, max]: readonly [A, A]): h.Schema<A> => {
-  const check = (n: A, at: h.At) => {
-    if (n < min || n > max) at.fail(`${n} is out of range for ${name} (${min} to ${max})`)
-    return n
-  }
-  return h.withStandard<A, Omit<h.Schema<A>, "~standard">>({
-    expected: name,
-    decode: (v, at) => check(inner.decode(v, at), at),
-    encode: (a, at) => inner.encode(check(a, at), at),
-  })
-}
-
 const builtin = (name: Builtin): h.AnySchema => {
-  const ints = INTS[name]
-  if (ints) return between(h.Int, name, ints)
-  const bigints = BIGINTS[name]
-  if (bigints) return between(h.BigInt, name, bigints)
   switch (name) {
     case "String": return h.String
     case "Bytes": return h.Bytes
     case "Bool": return h.Bool
     case "Decimal": return h.Decimal
     case "Int": return h.Int
+    case "Int8": return h.Int8
+    case "Int16": return h.Int16
+    case "Int32": return h.Int32
+    case "Int64": return h.Int64
+    case "UInt8": return h.UInt8
+    case "UInt16": return h.UInt16
+    case "UInt32": return h.UInt32
+    case "UInt64": return h.UInt64
     default: return h.Float64 // Float32, Float64
   }
 }
@@ -222,7 +200,7 @@ export const schemaDeclarations = (file: SchemaFile, options: DeclarationOptions
           case "String": case "Decimal": return "string"
           case "Bytes": return "Uint8Array"
           case "Bool": return "boolean"
-          case "Int64": case "UInt64": return "bigint"
+          case "Int": case "Int64": case "UInt64": return "bigint"
           default: return "number"
         }
       case "std":

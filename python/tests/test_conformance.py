@@ -48,3 +48,10 @@ def test_valid(path: Path) -> None:
 def test_invalid(path: Path) -> None:
     with pytest.raises(haus.HausSyntaxError):
         haus.parse_bytes(path.read_bytes())
+
+
+@pytest.mark.parametrize("path", cases("valid"), ids=lambda p: p.stem)
+def test_canonical(path: Path) -> None:
+    """`NAME.canonical`: the canonical form (spec §12) of each value, one per line."""
+    expected = path.with_suffix(".canonical").read_bytes().decode("utf-8")
+    assert "".join(haus.canonical(v) + "\n" for v in haus.parse_bytes(path.read_bytes())) == expected

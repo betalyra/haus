@@ -160,6 +160,35 @@ fn a_byte_order_mark_is_only_skipped_at_the_start() {
     assert!(read("A,\u{FEFF} B, C").is_err());
 }
 
+/// A leading byte order mark is column 1, as in the whole-text parser
+/// (design review S18): the reader skipped it without counting it.
+#[test]
+fn positions_after_a_byte_order_mark_are_the_parser_positions() {
+    for text in ["\u{FEFF}{ ok: true }", "\u{FEFF}\u{1B}", "\u{FEFF}\",x"] {
+        let whole = haus::parse(text).unwrap_err();
+        let e = chunked(text.as_bytes(), text.len()).unwrap_err();
+        assert_eq!(whole.line, 1, "{text:?}");
+        assert_eq!((e.line, e.column, e.offset), (whole.line, whole.column, whole.offset), "{text:?}");
+    }
+}
+
+#[test]
+fn invalid_input_after_a_byte_order_mark_has_the_parser_positions() {
+    for bytes in suite("invalid") {
+        let bytes = [b"\xEF\xBB\xBF".as_slice(), &bytes].concat();
+        let whole = haus::parse_bytes(&bytes).unwrap_err();
+        for size in [1, 5, bytes.len()] {
+            let e = chunked(&bytes, size).unwrap_err();
+            assert_eq!(
+                (e.line, e.column),
+                (whole.line, whole.column),
+                "chunk size {size}: {}",
+                String::from_utf8_lossy(&bytes)
+            );
+        }
+    }
+}
+
 /// Many values in one chunk take linear time (design review S17): 200,000
 /// values took about 14 s when each value moved the rest of the buffer.
 #[test]

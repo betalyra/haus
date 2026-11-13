@@ -20,6 +20,9 @@ def DigitsN (n : Nat) (t : Text) : Prop := t.length = n ∧ ∀ c ∈ t, isDigit
 /-- One or more ASCII digits. -/
 def Digits1 (t : Text) : Prop := t ≠ [] ∧ ∀ c ∈ t, isDigit c = true
 
+/-- A whole number without a leading zero: `0`, `7`, `42`, not `07`. -/
+def Natural (t : Text) : Prop := Digits1 t ∧ (t.head? = some '0' → t = ['0'])
+
 /-- The value of decimal digits. -/
 def num (t : Text) : Nat := digitsValue 10 t
 
@@ -90,24 +93,31 @@ def ZonedDateTime (s : Text) : Prop := ∃ i z, s = i ++ '[' :: z ++ [']'] ∧ I
 /-- An optional component `n U`: its text, and its value if present. -/
 inductive Component (u : Char) : Text → Option Nat → Prop
   | none : Component u [] none
-  | some (ds : Text) : Digits1 ds → Component u (ds ++ [u]) (some (num ds))
+  | some (ds : Text) : Natural ds → Component u (ds ++ [u]) (some (num ds))
 
 /-- The seconds `n[.f]S`, the only component with a fraction. -/
 inductive Seconds : Text → Option Nat → Prop
   | none : Seconds [] none
-  | some (ds f : Text) : Digits1 ds → Fraction f → Seconds (ds ++ f ++ ['S']) (some (num ds))
+  | some (ds f : Text) : Natural ds → Fraction f → Seconds (ds ++ f ++ ['S']) (some (num ds))
 
-/-- `T` followed by at least one of hours, minutes and seconds; or nothing. -/
+/-- Text with digits, none of them other than `0`: a component (or time part) that is zero. -/
+def ZeroText (t : Text) : Prop := t ≠ [] ∧ ∀ c ∈ t, isDigit c = true → c = '0'
+
+/-- `T` followed by at least one of hours, minutes and seconds; or nothing. Zero seconds come alone. -/
 inductive TimePart : Text → Option Nat → Option Nat → Option Nat → Prop
   | none : TimePart [] none none none
   | some (th tm ts : Text) (h m s : Option Nat) :
       Component 'H' th h → Component 'M' tm m → Seconds ts s → (h.isSome ∨ m.isSome ∨ s.isSome) →
+      (ZeroText ts → th = [] ∧ tm = []) →
       TimePart ('T' :: th ++ tm ++ ts) h m s
 
 /--
-`-?P[nY][nM][nW][nD][T[nH][nM][n[.f]S]]`, with at least one component.
-Years, months and weeks stay below 2³²; days and time together below 2⁵³
-seconds (the fraction doesn't count: it can't reach the next second).
+`-?P[nY][nM][nW][nD][T[nH][nM][n[.f]S]]`, with at least one component,
+numbers without leading zeros, no component that is zero (the zero
+duration is written `PT0S`: zero seconds, alone), and `-` only before a
+duration that isn't zero (one of its digits isn't `0`). Years, months and weeks stay below 2³²;
+days and time together below 2⁵³ seconds (the fraction doesn't count: it
+can't reach the next second).
 -/
 def Duration (s : Text) : Prop :=
   ∃ sg ty tm tw td tt y mo w d h mi se,
@@ -115,6 +125,9 @@ def Duration (s : Text) : Prop :=
     Component 'Y' ty y ∧ Component 'M' tm mo ∧ Component 'W' tw w ∧ Component 'D' td d ∧
     TimePart tt h mi se ∧
     (y.isSome ∨ mo.isSome ∨ w.isSome ∨ d.isSome ∨ h.isSome ∨ mi.isSome ∨ se.isSome) ∧
+    (y ≠ some 0 ∧ mo ≠ some 0 ∧ w ≠ some 0 ∧ d ≠ some 0 ∧ h ≠ some 0 ∧ mi ≠ some 0) ∧
+    (ZeroText tt → ty ++ tm ++ tw ++ td = []) ∧
+    (sg = ['-'] → ∃ c ∈ ty ++ tm ++ tw ++ td ++ tt, isDigit c = true ∧ c ≠ '0') ∧
     y.getD 0 < 2 ^ 32 ∧ mo.getD 0 < 2 ^ 32 ∧ w.getD 0 < 2 ^ 32 ∧
     d.getD 0 * 86400 + h.getD 0 * 3600 + mi.getD 0 * 60 + se.getD 0 < 2 ^ 53
 

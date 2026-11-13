@@ -3,14 +3,20 @@ import { parseAll } from "../src/index.js"
 import { plainDeclarations, toPlain } from "../src/plain.js"
 
 describe("plain view", () => {
-  it("types a field with an integer beyond ±2^53 as bigint, for every value", () => {
-    const text = `{ id: 9007199254740993, n: 1, total: 19.90 },\n{ id: 1, n: 2, total: 5.00 },`
+  it("decodes every whole number as a bigint, whatever its size", () => {
+    const text = `{ id: 340282366920938463463374607431768211457, n: 1, total: 19.90 },\n{ id: 1, n: 2, total: 5.00 },`
     const [a, b] = toPlain(parseAll(text)) as Array<Record<string, unknown>>
-    expect(a).toEqual({ id: 9007199254740993n, n: 1, total: "19.90" })
-    expect(b).toEqual({ id: 1n, n: 2, total: "5.00" })
+    expect(a).toEqual({ id: 2n ** 128n + 1n, n: 1n, total: "19.90" })
+    expect(b).toEqual({ id: 1n, n: 2n, total: "5.00" })
     const types = plainDeclarations(text)
     expect(types).toContain("id: bigint")
-    expect(types).toContain("n: number")
+    expect(types).toContain("n: bigint")
     expect(types).toContain("total: string")
+  })
+
+  it("decodes each number by itself: a value's type never depends on the others", () => {
+    const text = `{ x: 1 },\n{ x: 1.5 },`
+    expect(toPlain(parseAll(text))).toEqual([{ x: 1n }, { x: "1.5" }])
+    expect(plainDeclarations(text)).toContain("x: bigint | string")
   })
 })

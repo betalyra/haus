@@ -29,11 +29,12 @@ prototype, …) is outside Lean and stays covered by tests.
 | ✅ | **E. Encoder round trip** | `parse_canonical`: for every value a parser returns, its canonical form parses back to that value (in canonical order), so no string, key or number can break out of its syntax. Holds for number limits of at least the default (spec §12 writes long integers by the default limit). In [`Haus/RoundTrip/`](Haus/RoundTrip). | 1–2 weeks |
 | ✅ | **F. Streams** | A model of the bindings' stream readers: `read_chunks`, any split gives the same values and errors; `read_correct`, the reader returns `vs` exactly when `parse` accepts the whole text with `vs`. In [`Haus/Stream/`](Haus/Stream). | 1–2 weeks |
 | ✅ | **H. Canonical form** (spec §12) | `canonical_eq_iff`: two parsed values have the same canonical form exactly when they are equal (§2), so `hash` is well defined. Reference encoder in [`Haus/Canonical.lean`](Haus/Canonical.lean), implemented in TypeScript, Rust and Roc and fuzzed against it. | 1–2 weeks |
+| ⬜ | **P. Linear time** (spec §7) | A cost model (steps counted next to the result) and proofs that the stream scanner and a linear reference parser take at most `c · length` steps (below) | 1–2 weeks |
 | ⬜ | **I. Schema language** (separate project) | Decoding with any schema terminates in linear time (§9.8–10) | months |
-| 🟡 | **T. std/time** | A reference model of the profile (spec §13.2, `std/time.md`), the bindings' time checkers fuzzed against it, and its security and calendar properties proven | 1–3 weeks |
+| ✅ | **T. std/time** | A reference model of the profile (spec §13.2, `std/time.md`), the bindings' time checkers fuzzed against it, and its security and calendar properties proven | 1–3 weeks |
 
-Order: A–H and T1–T4 are done. Next T5 and T6 (std/time calendar and
-spellings); I waits for a stable schema language.
+Order: A–H and T1–T6 are done. Next P (linear time), whose cost model I
+reuses; I waits for a stable schema language.
 
 ## A. Security properties of the grammar
 
@@ -130,6 +131,26 @@ parsers do) and need exceptions anyway (unterminated strings are reported
 at their opening quote). The fuzzer counts position differences for
 information only.
 
+## P. Linear time
+
+Spec §7 requires parsing to take time linear in the input. Lean proofs say
+nothing about time by themselves (`List.drop` costs nothing in a proof), so
+this needs an explicit cost model: each function returns the number of
+steps it took next to its result, and the operations whose cost matters
+are given their real cost (removing the front of a buffer costs one step
+per byte moved).
+
+| | Step | Gives |
+|---|---|---|
+| ⬜ | P1. Cost model | Step counting for the stream model of F, including buffer operations |
+| ⬜ | P2. Stream scanner | Reading any chunks takes at most `c · length` steps: every byte is scanned once and moved at most once. The design before S17 (removing each value's bytes as it is returned) fails this proof. |
+| ⬜ | P3. Parser | A linear reference parser: the current one checks duplicate keys by scanning the keys read so far, so a record with n keys takes n² steps. It is written for clarity; P3 needs a variant with a set of keys, proven equal to it and linear. |
+
+What this can't cover: the bindings' own code (S17 was in Rust's buffer
+handling, not in the design) and constant factors. Those are covered by the
+benchmarks ([`plans/benchmarks.md`](../../plans/benchmarks.md)), including a
+doubling test in CI: twice the input must take about twice the time.
+
 ## T. std/time
 
 The profile in [`std/time.md`](../std/time.md) is small and every rule is
@@ -143,10 +164,9 @@ design, and so outside the model.
 | ✅ | T2. Fuzzing | The TypeScript, Rust and Roc std/time checkers against the model ([`fuzz/src/time.ts`](../../fuzz/src/time.ts)): 2 million cases, no disagreements. It finds the Roc bound bug when run against the old code. | 1–2 days |
 | ✅ | T3. Zone names can't traverse paths | `ZoneName.lookup_eq`: looked up as a file under `base`, a valid zone name resolves to exactly `base/…` (modelled like `os.path.join`: `.`, `..`, absolute names); `ZoneName.chars`: no `\`, `:` or NUL | ~1 day |
 | ✅ | T4. Durations can't overflow | `Duration.fits`: years, months and weeks below 2³²; days and time below 2⁵³ seconds (exact as a JavaScript number, and a signed 64-bit count of seconds); `Fraction.nanos_lt`: a fraction below 10⁹ nanoseconds. Mostly by construction: the bounds are in the rules, and `check_iff` makes the checker enforce them. | ~1 day |
-| ⬜ | T5. The calendar is right | Valid `Date` strings correspond exactly to the days from 0000-01-01 to 9999-12-31 | ~1 week |
-| ⬜ | T6. One spelling per value | Formatting a parsed value gives back the same string; the only spellings of the same value are those the profile names (`Instant` offsets, `.250` and `.25`) | ~1 week |
+| ✅ | T5. The calendar is right | `date_iff`: a string is a valid `Date` exactly when it is the text of one of the days 0000-01-01 … 9999-12-31, one string per day. The days are counted with the standard day-count formula (365 days a year, leap rules by 4, 100, 400, month lengths from `(153·M + 2)/5`), which doesn't use `daysIn`; `next_dayNumber` shows that the day after every valid date gets the next number, so `daysIn` can't allow a day too many or too few anywhere. In [`Haus/Time/Calendar.lean`](Haus/Time/Calendar.lean). | ~1 week |
+| ✅ | T6. One spelling per value | For every type, two valid strings have the same value exactly when they differ at most in trailing zeros of the fraction (`time_same_iff`, `dateTime_same_iff`, `duration_same_iff`; for `Instant` and `ZonedDateTime` with the same offset: `instant_same_iff`, `zoned_same_iff`); `Date` and `YearMonth` have exactly one spelling (`date_same_iff`, `yearMonth_same_iff`). `duration_text`: formatting a duration's value gives back its text. Writing the proof found three more spellings, now rejected (`P01D`, `-P0D`, zero components such as `P1DT0S`). In [`Haus/Time/Spelling.lean`](Haus/Time/Spelling.lean). | ~1 week |
 
-T5 and T6 can start now that the canonical form (H) exists.
 
 ## Also
 

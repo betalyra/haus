@@ -69,6 +69,14 @@ describe("schema files", () => {
     expect(Exit.isFailure(decodeWith(schema.replace("small: UInt8", "small: Int8"), "Root", "{ small: 255 }"))).toBe(true)
   })
 
+  it("Int is a bigint of any size and writes back unchanged", () => {
+    const text = "340282366920938463463374607431768211457" // 2^128 + 1
+    const Root = compile("type Root = Int").Root!
+    const v = Effect.runSync(Haus.decode(Root)(text))
+    expect(v).toBe(2n ** 128n + 1n)
+    expect(Effect.runSync(Haus.encode(Root)(v))).toBe(text)
+  })
+
   it("variants: enums, payloads, positional values, open variants", () => {
     const schema = `
       type Level = closed < Debug | Info >

@@ -103,7 +103,9 @@ impl Reader {
             self.started = true;
             if self.buf.starts_with(b"\xEF\xBB\xBF") {
                 self.buf.drain(..3);
+                // The byte order mark is column 1, as in the whole-text parser.
                 self.origin.offset = 3;
+                self.origin.column = 2;
             }
         }
         self.scan(false)

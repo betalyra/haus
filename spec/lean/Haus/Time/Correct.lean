@@ -403,6 +403,15 @@ theorem checkZoned_iff (s : Text) : checkZoned s = true ↔ ZonedDateTime s := b
 
 /-! ## Durations -/
 
+theorem noLeadingZero_iff (t : Text) : noLeadingZero t = true ↔ (t.head? = some '0' → t = ['0']) := by
+  match t with
+  | [] => simp [noLeadingZero]
+  | [c] => by_cases h : c = '0' <;> simp [noLeadingZero, h]
+  | c :: d :: r =>
+    by_cases h : c = '0'
+    · subst h; simp [noLeadingZero]
+    · simp [noLeadingZero, h]
+
 theorem component_sound {u : Char} {t r : Text} {v : Option Nat} (h : component u t = (v, r)) :
     ∃ ct, t = ct ++ r ∧ Component u ct v := by
   unfold component at h
@@ -413,8 +422,9 @@ theorem component_sound {u : Char} {t r : Text} {v : Option Nat} (h : component 
     · rename_i hc
       simp only [Prod.mk.injEq] at h; obtain ⟨rfl, rfl⟩ := h
       simp only [Bool.and_eq_true, bne_iff_ne, ne_eq, beq_iff_eq] at hc
-      obtain ⟨hne, rfl⟩ := hc
-      refine ⟨t.takeWhile isDigit ++ [c], ?_, .some _ ⟨hne, fun x hx => mem_takeWhile hx⟩⟩
+      obtain ⟨⟨hne, hlz⟩, rfl⟩ := hc
+      refine ⟨t.takeWhile isDigit ++ [c], ?_,
+        .some _ ⟨⟨hne, fun x hx => mem_takeWhile hx⟩, (noLeadingZero_iff _).mp hlz⟩⟩
       conv => lhs; rw [← List.takeWhile_append_dropWhile (p := isDigit) (l := t), hd]
       simp
     · simp only [Prod.mk.injEq] at h; obtain ⟨rfl, rfl⟩ := h; exact ⟨[], rfl, .none⟩
@@ -428,9 +438,10 @@ theorem seconds_sound {t r : Text} {v : Option Nat} (h : seconds t = (v, r)) : �
     split at h
     · rename_i hne
       simp only [Prod.mk.injEq] at h; obtain ⟨rfl, rfl⟩ := h
+      simp only [Bool.and_eq_true] at hne
       obtain ⟨he, hfr⟩ := fraction_sound hf
       refine ⟨t.takeWhile isDigit ++ f ++ ['S'], ?_,
-        .some _ _ ⟨by simpa using hne, fun x hx => mem_takeWhile hx⟩ hfr⟩
+        .some _ _ ⟨⟨by simpa using hne.1, fun x hx => mem_takeWhile hx⟩, (noLeadingZero_iff _).mp hne.2⟩ hfr⟩
       conv => lhs; rw [← List.takeWhile_append_dropWhile (p := isDigit) (l := t), he]
       simp
     · simp only [Prod.mk.injEq] at h; obtain ⟨rfl, rfl⟩ := h; exact ⟨[], rfl, .none⟩
@@ -449,10 +460,10 @@ theorem component_skip {u : Char} {us : List Char} {t : Text} (h : Later us t) (
     have : c ≠ u := by rintro rfl; exact hu hc
     simp [component, ht, hdw, this]
 
-theorem component_some {u : Char} {ds : Text} (h : Digits1 ds) (hu : isDigit u = false) (r : Text) :
+theorem component_some {u : Char} {ds : Text} (h : Natural ds) (hu : isDigit u = false) (r : Text) :
     component u (ds ++ u :: r) = (some (num ds), r) := by
-  obtain ⟨ht, hdw⟩ := takeWhile_append h.2 (x := u :: r) (by intro x hx; simp at hx; subst hx; exact hu)
-  simp [component, ht, hdw, h.1]
+  obtain ⟨ht, hdw⟩ := takeWhile_append h.1.2 (x := u :: r) (by intro x hx; simp at hx; subst hx; exact hu)
+  simp [component, ht, hdw, h.1.1, (noLeadingZero_iff ds).mpr h.2]
 
 theorem component_complete {u : Char} {us : List Char} {ct t : Text} {v : Option Nat} (hc : Component u ct v)
     (h : Later us t) (hu : u ∉ us) (hd : ∀ c ∈ us, isDigit c = false) (hud : isDigit u = false) :
@@ -465,7 +476,7 @@ theorem later_component {u : Char} {us : List Char} {ct t : Text} {v : Option Na
     (h : Later us t) (hu : u ∈ us) : Later us (ct ++ t) := by
   cases hc with
   | none => exact h
-  | some ds hds => exact .inr (.inr ⟨ds, u, t, by simp, hds, hu⟩)
+  | some ds hds => exact .inr (.inr ⟨ds, u, t, by simp, hds.1, hu⟩)
 
 theorem later_mono {us us' : List Char} {t : Text} (h : Later us t) (hs : ∀ c ∈ us, c ∈ us') : Later us' t := by
   rcases h with h | h | ⟨ds, c, r, e, hds, hc⟩
@@ -478,8 +489,8 @@ theorem later_seconds {ts : Text} {v : Option Nat} (h : Seconds ts v) : Later ['
   | none => exact .inl rfl
   | some ds f hds hf =>
     rcases hf with rfl | ⟨fs, rfl, -⟩
-    · exact .inr (.inr ⟨ds, 'S', [], by simp, hds, by simp⟩)
-    · exact .inr (.inr ⟨ds, '.', fs ++ ['S'], by simp, hds, by simp⟩)
+    · exact .inr (.inr ⟨ds, 'S', [], by simp, hds.1, by simp⟩)
+    · exact .inr (.inr ⟨ds, '.', fs ++ ['S'], by simp, hds.1, by simp⟩)
 
 theorem later_timePart {tt : Text} {h m s : Option Nat} (hp : TimePart tt h m s) : Later [] tt := by
   cases hp with
@@ -490,51 +501,77 @@ theorem seconds_complete {ts : Text} {v : Option Nat} (h : Seconds ts v) : secon
   cases h with
   | none => rfl
   | some ds f hds hf =>
-    obtain ⟨ht, hdw⟩ := takeWhile_append hds.2 (x := f ++ ['S'])
+    obtain ⟨ht, hdw⟩ := takeWhile_append hds.1.2 (x := f ++ ['S'])
       (by rcases hf with rfl | ⟨fs, rfl, -⟩ <;> intro x hx <;> simp at hx <;> subst hx <;> decide)
     have hfr := fraction_complete hf (r := ['S']) (by intro c hc; simp at hc; subst hc; decide)
-    have hne : (ds != []) = true := by simpa using hds.1
+    have hne : (ds != []) = true := by simpa using hds.1.1
     simp only [List.append_assoc] at ht hdw ⊢
-    simp [seconds, ht, hdw, hfr, hne]
+    simp [seconds, ht, hdw, hfr, hne, (noLeadingZero_iff ds).mpr hds.2]
+
+theorem zeroText_iff (t : Text) : zeroText t = true ↔ ZeroText t := by
+  simp only [zeroText, ZeroText, Bool.and_eq_true, Bool.not_eq_eq_eq_not, Bool.not_true, List.isEmpty_eq_false_iff,
+    List.all_eq_true, Bool.or_eq_true, beq_iff_eq]
+  constructor
+  · rintro ⟨h1, h2⟩; exact ⟨h1, fun c hc hd => (h2 c hc).resolve_left (by simp [hd])⟩
+  · rintro ⟨h1, h2⟩
+    refine ⟨h1, fun c hc => ?_⟩
+    cases hd : isDigit c
+    · exact .inl rfl
+    · exact .inr (h2 c hc hd)
+
+theorem nonzero_iff (v : Option Nat) : nonzero v = true ↔ v ≠ some 0 := by
+  match v with
+  | none => simp [nonzero]
+  | some 0 => simp [nonzero]
+  | some (n + 1) => simp [nonzero]
+
+theorem component_nil {u : Char} {ct : Text} {v : Option Nat} (h : Component u ct v) : ct = [] ↔ v = none := by
+  cases h <;> simp
 
 theorem durationTime_iff (y mo w d : Option Nat) (t : Text) :
     durationTime y mo w d t = true ↔ ∃ h mi se, TimePart t h mi se ∧
       (y.isSome ∨ mo.isSome ∨ w.isSome ∨ d.isSome ∨ h.isSome ∨ mi.isSome ∨ se.isSome) ∧
-      durationBounds y mo w d h mi se = true := by
+      h ≠ some 0 ∧ mi ≠ some 0 ∧ durationBounds y mo w d h mi se = true := by
   constructor
   · intro hd
     unfold durationTime at hd
     split at hd
     · simp only [Bool.and_eq_true, Bool.or_eq_true] at hd
-      refine ⟨none, none, none, .none, ?_, hd.2⟩
+      refine ⟨none, none, none, .none, ?_, by simp, by simp, hd.2⟩
       rcases hd.1 with ((h | h) | h) | h <;> simp [h]
     · rename_i t'
       dsimp only at hd
-      simp only [Bool.and_eq_true, Bool.or_eq_true, List.isEmpty_iff] at hd
-      obtain ⟨⟨he, hsome⟩, hb⟩ := hd
-      generalize hh : component 'H' t' = ph at he hsome hb
+      generalize hh : component 'H' t' = ph at hd
       obtain ⟨h, t1⟩ := ph
-      generalize hm : component 'M' t1 = pm at he hsome hb
+      generalize hm : component 'M' t1 = pm at hd
       obtain ⟨mi, t2⟩ := pm
-      generalize hs : seconds t2 = ps at he hsome hb
+      generalize hs : seconds t2 = ps at hd
       obtain ⟨se, t3⟩ := ps
-      simp only at he hsome hb
+      simp only [Bool.and_eq_true, Bool.or_eq_true, List.isEmpty_iff, Bool.not_eq_eq_eq_not, Bool.not_true,
+        Option.isNone_iff_eq_none] at hd
+      obtain ⟨⟨⟨⟨⟨he, hsome⟩, hnh⟩, hnm⟩, hz⟩, hb⟩ := hd
       subst he
       obtain ⟨ch, rfl, hch⟩ := component_sound hh
       obtain ⟨cm, rfl, hcm⟩ := component_sound hm
       obtain ⟨cs, rfl, hcs⟩ := seconds_sound hs
-      refine ⟨h, mi, se, ?_, ?_, hb⟩
-      · have := TimePart.some ch cm cs h mi se hch hcm hcs (by rcases hsome with (h | h) | h <;> simp [h])
+      refine ⟨h, mi, se, ?_, ?_, (nonzero_iff _).mp hnh, (nonzero_iff _).mp hnm, hb⟩
+      · have hz' : ZeroText cs → ch = [] ∧ cm = [] := by
+          intro hzt
+          have : zeroText (cs ++ []) = true := by simpa using (zeroText_iff cs).mpr hzt
+          rcases hz with hz | ⟨e1, e2⟩
+          · rw [hz] at this; cases this
+          · exact ⟨(component_nil hch).mpr e1, (component_nil hcm).mpr e2⟩
+        have := TimePart.some ch cm cs h mi se hch hcm hcs (by rcases hsome with (h | h) | h <;> simp [h]) hz'
         simpa using this
       · rcases hsome with (h | h) | h <;> simp [h]
     · simp at hd
-  · rintro ⟨h, mi, se, hp, hsome, hb⟩
+  · rintro ⟨h, mi, se, hp, hsome, hnh, hnm, hb⟩
     cases hp with
     | none =>
       simp only [Option.isSome_none, Bool.false_eq_true, or_false] at hsome
       simp only [durationTime, Bool.and_eq_true, Bool.or_eq_true, hb, and_true]
       rcases hsome with h | h | h | h <;> simp [h]
-    | some th tm ts h mi se hch hcm hcs hs =>
+    | some th tm ts h mi se hch hcm hcs hs hz =>
       have hl := later_seconds hcs
       have e1 := component_complete hch (later_component hcm (later_mono hl (us' := ['M', '.', 'S'])
         (by simp)) (by simp)) (by simp) (by decide) (by decide)
@@ -543,7 +580,13 @@ theorem durationTime_iff (y mo w d : Option Nat) (t : Text) :
       simp only [List.append_assoc] at e1 e2 ⊢
       simp only [List.cons_append, durationTime]
       rw [e1]; dsimp only; rw [e2]; dsimp only; rw [e3]
-      simp only [List.isEmpty_nil, Bool.true_and, hb, Bool.and_true, Bool.or_eq_true]
+      have hz' : (!zeroText ts || (h.isNone && mi.isNone)) = true := by
+        cases hzt : zeroText ts
+        · rfl
+        · obtain ⟨a, b⟩ := hz ((zeroText_iff ts).mp hzt)
+          simp [(component_nil hch).mp a, (component_nil hcm).mp b]
+      simp only [List.isEmpty_nil, Bool.true_and, hb, Bool.and_true, (nonzero_iff _).mpr hnh, (nonzero_iff _).mpr hnm,
+        hz', Bool.or_eq_true]
       rcases hs with h | h | h <;> simp [h]
 
 theorem checkDurationBody_iff (t : Text) : checkDurationBody t = true ↔
@@ -551,6 +594,8 @@ theorem checkDurationBody_iff (t : Text) : checkDurationBody t = true ↔
       Component 'Y' ty y ∧ Component 'M' tm mo ∧ Component 'W' tw w ∧ Component 'D' td d ∧
       TimePart tt h mi se ∧
       (y.isSome ∨ mo.isSome ∨ w.isSome ∨ d.isSome ∨ h.isSome ∨ mi.isSome ∨ se.isSome) ∧
+      (y ≠ some 0 ∧ mo ≠ some 0 ∧ w ≠ some 0 ∧ d ≠ some 0 ∧ h ≠ some 0 ∧ mi ≠ some 0) ∧
+      (ZeroText tt → ty ++ tm ++ tw ++ td = []) ∧
       durationBounds y mo w d h mi se = true := by
   constructor
   · intro hc
@@ -566,15 +611,24 @@ theorem checkDurationBody_iff (t : Text) : checkDurationBody t = true ↔
       obtain ⟨w, t3⟩ := pw
       generalize hd : component 'D' t3 = pd at hc
       obtain ⟨d, t4⟩ := pd
-      simp only at hc
-      obtain ⟨h, mi, se, htp, hsome, hb⟩ := (durationTime_iff _ _ _ _ _).mp hc
+      simp only [Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_eq_eq_not, Bool.not_true,
+        Option.isNone_iff_eq_none] at hc
+      obtain ⟨⟨⟨⟨⟨n1, n2⟩, n3⟩, n4⟩, hz⟩, ht⟩ := hc
+      obtain ⟨h, mi, se, htp, hsome, hnh, hnm, hb⟩ := (durationTime_iff _ _ _ _ _).mp ht
       obtain ⟨cy, rfl, hcy⟩ := component_sound hy
       obtain ⟨cm, rfl, hcm⟩ := component_sound hm
       obtain ⟨cw, rfl, hcw⟩ := component_sound hw
       obtain ⟨cd, rfl, hcd⟩ := component_sound hd
-      exact ⟨cy, cm, cw, cd, t4, y, mo, w, d, h, mi, se, by simp, hcy, hcm, hcw, hcd, htp, hsome, hb⟩
+      refine ⟨cy, cm, cw, cd, t4, y, mo, w, d, h, mi, se, by simp, hcy, hcm, hcw, hcd, htp, hsome,
+        ⟨(nonzero_iff _).mp n1, (nonzero_iff _).mp n2, (nonzero_iff _).mp n3, (nonzero_iff _).mp n4, hnh, hnm⟩,
+        fun hzt => ?_, hb⟩
+      rcases hz with hz | ⟨⟨⟨a, b⟩, c⟩, e⟩
+      · rw [(zeroText_iff t4).mpr hzt] at hz; cases hz
+      · simp [(component_nil hcy).mpr a, (component_nil hcm).mpr b, (component_nil hcw).mpr c,
+          (component_nil hcd).mpr e]
     · simp at hc
-  · rintro ⟨ty, tm, tw, td, tt, y, mo, w, d, h, mi, se, rfl, hcy, hcm, hcw, hcd, htp, hsome, hb⟩
+  · rintro ⟨ty, tm, tw, td, tt, y, mo, w, d, h, mi, se, rfl, hcy, hcm, hcw, hcd, htp, hsome,
+      ⟨n1, n2, n3, n4, hnh, hnm⟩, hz, hb⟩
     have l0 := later_timePart htp
     have ed := component_complete hcd (later_mono l0 (us' := [])  (by simp)) (by simp) (by simp) (by decide)
     have l1 := later_component hcd (later_mono l0 (us' := ['D']) (by simp)) (by simp)
@@ -585,7 +639,16 @@ theorem checkDurationBody_iff (t : Text) : checkDurationBody t = true ↔
     have ey := component_complete hcy l3 (by simp) (by decide) (by decide)
     simp only [List.append_assoc] at ey em ew ed ⊢
     simp only [List.cons_append, checkDurationBody, ey, em, ew, ed]
-    exact (durationTime_iff _ _ _ _ _).mpr ⟨h, mi, se, htp, hsome, hb⟩
+    have hz' : (!zeroText tt || (y.isNone && mo.isNone && w.isNone && d.isNone)) = true := by
+      cases hzt : zeroText tt
+      · rfl
+      · have e := hz ((zeroText_iff tt).mp hzt)
+        simp only [List.append_eq_nil_iff] at e
+        obtain ⟨⟨⟨a, b⟩, c⟩, e⟩ := e
+        simp [(component_nil hcy).mp a, (component_nil hcm).mp b, (component_nil hcw).mp c, (component_nil hcd).mp e]
+    simp only [(nonzero_iff _).mpr n1, (nonzero_iff _).mpr n2, (nonzero_iff _).mpr n3, (nonzero_iff _).mpr n4, hz',
+      Bool.true_and]
+    exact (durationTime_iff _ _ _ _ _).mpr ⟨h, mi, se, htp, hsome, hnh, hnm, hb⟩
 
 theorem checkDuration_iff (s : Text) : checkDuration s = true ↔ Duration s := by
   have hb : ∀ y mo w d h mi se, durationBounds y mo w d h mi se = true ↔
@@ -594,22 +657,37 @@ theorem checkDuration_iff (s : Text) : checkDuration s = true ↔ Duration s := 
     intros; simp [durationBounds, and_assoc]
   constructor
   · intro hc
-    have body : ∀ sg t, s = sg ++ t → (sg = [] ∨ sg = ['-']) → checkDurationBody t = true → Duration s := by
-      intro sg t e hsg ht
-      obtain ⟨ty, tm, tw, td, tt, y, mo, w, d, h, mi, se, rfl, hcy, hcm, hcw, hcd, htp, hsome, hbd⟩ :=
+    have body : ∀ sg t, s = sg ++ t → (sg = [] ∨ sg = ['-']) → checkDurationBody t = true →
+        (sg = ['-'] → ∃ c ∈ t, isDigit c = true ∧ c ≠ '0') → Duration s := by
+      intro sg t e hsg ht hz
+      obtain ⟨ty, tm, tw, td, tt, y, mo, w, d, h, mi, se, rfl, hcy, hcm, hcw, hcd, htp, hsome, hnz, hzt, hbd⟩ :=
         (checkDurationBody_iff t).mp ht
-      exact ⟨sg, ty, tm, tw, td, tt, y, mo, w, d, h, mi, se, by simp [e], hsg, hcy, hcm, hcw, hcd, htp, hsome,
-        (hb _ _ _ _ _ _ _).mp hbd⟩
+      refine ⟨sg, ty, tm, tw, td, tt, y, mo, w, d, h, mi, se, by simp [e], hsg, hcy, hcm, hcw, hcd, htp, hsome,
+        hnz, hzt, fun hs => ?_, (hb _ _ _ _ _ _ _).mp hbd⟩
+      obtain ⟨c, hc, hd, h0⟩ := hz hs
+      simp only [List.cons_append, List.mem_cons, List.append_assoc] at hc
+      rcases hc with rfl | hc
+      · simp [isDigit] at hd
+      · exact ⟨c, by simpa using hc, hd, h0⟩
     unfold checkDuration at hc
     split at hc
-    · exact body ['-'] _ rfl (.inr rfl) hc
-    · exact body [] _ rfl (.inl rfl) hc
-  · rintro ⟨sg, ty, tm, tw, td, tt, y, mo, w, d, h, mi, se, rfl, hsg, hcy, hcm, hcw, hcd, htp, hsome, hbd⟩
+    · simp only [Bool.and_eq_true, List.any_eq_true, bne_iff_ne, ne_eq] at hc
+      exact body ['-'] _ rfl (.inr rfl) hc.1 (fun _ => by
+        obtain ⟨c, hc, h1, h2⟩ := hc.2; exact ⟨c, hc, h1, h2⟩)
+    · exact body [] _ rfl (.inl rfl) hc (by simp)
+  · rintro ⟨sg, ty, tm, tw, td, tt, y, mo, w, d, h, mi, se, rfl, hsg, hcy, hcm, hcw, hcd, htp, hsome, hnz, hzt, hz,
+      hbd⟩
     have ht := (checkDurationBody_iff ('P' :: ty ++ tm ++ tw ++ td ++ tt)).mpr
-      ⟨ty, tm, tw, td, tt, y, mo, w, d, h, mi, se, rfl, hcy, hcm, hcw, hcd, htp, hsome, (hb _ _ _ _ _ _ _).mpr hbd⟩
+      ⟨ty, tm, tw, td, tt, y, mo, w, d, h, mi, se, rfl, hcy, hcm, hcw, hcd, htp, hsome, hnz, hzt,
+        (hb _ _ _ _ _ _ _).mpr hbd⟩
     rcases hsg with rfl | rfl
     · simpa [checkDuration] using ht
-    · simpa [checkDuration] using ht
+    · obtain ⟨c, hc, h1, h2⟩ := hz rfl
+      have : checkDuration ('-' :: 'P' :: (ty ++ tm ++ tw ++ td ++ tt)) = true := by
+        simp only [List.cons_append] at ht
+        simp only [checkDuration, ht, Bool.true_and, List.any_eq_true, Bool.and_eq_true, bne_iff_ne, ne_eq]
+        exact ⟨c, List.mem_cons_of_mem _ hc, h1, by simpa using h2⟩
+      simpa using this
 
 /-! ## All types -/
 

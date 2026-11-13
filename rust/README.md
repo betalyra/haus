@@ -44,6 +44,11 @@ let text = haus::to_string(&order);                       // back to haus (compa
 | `Int`, `Decimal`, `Int8`…`UInt64`, `Float64` | `haus::Int`, `haus::Decimal` (exact text), `i8`…`u64`, `f64` |
 | `Date`, `Instant`, … (std/time) | `haus::time::Date`, … (validated text; codecs map them to `jiff` and others) |
 
+`haus::Int` is an integer of any size, kept as its digits and written back
+unchanged. `to_i64()` / `to_i128()` give it as a native integer when it fits; the
+`bigint` feature adds conversions to and from `num_bigint::BigInt`. For a native
+integer that must fit, the schema says `Int64` (out of range is a decode error).
+
 Schema packages are ordinary dependencies: a crate with `haus.package.haus`,
 `links = "<its name>"` and `haus_build::package()` in its build script. A crate
 that depends on it directly can `import @org/name (…)`; the types are the

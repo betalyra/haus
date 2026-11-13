@@ -15,6 +15,7 @@
 ##         fields = Decode.record(v)?
 ##         Ok({ id: Decode.field(fields, "id", Decode.u64)?, email: Decode.field(fields, "email", Decode.str)? })
 ##     }
+import Int
 import Value
 import Time
 
@@ -60,9 +61,12 @@ Decode := [].{
 		_ => expected("Bytes", v)
 	}
 
-	## `Int`: an integer, as long as it fits an I128.
-	int : Value -> Try(I128, Error)
-	int = |v| whole(v, "Int", "-170141183460469231731687303715884105728", "170141183460469231731687303715884105727", I128.from_str)
+	## `Int`: an integer of any size, kept as its digits (see `Int`).
+	int : Value -> Try(Int, Error)
+	int = |v| match v {
+		Num(text) => Int.from_str(text).map_err(|_| { reason: "expected a whole number (Int), found ${text}", path: "" })
+		_ => expected("a number (Int)", v)
+	}
 
 	i8 : Value -> Try(I8, Error)
 	i8 = |v| whole(v, "Int8", "-128", "127", I8.from_str)
@@ -330,7 +334,10 @@ expect Decode.message({ reason: "missing field 'id'", path: "" }) == "missing fi
 expect Decode.message({ reason: "expected a string", path: ".total" }) == ".total: expected a string"
 expect Decode.one("300", Decode.u8) == Err(Decode({ reason: "300 is out of range for UInt8 (0 to 255)", path: "" }))
 expect Decode.one("1.5", Decode.i64) == Err(Decode({ reason: "expected a whole number (Int64), found 1.5", path: "" }))
-expect Decode.one("-12", Decode.int) == Ok(-12)
+expect Decode.one("-12", Decode.int) == Ok(Int.from_i64(-12))
+expect Decode.one("1.5", Decode.int) == Err(Decode({ reason: "expected a whole number (Int), found 1.5", path: "" }))
+# Int has no size limit, and writes back unchanged (2^128 + 1).
+expect Decode.one("340282366920938463463374607431768211457", Decode.int).map_ok(|n| n.to_str()) == Ok("340282366920938463463374607431768211457")
 expect Decode.one("Date(\"2026-02-30\")", Decode.date) == Err(Decode({ reason: "\"2026-02-30\" is not a valid Date: 2026-02 has no day 30", path: "(Date)[0]" }))
 expect Decode.one("{ id: 1, coupon: Some(1), prices: [], paid: True }", order) == Err(Decode({ reason: "expected String, found number 1", path: ".coupon[0]" }))
 expect Decode.one("{ id: 1, coupon: None, prices: [], paid: Yes }", order) == Err(Decode({ reason: "expected True | False, found variant Yes", path: ".paid" }))

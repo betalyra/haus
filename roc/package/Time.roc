@@ -151,8 +151,13 @@ duration = |s| {
 		$p = $p + 1
 	}
 	ends_with_t = has_time and $p == s.len()
+	# Whether the seconds are there and zero, fraction included.
+	var $zero_seconds = False
 	for unit in ['H', 'M', 'S'] {
 		(value, next) = if (has_time) component(s, $p, unit, unit == 'S')? else ("", $p)
+		if unit == 'S' and value != "" {
+			$zero_seconds = s.sublist({ start: $p, len: next - 1 - $p }).all(|b| b == '0' or b == '.')
+		}
 		$values = $values.append(value)
 		$p = next
 	}
@@ -164,6 +169,18 @@ duration = |s| {
 	}
 	if ends_with_t {
 		return invalid("T must be followed by hours, minutes or seconds")
+	}
+	for v in $values {
+		if v.to_utf8().len() > 1 and v.starts_with("0") {
+			return invalid("${v} has a leading zero")
+		}
+	}
+	others = $values.sublist({ start: 0, len: 6 })
+	if others.any(|v| v == "0") or ($zero_seconds and others.any(|v| v != "")) {
+		return invalid("a duration leaves out components that are zero (zero is PT0S)")
+	}
+	if start == 1 and !s.any(|b| b >= '1' and b <= '9') {
+		return invalid("a zero duration has no sign")
 	}
 	for v in $values.sublist({ start: 0, len: 3 }) {
 		if component_value(v) >= 4294967296 {

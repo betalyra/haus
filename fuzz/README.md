@@ -21,7 +21,7 @@ a failure prints the seed and keeps the shrunk inputs as an artifact.
 | Step | |
 |---|---|
 | Generate | [`src/generate.ts`](src/generate.ts): random haus text with varied formatting (spacing, comments, CRLF, byte order mark, number spellings, quoted keys, block strings, both payload forms, trailing commas), values at and just past the limits, the conformance suite as seeds. Half of the inputs are then mutated: bytes deleted, edge characters inserted (quotes, `*/`, control and bidi characters, invalid UTF-8), slices duplicated, cut short. |
-| Run | [`src/runners.ts`](src/runners.ts): each parser reads a batch of files and prints one line per file, `ok <values>` in the test-suite JSON encoding or `err <line> <column> <reason>`. The stream readers of Rust, Roc and TypeScript run too, on the same inputs cut into chunks (sizes 1, 2, 3, 5, 8, 13, 64 in turn), and must give what parsing the whole input gives. A runner that crashes is rerun case by case, and the crash counts as a disagreement. |
+| Run | [`src/runners.ts`](src/runners.ts): each parser reads a batch of files and prints one line per file, `ok <values>` in the test-suite JSON encoding or `err <line> <column> <reason>`. The stream readers of Rust, Roc, TypeScript and Python run too, on the same inputs cut into chunks (sizes 1, 2, 3, 5, 8, 13, 64 in turn), and must give what parsing the whole input gives. A runner that crashes is rerun case by case, and the crash counts as a disagreement. |
 | Compare | [`src/main.ts`](src/main.ts): accept/reject and the values must agree. |
 | Shrink | A disagreeing input is cut down to the smallest input that still disagrees, and saved to `.out/failures/` with every parser's result. |
 
@@ -36,6 +36,7 @@ but not which error a parser reports first, so they may differ.
 | Rust | [`rust/haus/examples/fuzz_runner.rs`](../rust/haus/examples/fuzz_runner.rs) |
 | Roc | [`roc/fuzz/runner.roc`](../roc/fuzz/runner.roc) |
 | TypeScript | in this process ([`src/runners.ts`](src/runners.ts)) |
+| Python | [`python/fuzz/runner.py`](../python/fuzz/runner.py) |
 | Stream readers | the same runners with `--stream` (TypeScript: in this process) |
 
 A new binding needs a program that reads `DIR/00000.haus` … `DIR/{N-1}.haus`
@@ -55,7 +56,7 @@ in `runners.ts`.
 
 `node fuzz/src/main.ts --canonical` runs the same inputs through each
 binding's `canonical` (spec §12) instead of its parser: for every accepted
-input, all four must write exactly the same text (the Lean reference encoder
+input, all bindings must write exactly the same text (the Lean reference encoder
 through `haus-ref --canonical-batch`, the others through their runners with
 `--canonical`).
 
@@ -75,7 +76,8 @@ node fuzz/src/time.ts --count 2000000   # about half a minute
 weighted towards the edges: leap and century years, day 29–32, `24:00:00`
 and `:60`, fractions of 0, 9 and 10 digits, `-00:00` and `+24:00`, zones
 with `.`, `..` and empty parts or 255–256 characters, durations at the 2³²
-and 2⁵³ bounds and with hundreds of digits. Some are given to the wrong
+and 2⁵³ bounds and with hundreds of digits, zero components among ones that
+aren't, and zero seconds alone (`PT0S`, `PT0.000S`). Some are given to the wrong
 type, and 40% are then mutated (characters removed, inserted or replaced
 with separators, `NUL`, non-ASCII). A disagreeing string is shrunk like
 above.

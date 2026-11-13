@@ -67,18 +67,37 @@ function zone(r: Rng): string {
 const BIG = [0, 1, 7, 59, 60, 4294967295, 4294967296, 9007199254740991, 9007199254740992, 104249991374, 104249991375,
   2502085904094, 2502085904095, 150119154561465, 150119154561466]
 
-function count_(r: Rng): string {
+/** A component's number: sometimes with leading zeros, or (for a zero component) zeros only. */
+function count_(r: Rng, zero: boolean): string {
+  if (zero) return r.chance(0.8) ? "0" : r.pick(["00", "000", "01"])
   if (r.chance(0.1)) return "9".repeat(r.pick([20, 25, 40, 309, 400]))
   const n = r.chance(0.5) ? String(r.pick(BIG)) : String(r.int(1000))
-  return r.chance(0.05) ? "0" + n : n
+  return r.chance(0.15) ? r.pick(["0", "0", "00"]) + n : n
 }
 
+/** A fraction of zeros, sometimes ending in a digit that isn't. */
+const zeroFraction = (r: Rng) =>
+  r.chance(0.5) ? "" : "." + "0".repeat(r.int(9)) + (r.chance(0.2) ? String(1 + r.int(9)) : "0")
+
 function duration(r: Rng): string {
-  const date = ["Y", "M", "W", "D"].filter(() => r.chance(0.35)).map((u) => count_(r) + u).join("")
-  const timeUnits = ["H", "M", "S"].filter(() => r.chance(0.35))
-  const time = timeUnits.map((u) => count_(r) + (u === "S" || r.chance(0.05) ? fraction(r) : "") + u).join("")
+  // Zero durations, often signed: `-` is only allowed before a duration that isn't zero.
+  const zero = r.chance(0.2)
+  // Otherwise often some components zero among ones that aren't: only zero seconds alone are allowed.
+  const mixed = !zero && r.chance(0.35)
+  const isZero = () => zero || (mixed && r.chance(0.4))
+  // Zero seconds alone (the zero duration `PT0S`, with or without a fraction), or with a fraction that isn't zero.
+  const lone = r.chance(zero ? 0.4 : mixed ? 0.15 : 0)
+  const date = lone ? "" : ["Y", "M", "W", "D"].filter(() => r.chance(0.35)).map((u) => count_(r, isZero()) + u).join("")
+  const timeUnits = lone ? ["S"] : ["H", "M", "S"].filter(() => r.chance(0.35))
+  const component = (u: string) => {
+    const z = isZero()
+    const frac = u === "S" || r.chance(0.05) ? (z ? zeroFraction(r) : fraction(r)) : ""
+    return count_(r, z) + frac + u
+  }
+  const time = timeUnits.map(component).join("")
   const t = time !== "" || r.chance(0.1) ? "T" + time : ""
-  return (r.chance(0.2) ? "-" : r.chance(0.03) ? "+" : "") + (r.chance(0.02) ? "p" : "P") + date + t
+  const sign = r.chance(zero ? 0.6 : 0.2) ? "-" : r.chance(0.03) ? "+" : ""
+  return sign + (r.chance(0.02) ? "p" : "P") + date + t
 }
 
 /** A string meant for `type`: built from its parts, usually well formed. */

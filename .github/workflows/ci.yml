@@ -107,7 +107,7 @@ jobs:
         working-directory: roc
         run: |
           (cd package && roc test ConformanceTest.roc && roc test TimeTest.roc)
-          (cd package && roc test Decode.roc && roc test Encode.roc && roc test Stream.roc)
+          (cd package && roc test Decode.roc && roc test Encode.roc && roc test Int.roc && roc test Stream.roc)
           (cd examples/shop && roc test main.roc)
 
   python:

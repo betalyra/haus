@@ -45,8 +45,8 @@ describe("plain target", async () => {
 
   it("data with a schema: decoded with it", async () => {
     const { code } = moduleFor(read("thread.haus"), at("thread.haus"), plain, runtimeOf)
-    const thread = (await load(code)).default as { readonly likes: number; readonly at: Date }
-    expect(typeof thread.likes).toBe("number")
+    const thread = (await load(code)).default as { readonly likes: bigint; readonly at: Date }
+    expect(typeof thread.likes).toBe("bigint")
     expect(thread.at).toBeInstanceOf(Date)
   })
 

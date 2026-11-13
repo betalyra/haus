@@ -1,1 +1,1 @@
-package [Decode, Encode, Stream, Time, Value] {}
+package [Decode, Encode, Int, Stream, Time, Value] {}

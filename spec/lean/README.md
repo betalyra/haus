@@ -78,6 +78,14 @@ table is also a `#guard` test in [`Haus/Time/Check.lean`](Haus/Time/Check.lean).
 guarantee: a zone name looked up as a file under a directory stays inside
 it (`ZoneName.lookup_eq`), and a duration's fields fit in 32 bits, 2⁵³
 seconds and 10⁹ nanoseconds (`Duration.fits`, `Fraction.nanos_lt`).
+[`Haus/Time/Calendar.lean`](Haus/Time/Calendar.lean) proves the calendar
+right (`date_iff`): valid `Date` strings are exactly the days from 0000-01-01
+to 9999-12-31, one string per day, checked against the standard day-count
+formula, which doesn't use the month-length table the rules use.
+[`Haus/Time/Spelling.lean`](Haus/Time/Spelling.lean) proves one spelling per
+value: two valid strings of a type are the same value exactly when they
+differ at most in trailing zeros of a fraction (and, for instants, in the
+offset); `Date` and `YearMonth` have exactly one spelling.
 
 **About the canonical form** (spec §12), in [`Haus/RoundTrip/`](Haus/RoundTrip):
 

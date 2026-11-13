@@ -137,9 +137,9 @@ describe("encoding hostile JS values", () => {
 
   it("error messages never call the value's methods", () => {
     const bare = Object.create(null) as unknown
-    expect(errorOf(() => h.encode(h.Int, bare as number)).message).toBe("expected a safe integer, got an object at $")
+    expect(errorOf(() => h.encode(h.Int, bare as bigint)).message).toBe("expected a bigint, got an object at $")
     const huge = "x".repeat(1_000_000)
-    expect(errorOf(() => h.encode(h.Int, huge as unknown as number)).message.length).toBeLessThan(100)
+    expect(errorOf(() => h.encode(h.Int, huge as unknown as bigint)).message.length).toBeLessThan(100)
   })
 
   it("the raw value of an Unknown is checked before it is written", () => {

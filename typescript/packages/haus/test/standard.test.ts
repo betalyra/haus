@@ -17,7 +17,7 @@ const order = `
 describe("the plain view", () => {
   it("turns haus values into plain JS values", () => {
     expect(parsePlain(order)).toEqual({
-      id: 1042,
+      id: 1042n,
       total: "30.30",
       status: { _tag: "Shipped", at: "2026-11-08" },
       gift: true,
@@ -32,7 +32,7 @@ describe("the plain view", () => {
 
 describe("parseWith: haus text into any Standard Schema", () => {
   const Order = z.object({
-    id: z.number().int(),
+    id: z.bigint(),
     total: z.string(),
     status: z.discriminatedUnion("_tag", [
       z.object({ _tag: z.literal("Shipped"), at: z.string() }),
@@ -65,9 +65,9 @@ describe("parseWith: haus text into any Standard Schema", () => {
   })
 
   it("asks for parseWithAsync when the schema is async", async () => {
-    const Async = z.object({ id: z.number() }).refine(async () => true)
+    const Async = z.object({ id: z.bigint() }).refine(async () => true)
     expect(() => parseWith(Async, "{ id: 1 }")).toThrow("parseWithAsync")
-    await expect(parseWithAsync(Async, "{ id: 1 }")).resolves.toEqual({ id: 1 })
+    await expect(parseWithAsync(Async, "{ id: 1 }")).resolves.toEqual({ id: 1n })
   })
 })
 
@@ -77,7 +77,7 @@ describe("haus schemas are Standard Schemas", () => {
 
   it("validates haus text", () => {
     expect(User["~standard"].vendor).toBe("haus")
-    expect(validate(User, `{ id: 1, name: "Ada", tags: ["x"] }`)).toEqual({ value: { id: 1, name: "Ada", tags: ["x"] } })
+    expect(validate(User, `{ id: 1, name: "Ada", tags: ["x"] }`)).toEqual({ value: { id: 1n, name: "Ada", tags: ["x"] } })
   })
 
   it("returns issues with the path instead of throwing", () => {

@@ -12,9 +12,9 @@ const compile = (name: string) => compileSchemaFile(read(name), schemaOptions(jo
 describe("schemas from schema files", () => {
   it("decode data the way the declarations say", () => {
     const { schemas } = compile("thread.schema.haus")
-    const thread = h.parse(schemas.Root!, read("thread.haus")) as { author: string; likes: number; at: Date; replies: unknown[] }
+    const thread = h.parse(schemas.Root!, read("thread.haus")) as { author: string; likes: bigint; at: Date; replies: unknown[] }
     expect(typeof thread.author).toBe("string")
-    expect(typeof thread.likes).toBe("number")
+    expect(typeof thread.likes).toBe("bigint")
     expect(thread.at).toBeInstanceOf(Date)
     expect(Array.isArray(thread.replies)).toBe(true)
   })
@@ -72,6 +72,13 @@ describe("schemas from schema files", () => {
     expect(root.wait).toBe("PT48H")
   })
 
+  it("decode Int as a bigint of any size, and write it back unchanged", () => {
+    const { schemas } = compileSchemaFile(`type Root = Int`)
+    const text = "340282366920938463463374607431768211457" // 2^128 + 1
+    expect(h.parse(schemas.Root!, text)).toBe(2n ** 128n + 1n)
+    expect(h.stringify(schemas.Root!, h.parse(schemas.Root!, text))).toBe(text)
+  })
+
   it("enforce ranges and closed records", () => {
     const { schemas } = compileSchemaFile(`type Root = closed { n: UInt8 }`)
     expect(() => h.parse(schemas.Root!, `{ n: 300 }`)).toThrow("out of range for UInt8")
@@ -84,7 +91,7 @@ describe("schemas from schema files", () => {
       type Root = List Int
     `)
     expect(h.parse(schemas.Root!, "Cons(1, Cons(2, Nil))")).toEqual({
-      _tag: "Cons", values: [1, { _tag: "Cons", values: [2, { _tag: "Nil" }] }],
+      _tag: "Cons", values: [1n, { _tag: "Cons", values: [2n, { _tag: "Nil" }] }],
     })
   })
 
@@ -106,7 +113,7 @@ describe("declarations", () => {
     `))
     expect(decl).toContain(`export type Level = "Debug" | "Info";`)
     expect(decl).toContain(`export type List<A> = { readonly _tag: "Nil" } | { readonly _tag: "Cons"; readonly values: readonly [A, List<A>] } | h$.Unknown;`)
-    expect(decl).toContain(`export type Root = { readonly level: Level; readonly n: List<number>; readonly at: Date; readonly when?: string | null };`)
+    expect(decl).toContain(`export type Root = { readonly level: Level; readonly n: List<bigint>; readonly at: Date; readonly when?: string | null };`)
     expect(decl).toContain(`export declare const Root: h$.Schema<Root>;`)
     expect(decl).not.toContain("export declare const List")
   })

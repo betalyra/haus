@@ -60,7 +60,8 @@ export class StreamReader {
       this.started = true
       if (this.buf.charCodeAt(0) === 0xfeff) {
         this.buf = this.buf.slice(1)
-        this.origin = { ...this.origin, offset: 1 }
+        // The byte order mark is column 1, as in the whole-text parser.
+        this.origin = { ...this.origin, offset: 1, column: 2 }
       }
     }
     return this.scan(false)

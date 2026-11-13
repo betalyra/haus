@@ -21,6 +21,8 @@ import Haus.Time.Spec
 import Haus.Time.Check
 import Haus.Time.Correct
 import Haus.Time.Props
+import Haus.Time.Calendar
+import Haus.Time.Spelling
 import Haus.Canonical
 import Haus.RoundTrip.Digits
 import Haus.RoundTrip.Strings

@@ -302,7 +302,10 @@ macro_rules! floats {
 }
 floats!(f32 => "Float32", f64 => "Float64");
 
-/// `Int`: an integer of any size, as its decimal digits.
+/// `Int`: an integer of any size, as its decimal digits. Writing it gives the
+/// same digits back. Convert it with [`Int::to_i64`] / [`Int::to_i128`], or to
+/// `num_bigint::BigInt` with the `bigint` feature. For a native integer that
+/// must fit, the schema says `Int64` (decoded as `i64`, out of range is an error).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Int(String);
 
@@ -311,8 +314,34 @@ impl Int {
         &self.0
     }
     /// The value, if it fits.
+    pub fn to_i64(&self) -> Option<i64> {
+        self.0.parse().ok()
+    }
+    /// The value, if it fits.
     pub fn to_i128(&self) -> Option<i128> {
         self.0.parse().ok()
+    }
+}
+
+#[cfg(feature = "bigint")]
+impl From<num_bigint::BigInt> for Int {
+    fn from(n: num_bigint::BigInt) -> Self {
+        Int(n.to_string())
+    }
+}
+
+#[cfg(feature = "bigint")]
+impl From<&Int> for num_bigint::BigInt {
+    fn from(n: &Int) -> Self {
+        // An Int holds decimal digits with an optional minus sign, which always parse.
+        n.0.parse().expect("an Int is a decimal integer")
+    }
+}
+
+#[cfg(feature = "bigint")]
+impl From<Int> for num_bigint::BigInt {
+    fn from(n: Int) -> Self {
+        (&n).into()
     }
 }
 

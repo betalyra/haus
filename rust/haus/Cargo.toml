@@ -18,8 +18,11 @@ name = "haus"
 [features]
 # `haus::hash` (spec §12): SHA-256 of the canonical form.
 hash = ["dep:sha2"]
+# Conversions between `haus::Int` and `num_bigint::BigInt`.
+bigint = ["dep:num-bigint"]
 
 [dependencies]
+num-bigint = { version = "0.4.6", optional = true }
 sha2 = { version = "0.10", optional = true }
 
 [dev-dependencies]

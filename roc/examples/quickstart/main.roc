@@ -11,6 +11,7 @@ import pf.Path
 import pf.Stdout
 import haus.Decode
 import haus.Encode
+import haus.Int
 import Thread
 
 reply : Str
@@ -22,14 +23,14 @@ main! = |_args| {
 	path = "../../../examples/thread.haus"
 	text = path.read_utf8!()?
 
-	# 1. The thread, as typed data: a Comment, whose replies are Comments.
+	# 1. The thread, as typed data: a Comment, whose replies are Comments. likes is an Int (any size).
 	thread = Decode.one(text, Thread.decode_root)?
 	Stdout.line!("thread by ${author(thread)}: ${depth(thread).to_str()} levels, ${likes(thread).to_str()} likes")?
 
 	# 2. Decode haus text with the schema, change it, encode it back.
 	decoded = Decode.one(reply, Thread.decode_comment)?
 	liked = match decoded {
-		Comment(c) => Comment({ ..c, likes: c.likes + 1 })
+		Comment(c) => Comment({ ..c, likes: Int.from_i128((c.likes.to_i128() ?? 0) + 1) })
 	}
 	Stdout.line!(Encode.to_str(Thread.encode_comment(liked)))?
 
@@ -54,7 +55,7 @@ author = |comment| match comment {
 likes : Thread.Comment -> I128
 likes = |comment| match comment {
 	Comment(c) => {
-		var $sum = c.likes
+		var $sum = c.likes.to_i128() ?? 0
 		for r in c.replies {
 			$sum = $sum + likes(r)
 		}

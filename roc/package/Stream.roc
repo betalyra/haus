@@ -54,7 +54,8 @@ Stream := [].{
 		}
 		started =
 			if !state.started and buf.starts_with([0xEF, 0xBB, 0xBF]) {
-				{ ..state, buf: buf.drop_first(3), started: True }
+				# The byte order mark is column 1, as in the whole-text parser.
+				{ ..state, buf: buf.drop_first(3), origin: { ..state.origin, column: 2 }, started: True }
 			} else {
 				{ ..state, buf, started: True }
 			}
@@ -360,4 +361,14 @@ expect chunked("1 ] 2,", 1).is_err()
 # A byte order mark is skipped only at the start of the stream, not after a comma (found by fuzz/).
 expect {
 	Stream.all(["A,\u(FEFF)".to_utf8()]).is_err() and Stream.all(["\u(FEFF)A, B".to_utf8()]).is_ok()
+}
+
+# Positions after a byte order mark are the whole-text parser's (design review S18):
+# the reader skipped it without counting it, so columns on line 1 were one too small.
+expect {
+	same = |text| match (Value.parse_all(text), chunked(text, 1000)) {
+		(Err(whole), Err(e)) => whole.line == 1 and e.line == whole.line and e.column == whole.column
+		_ => False
+	}
+	same("\u(FEFF){ ok: true }") and same("\u(FEFF)\u(001B)") and same("\u(FEFF)\",x")
 }

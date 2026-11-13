@@ -17,10 +17,11 @@ import { parse, parsePlain } from "@haus-fmt/haus"
 const text = `{ id: 1042, total: 30.30, status: Shipped, note: None }`
 
 parse(text)        // the haus data model: { kind: "record", fields: Map { … } }
-parsePlain(text)   // plain JS values: { id: 1042, total: "30.30", status: "Shipped", note: null }
+parsePlain(text)   // plain JS values: { id: 1042n, total: "30.30", status: "Shipped", note: null }
 ```
 
-The plain view: strings, `number` for whole numbers, `string` for decimals (exact),
+The plain view: strings, `bigint` for whole numbers (any size, so a field's type
+never depends on its values), `string` for decimals (exact),
 `boolean`, `Uint8Array` for bytes, `null` for `None`, string literals for tags
 without payload, `{ _tag, … }` for other variants. A file with several values
 (a stream) is an array.
@@ -33,7 +34,7 @@ Every [Standard Schema](https://standardschema.dev) works: Zod, Valibot, ArkType
 import { parseWith } from "@haus-fmt/haus"
 import { z } from "zod"
 
-const Order = z.object({ id: z.number(), total: z.string(), status: z.enum(["Pending", "Shipped"]) })
+const Order = z.object({ id: z.bigint(), total: z.string(), status: z.enum(["Pending", "Shipped"]) })
 const order = parseWith(Order, text)   // typed; throws HausValidationError with the schema's issues
 ```
 
@@ -56,6 +57,7 @@ const Order = h.Record({
 type Order = h.Infer<typeof Order>
 
 const order = h.parse(Order, text)       // mismatches fail with the path: expected Int, found string "2" at $.id
+order.id                                 // 1042n: Int is a bigint of any size; Int32 etc. are numbers
 const back = h.stringify(Order, order)   // haus text again
 for await (const o of h.decodeStream(Order, response.body!)) { … }
 ```

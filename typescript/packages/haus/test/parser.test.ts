@@ -30,6 +30,17 @@ describe("error messages and positions", () => {
       expect([e.line, e.column]).toEqual([3, 7])
     }))
 
+  // Design review S18: the stream reader skipped a leading byte order mark
+  // without counting it, so its columns on line 1 were one too small.
+  it.effect.each(["\ufeff{ ok: true }", "\ufeff\u001b", '\ufeff","x'])("stream positions after a byte order mark: %j", (src) =>
+    Effect.gen(function* () {
+      const whole = yield* Effect.flip(parseText(src))
+      const r = new StreamReader()
+      const e = yield* Effect.flip(syntax(() => [...r.push(src), ...r.end()]))
+      expect(whole.line).toBe(1)
+      expect([e.line, e.column, e.offset]).toEqual([whole.line, whole.column, whole.offset])
+    }))
+
   it.effect(`rejects nesting deeper than ${MAX_DEPTH}`, () =>
     Effect.gen(function* () {
       const nest = (n: number) => "[".repeat(n) + "]".repeat(n)

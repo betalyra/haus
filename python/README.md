@@ -2,7 +2,7 @@
 
 **A data format for humans: friendly to write, pleasant to read, and at home in your code.**
 
-> ⚠️ **Highly experimental.** This package has the parser. Typed decoding with schemas, streaming and the formatter are on their way.
+> ⚠️ **Highly experimental.** This package has the parser, the stream reader and the canonical form. Typed decoding with schemas and the formatter are on their way.
 
 ```sh
 pip install haus-fmt
@@ -38,6 +38,37 @@ haus.parse("{ ok: true }")
 
 Limits are configurable with `haus.Limits(max_depth=…, max_number_length=…, max_exponent=…, max_string_length=…)`.
 
+## Streams
+
+A stream is a file of values, each followed by a comma. `haus.parse_stream` yields each value as soon as its comma arrives, from a file or any iterable of `bytes` or `str` chunks, split anywhere:
+
+```python
+with open("events.haus", "rb") as f:
+    for event in haus.parse_stream(f):
+        print(event)
+```
+
+`haus.StreamReader` does no I/O, for sockets and event loops: `push(chunk)` returns the values the chunk completed, `finish()` the last one if it had no comma after it. Memory is bounded by the largest single value (`max_value_length`, 64 Mi characters by default), errors have positions in the whole stream, and `require_terminator=True` reports a stream that ends without a comma after its last value as cut off.
+
+```python
+reader = haus.StreamReader(require_terminator=True)
+reader.push(b"Heartbeat,\nUserCreated { id")  # [Variant(tag='Heartbeat', args=())]
+reader.push(b": 1 },\n")  # [Variant(tag='UserCreated', args=(Record(...),))]
+reader.finish()  # []
+```
+
+## Canonical form and hashing
+
+`haus.canonical` writes a value as one exact text, the same in every haus binding: layout, comments, key order and spelling don't change it. `haus.hash` is the SHA-256 of that text, for signing, deduplication and content addressing:
+
+```python
+order = haus.parse('Order { total: 19.90, id: 0xFF, "x-y": 1e+5 }')
+haus.canonical(order)  # 'Order{id:255,total:19.90,"x-y":1e5}'
+haus.hash(order)  # 64 lowercase hex digits
+haus.equals(haus.parse("1.0"), haus.parse("1"))  # False: different numbers
+sorted(values, key=functools.cmp_to_key(haus.compare))  # by canonical form, not numeric: 10 before 9
+```
+
 ## Development
 
 ```sh
@@ -46,4 +77,4 @@ uv run pytest            # unit tests and the shared conformance suite in ../tes
 uv run ruff check . && uv run mypy && uv run pyright
 ```
 
-The parser also runs in the [differential fuzzer](../fuzz) against the Lean reference parser and the Rust, Roc and TypeScript parsers.
+The parser, the stream reader and `canonical` also run in the [differential fuzzer](../fuzz) against the Lean reference and the Rust, Roc and TypeScript bindings.

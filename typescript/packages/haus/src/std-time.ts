@@ -8,7 +8,7 @@
  *   DateTime       2026-11-09T14:30:00           no offset
  *   Instant        2026-11-09T14:30:00Z          offset Z or ±HH:MM (not -00:00)
  *   ZonedDateTime  …+01:00[Europe/Lisbon]        offset and one zone; the zone is not looked up
- *   Duration       P1Y2M3W4DT5H6M7.5S, -PT30M    fraction only on seconds
+ *   Duration       P1Y2M3W4DT5H6M7.5S, -PT30M    fraction only on seconds; no zero components (zero is PT0S)
  *   YearMonth      2026-11
  *   TimeZone       Europe/Lisbon, +01:00         IANA name syntax or an offset
  *
@@ -95,9 +95,15 @@ const shapes: Record<StdTimeType, { readonly re: RegExp; readonly example: strin
     re: /^-?P(?:(\d+)Y)?(?:(\d+)M)?(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)(?:\.(\d{1,9}))?S)?)?$/,
     example: "PT1H30M",
     check: (m) => {
-      const [, y, mo, w, d, h, min, s] = m
+      const [, y, mo, w, d, h, min, s, f] = m
       if ([y, mo, w, d, h, min, s].every((x) => x === undefined)) return "a duration needs at least one component, like PT0S"
       if (m[0].endsWith("T")) return "T must be followed by hours, minutes or seconds"
+      const padded = [y, mo, w, d, h, min, s].find((x) => x !== undefined && x.length > 1 && x.startsWith("0"))
+      if (padded !== undefined) return `${padded} has a leading zero`
+      const others = [y, mo, w, d, h, min].filter((x) => x !== undefined)
+      const zeroSeconds = s === "0" && !/[1-9]/.test(f ?? "")
+      if (others.includes("0") || (zeroSeconds && others.length > 0)) return "a duration leaves out components that are zero (zero is PT0S)"
+      if (m[0].startsWith("-") && !/[1-9]/.test(m[0])) return "a zero duration has no sign"
       for (const x of [y, mo, w]) if (x !== undefined && Number(x) >= 2 ** 32) return `${x} is too large (years, months and weeks stay below 2^32)`
       const seconds = Number(d ?? 0) * 86400 + Number(h ?? 0) * 3600 + Number(min ?? 0) * 60 + Number(s ?? 0)
       if (seconds >= 2 ** 53) return "days and time together must stay below 2^53 seconds"

@@ -2,11 +2,12 @@
 import haus.Value
 import haus.Decode
 import haus.Encode
+import haus.Int
 
 Thread := [].{
 
 	## haus type `thread#Comment`.
-	Comment := [Comment({ author : Str, at : Str, text : Str, likes : I128, replies : List(Comment) })]
+	Comment := [Comment({ author : Str, at : Str, text : Str, likes : Int, replies : List(Comment) })]
 
 	decode_comment : Value -> Try(Comment, Decode.Error)
 	decode_comment = |v| match v {
@@ -24,7 +25,7 @@ Thread := [].{
 
 	encode_comment : Comment -> Value
 	encode_comment = |v| match v {
-		Comment(r) => Tag("Comment", [Encode.record([("author", Present(Encode.str(r.author))), ("at", Present(Encode.time("Instant")(r.at))), ("text", Present(Encode.str(r.text))), ("likes", Present(Num(r.likes.to_str()))), ("replies", Present(Encode.list(r.replies, encode_comment)))])])
+		Comment(r) => Tag("Comment", [Encode.record([("author", Present(Encode.str(r.author))), ("at", Present(Encode.time("Instant")(r.at))), ("text", Present(Encode.str(r.text))), ("likes", Present(Encode.int(r.likes))), ("replies", Present(Encode.list(r.replies, encode_comment)))])])
 	}
 
 	## haus type `thread#Root`.
