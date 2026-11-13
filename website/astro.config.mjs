@@ -5,10 +5,9 @@ import sitemap from '@astrojs/sitemap';
 import starlight from '@astrojs/starlight';
 import starlightLlmsTxt from 'starlight-llms-txt';
 import tailwindcss from '@tailwindcss/vite';
-import { readFileSync } from 'node:fs';
-import { hausLang, hausTheme } from './src/lib/code.ts';
+import { hausLang, hausSchemaLang, hausTheme } from './src/lib/code.ts';
+import { hausHoverPlugin } from './src/lib/ec-hover.ts';
 
-const schemaGrammar = JSON.parse(readFileSync(new URL('../editors/vscode/syntaxes/haus-schema.tmLanguage.json', import.meta.url), 'utf8'));
 
 // https://astro.build/config
 export default defineConfig({
@@ -32,12 +31,50 @@ export default defineConfig({
         ThemeProvider: './src/components/docs/ThemeProvider.astro',
         ThemeSelect: './src/components/docs/ThemeSelect.astro',
         SocialIcons: './src/components/docs/SocialIcons.astro',
+        MarkdownContent: './src/components/docs/MarkdownContent.astro',
+        PageTitle: './src/components/docs/PageTitle.astro',
       },
       expressiveCode: {
         // The landing page's pigment-ink theme, and the grammars from the VS Code extension.
         themes: [/** @type {any} */ (hausTheme)],
+        // Hover types in haus blocks, as on the landing page.
+        plugins: [hausHoverPlugin()],
+        // Code as on the landing page: a sheet of white paper with a thin line, the
+        // file name small and grey above the code, no window chrome.
+        defaultProps: { overridesByLang: { 'sh,bash,shell': { frame: 'none' } } },
+        styleOverrides: {
+          borderRadius: '14px',
+          borderColor: 'color-mix(in oklab, #26231f 15%, white)',
+          codeBackground: '#ffffff',
+          codeFontFamily: 'var(--font-mono)',
+          codeFontSize: '0.86rem',
+          codeLineHeight: '1.7',
+          codePaddingBlock: '0.9rem',
+          codePaddingInline: '1.25rem',
+          uiFontFamily: 'var(--font-mono)',
+          frames: {
+            frameBoxShadowCssValue: 'none',
+            editorTabBarBackground: '#ffffff',
+            editorActiveTabBackground: '#ffffff',
+            editorActiveTabForeground: '#7a726a',
+            editorActiveTabIndicatorTopColor: 'transparent',
+            editorActiveTabIndicatorBottomColor: 'transparent',
+            editorActiveTabBorderColor: 'transparent',
+            editorTabBarBorderColor: 'transparent',
+            editorTabBarBorderBottomColor: 'transparent',
+            editorTabsMarginInlineStart: '0.4rem',
+            terminalTitlebarBackground: '#ffffff',
+            terminalTitlebarForeground: '#7a726a',
+            terminalTitlebarDotsOpacity: '0',
+            terminalTitlebarBorderBottomColor: 'transparent',
+            terminalBackground: '#ffffff',
+            inlineButtonBackground: '#26231f',
+            inlineButtonForeground: '#26231f',
+            inlineButtonBorder: 'color-mix(in oklab, #26231f 15%, white)',
+          },
+        },
         shiki: {
-          langs: [/** @type {any} */ (hausLang), { ...schemaGrammar, name: 'haus-schema', embeddedLangs: ['haus'] }],
+          langs: [/** @type {any} */ (hausLang), /** @type {any} */ (hausSchemaLang)],
         },
       },
       plugins: [
@@ -49,7 +86,24 @@ export default defineConfig({
         }),
       ],
       sidebar: [
-        { label: 'Start', items: [{ label: 'Welcome', slug: 'docs' }] },
+        {
+          label: 'Start',
+          items: [
+            { label: 'Welcome', slug: 'docs' },
+            { label: 'Install', slug: 'docs/install' },
+            { label: 'A tour of haus', slug: 'docs/tour' },
+            { label: 'Coming from JSON', slug: 'docs/from-json' },
+          ],
+        },
+        {
+          label: 'Guided tours',
+          items: [
+            { label: 'Evolving your data', slug: 'docs/tours/evolving' },
+            { label: 'Logs and streams', slug: 'docs/tours/streams' },
+            { label: 'From schema to code', slug: 'docs/tours/typed' },
+            { label: 'Time and money', slug: 'docs/tours/time-money' },
+          ],
+        },
         {
           label: 'Reference',
           items: [

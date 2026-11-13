@@ -1,0 +1,32 @@
+---
+/**
+ * The page title, like the landing page's headline: a watercolour wash under
+ * the last word, in the same colours as the page's Open Graph image.
+ */
+import Wash from "@/components/Wash.astro";
+import { brushFor, hash } from "@/lib/pigments";
+
+const title = Astro.locals.starlightRoute.entry.data.title;
+const words = title.split(" ");
+const last = words.pop()!;
+const [a, b] = brushFor(title);
+---
+
+<h1 id="_top" class="page-title">
+  {words.length > 0 && `${words.join(" ")} `}<span class="brush">
+    {last}
+    <Wash
+      seed={21 + (hash(title) % 997)}
+      instant
+      strokes={[
+        { x: 0.48, y: 0.55, rx: 0.46, ry: 0.32, rot: -0.03, color: a, strength: 1.5, wobble: 0.7 },
+        { x: 0.8, y: 0.5, rx: 0.18, ry: 0.28, color: b, strength: 1.2, wobble: 0.7 },
+      ]}
+    />
+  </span>
+</h1>
+
+<script>
+  import { paintAll } from "@/lib/paint";
+  paintAll();
+</script>

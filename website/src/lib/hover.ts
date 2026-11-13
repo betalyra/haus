@@ -14,11 +14,14 @@ export interface HoverOptions {
   schema?: { text: string; type?: string };
 }
 
-const span = (start: number, end: number, text: string): DecorationItem => ({
-  start,
-  end,
-  properties: { class: "hover-tip", "data-hover": text },
-});
+/** A stretch of an example and the text its hover shows. */
+export interface HoverSpan {
+  start: number;
+  end: number;
+  text: string;
+}
+
+const span = (start: number, end: number, text: string): HoverSpan => ({ start, end, text });
 
 /** The spans to decorate: record keys, variant tags and scalar values (never overlapping). */
 function spans(v: Value, out: [number, number][]): void {
@@ -41,7 +44,7 @@ function spans(v: Value, out: [number, number][]): void {
   }
 }
 
-function dataDecorations(code: string, options: HoverOptions): DecorationItem[] {
+function dataSpans(code: string, options: HoverOptions): HoverSpan[] {
   let ctx: HoverContext;
   try {
     const schema = options.schema && { file: parseSchemaFile(options.schema.text), type: options.schema.type ?? "Root" };
@@ -59,7 +62,7 @@ function dataDecorations(code: string, options: HoverOptions): DecorationItem[] 
     });
 }
 
-function schemaDecorations(code: string): DecorationItem[] {
+function schemaSpans(code: string): HoverSpan[] {
   let file: SchemaFile;
   try {
     file = parseSchemaFile(code);
@@ -67,7 +70,7 @@ function schemaDecorations(code: string): DecorationItem[] {
     return [];
   }
   // Type names outside comments that the file defines.
-  const out: DecorationItem[] = [];
+  const out: HoverSpan[] = [];
   const masked = code.replace(/\/\/.*$/gm, (c) => " ".repeat(c.length));
   for (const m of masked.matchAll(/\b[A-Z][A-Za-z0-9_]*\b/g)) {
     const d = file.definition(m[0]);
@@ -76,12 +79,20 @@ function schemaDecorations(code: string): DecorationItem[] {
   return out;
 }
 
+/** The hovers of a haus example: types in data, definitions in a schema. Never crosses a line. */
+export const hoverSpans = (kind: "data" | "schema", code: string, options: HoverOptions = {}): HoverSpan[] =>
+  kind === "schema" ? schemaSpans(code) : dataSpans(code, options);
+
 /** A Shiki transformer adding hover types to a haus example. */
 export function hausHover(kind: "data" | "schema", options: HoverOptions = {}): ShikiTransformer {
   return {
     name: "haus-hover",
     preprocess(code, shikiOptions) {
-      const decorations = kind === "schema" ? schemaDecorations(code) : dataDecorations(code, options);
+      const decorations: DecorationItem[] = hoverSpans(kind, code, options).map(({ start, end, text }) => ({
+        start,
+        end,
+        properties: { class: "hover-tip", "data-hover": text },
+      }));
       shikiOptions.decorations = [...(shikiOptions.decorations ?? []), ...decorations];
     },
   };

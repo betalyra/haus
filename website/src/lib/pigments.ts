@@ -31,3 +31,17 @@ export interface Stroke {
   /** How far the edge wanders. 1 is a normal wash. */
   wobble?: number;
 }
+
+/** Brush colours for a page's title wash (on the page and in its Open Graph image). */
+export const brushes: [Pigment, Pigment][] = [
+  ["rose", "gold"],
+  ["cerulean", "ultramarine"],
+  ["sap", "gold"],
+  ["violet", "rose"],
+  ["gold", "sienna"],
+];
+
+export const hash = (s: string) => [...s].reduce((h, c) => (Math.imul(h, 31) + c.charCodeAt(0)) | 0, 7) >>> 0;
+
+/** The brush pair for a title: the same title always gets the same colours. */
+export const brushFor = (title: string) => brushes[hash(title) % brushes.length]!;

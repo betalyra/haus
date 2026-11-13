@@ -1,0 +1,127 @@
+---
+title: From schema to code
+description: One schema file, and typed data in TypeScript and Rust, checked on the way in.
+tableOfContents: false
+---
+
+import Story from "../../website/src/components/docs/story/Story.astro";
+import Step from "../../website/src/components/docs/story/Step.astro";
+
+export const steps = [
+`
+import std/time (Date)
+
+type Contact = <
+  | Email String
+  | Slack { workspace: String, user: String }
+>
+
+type Status = closed < Available | Away { until: Date } >
+
+type Person = { name: String, contact: Contact, status: Status }
+
+type Root = Array Person
+`,
+`
+import team from "./team.haus"
+
+// Typed by team.schema.haus, checked on import.
+const onCall = team.filter((p) => p.status._tag === "Available")
+
+for (const person of onCall) {
+  if (person.contact._tag === "Slack") {
+    notify(person.contact.user)
+  }
+}
+`,
+`
+import { parseWith } from "@haus-fmt/haus"
+import { z } from "zod"
+
+const Team = z.array(z.object({ name: z.string() }))
+
+const team = parseWith(Team, text)
+`,
+`
+// build.rs
+haus_build::Config::new().compile("src/team.schema.haus")?;
+
+// main.rs
+mod team { haus::include_schema!("team"); }
+
+let people: team::Root = haus::from_str(&text)?;
+for person in &people {
+    if let team::Contact::Slack { user, .. } = &person.contact {
+        notify(user);
+    }
+}
+`,
+`
+[
+  {
+    name: "Alan",
+    contact: Slack { workspace: "bletchley" },
+    status: Available,
+  },
+]
+
+// missing field 'user' at $[0].contact
+`,
+];
+
+The paging tool needs the team in its code, typed. You already have the schema from the [tour](/docs/tour); here's where it goes.
+
+<Story>
+
+<Step lang="haus-schema" label="team.schema.haus" code={steps[0]}>
+
+### The schema you already have
+
+`team.haus` is checked against `team.schema.haus` next to it, in your editor as you type. Hover a type name to see it.
+
+</Step>
+
+<Step lang="ts" label="pager.ts" code={steps[1]}>
+
+### Import it in TypeScript
+
+With `@haus-fmt/import`, a `.haus` file **imports like a module**: typed by its schema, checked on load.
+
+Variants arrive as tagged objects, so TypeScript knows only Slack contacts have a `user`.
+
+</Step>
+
+<Step lang="ts" label="pager.ts" code={steps[2]}>
+
+### Already using Zod?
+
+`parseWith` reads haus with **any Standard Schema** library: Zod, Valibot, ArkType, Effect. Keep your types, swap the format.
+
+</Step>
+
+<Step lang="rust" label="main.rs" code={steps[3]}>
+
+### Rust, generated
+
+`haus-build` turns the schema into Rust types at build time. Variants become **enums**, and `match` makes you handle every case.
+
+</Step>
+
+<Step label="team.haus" code={steps[4]}>
+
+### A broken file
+
+Alan's Slack contact lost its `user`. Decoding stops and says **what** is wrong and **where**. Your editor said so first.
+
+</Step>
+
+</Story>
+
+## Which one to use
+
+- **TypeScript, new project:** typed imports, or build schemas in code with `@haus-fmt/haus/schema`.
+- **TypeScript, existing schemas:** `parseWith` with the library you already use.
+- **Effect:** `@haus-fmt/effect`.
+- **Rust:** `haus-build` in `build.rs`.
+
+Next: [Time and money](/docs/tours/time-money).

@@ -1,0 +1,155 @@
+---
+title: A tour of haus
+description: Model the data for a small on-call tool, one problem at a time, and watch haus work out the types.
+tableOfContents: false
+---
+
+import Story from "../website/src/components/docs/story/Story.astro";
+import Step from "../website/src/components/docs/story/Step.astro";
+
+export const steps = [
+`
+{ name: "Ada", joined: Date("2024-03-01") }
+`,
+`
+[
+  {
+    name: "Ada",
+    joined: Date("2024-03-01"),
+    contact: Email("ada@example.com"),
+  },
+  {
+    name: "Alan",
+    joined: Date("2025-01-15"),
+    contact: Slack { workspace: "bletchley", user: "alan" },
+  },
+]
+`,
+`
+[
+  {
+    name: "Ada",
+    joined: Date("2024-03-01"),
+    contact: Email("ada@example.com"),
+    status: Available,
+  },
+  {
+    name: "Alan",
+    joined: Date("2025-01-15"),
+    contact: Slack { workspace: "bletchley", user: "alan" },
+    status: Away { until: Date("2026-12-01") },
+  },
+]
+`,
+`
+[
+  {
+    name: "Ada",
+    joined: Date("2024-03-01"),
+    contact: Email("ada@example.com"),
+    status: Available,
+    backup: "Grace",
+  },
+  {
+    name: "Alan",
+    joined: Date("2025-01-15"),
+    contact: Slack { workspace: "bletchley", user: "alan" },
+    status: Away { until: Date("2026-12-01") },
+  },
+]
+`,
+`
+// One entry per page. Append, never rewrite.
+Paged { to: "Ada", at: Instant("2026-11-12T03:14:00Z"), reason: "deploy failed" },
+Acknowledged { by: "Ada", at: Instant("2026-11-12T03:16:30Z") },
+Paged { to: "Alan", at: Instant("2026-11-12T09:02:00Z"), reason: "disk 90% full" },
+`,
+`
+import std/time (Date)
+
+// Open: a newer app can add Teams, older ones keep working.
+type Contact = <
+  | Email String
+  | Slack { workspace: String, user: String }
+>
+
+// Closed: exactly these, nothing else.
+type Status = closed < Available | Away { until: Date } >
+
+type Person = {
+  name: String,
+  joined: Date,
+  contact: Contact,
+  status: Status,
+  backup?: String,
+}
+
+type Root = Array Person
+`,
+];
+
+You're building a small tool that pages your team when something breaks. It needs to know who's on the team and how to reach them. Let's model that, one problem at a time.
+
+The card under the data shows the type haus works out on its own.
+
+<Story types>
+
+<Step label="team.haus" code={steps[0]}>
+
+### Start with a person
+
+A record with a name and the day they joined. `Date` is a real date, not a string you'll parse later.
+
+</Step>
+
+<Step label="team.haus" code={steps[1]}>
+
+### Ada wants email, Alan wants Slack
+
+In JSON you'd add a `"type": "slack"` field and some fields that are only sometimes set, and hope every reader checks them.
+
+In haus you write each case with its own data. haus works out the rest: **`Email` or `Slack`**.
+
+</Step>
+
+<Step label="team.haus" code={steps[2]}>
+
+### Don't page someone on holiday
+
+Alan is `Away` until December. Only `Away` has an `until`, so the date is always there when it matters, and never when it doesn't.
+
+</Step>
+
+<Step label="team.haus" code={steps[3]}>
+
+### Not everyone has a backup
+
+Ada does, Alan doesn't. There's no `null`: Alan just has no `backup`, and the type says **`backup?`**.
+
+</Step>
+
+<Step label="pages.haus" code={steps[4]}>
+
+### Keep a log of every page
+
+A haus file is a stream: add an entry by appending it. Each kind of entry carries only its own fields.
+
+</Step>
+
+<Step lang="haus-schema" label="team.schema.haus" code={steps[5]}>
+
+### Pin it down
+
+Once the shape settles, write it as a schema, and your editor and your code check every file against it.
+
+Leave `Contact` **open** so new ways to reach people can come later. Make `Status` **closed** so nothing unexpected slips through.
+
+</Step>
+
+</Story>
+
+## Your turn
+
+- Paste your own data into the [playground](/play).
+- Coming from JSON? [Compare the two](/docs/from-json).
+- Go deeper with the [guided tours](/docs/tours/evolving).

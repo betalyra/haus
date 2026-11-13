@@ -20,6 +20,8 @@
 @import "@fontsource-variable/geist-mono";
 
 @import "./tokens.css";
+@import "./code.css";
+@import "./wash.css";
 
 /* Tell Tailwind where utilities are used: the docs' components and pages. */
 @source "../components";
@@ -217,7 +219,7 @@ a:focus-visible > .brush-hover {
 }
 
 /* Links: ink on a painted rose stroke, as in the landing page's prose (.prose-link). */
-.sl-markdown-content a:not(:where(.not-content *)) {
+.sl-markdown-content a:not(:where(.not-content *, .sl-link-card *)) {
   color: var(--ink);
   text-decoration: none;
   background-image: url("/strokes/rose.svg");
@@ -228,8 +230,20 @@ a:focus-visible > .brush-hover {
   box-decoration-break: clone;
   transition: background-size 260ms cubic-bezier(0.16, 1, 0.3, 1);
 }
-.sl-markdown-content a:not(:where(.not-content *)):hover {
+.sl-markdown-content a:not(:where(.not-content *, .sl-link-card *)):hover {
   background-size: 100% 0.95em;
+}
+
+/* Link cards: the card is the link, so no stroke; the rose arrives on hover instead. */
+.sl-link-card {
+  border-radius: 14px;
+  border-color: var(--line);
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+.sl-link-card:hover {
+  background: var(--paper);
+  border-color: color-mix(in oklab, var(--rose) 45%, white);
+  box-shadow: 0 6px 24px -14px color-mix(in oklab, var(--ink) 30%, transparent);
 }
 
 /* Emphasis: ink, not paint. */
@@ -297,4 +311,30 @@ a:focus-visible > .brush-hover {
 /* No theme picker, so no divider after the header links. */
 .social-icons::after {
   display: none;
+}
+
+/* The page title: a little more presence, as on the landing page, with room
+   for the wash under its last word (PageTitle.astro). */
+.page-title {
+  color: var(--ink);
+  font-size: clamp(2.2rem, 4.5vw, 3rem);
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  font-weight: 650;
+}
+.page-title .brush {
+  white-space: normal;
+}
+
+/* Code blocks: the file name small and grey above the code, like .code__label. */
+.expressive-code .frame.has-title .header .title {
+  font-size: 0.75rem;
+  letter-spacing: 0.01em;
+  padding-block: 0.7rem 0;
+}
+.expressive-code .frame.has-title .header {
+  border-bottom: 0;
+}
+.expressive-code .frame.has-title pre {
+  border-top: 0;
 }

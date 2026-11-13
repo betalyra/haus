@@ -1,0 +1,148 @@
+---
+/**
+ * "Why haus" on the docs welcome page: the landing page's feature list in
+ * small, each idea with its icon on a watercolour wash.
+ */
+import { PiCoinsLight, PiFeatherLight, PiPlantLight, PiSealCheckLight, PiShapesLight, PiShieldCheckLight } from "react-icons/pi";
+import Wash from "@/components/Wash.astro";
+import type { Pigment } from "@/lib/pigments";
+
+// Ordered by how soon you'll notice: writing it, the values, the cases, your
+// code, then what pays off over time.
+const reasons: { icon: typeof PiShapesLight; wash: [Pigment, Pigment]; title: string; text: string }[] = [
+  {
+    icon: PiFeatherLight,
+    wash: ["violet", "rose"],
+    title: "Nice to write by hand",
+    text: "Comments, no quotes on keys, trailing commas, multi-line text.",
+  },
+  {
+    icon: PiCoinsLight,
+    wash: ["gold", "sienna"],
+    title: "Values stay exact",
+    text: "`19.90` stays `19.90`. Dates, times and money are real types.",
+  },
+  {
+    icon: PiShapesLight,
+    wash: ["rose", "gold"],
+    title: "Say which case it is",
+    text: "`Shipped { at }` instead of three flags and a nullable date.",
+  },
+  {
+    icon: PiSealCheckLight,
+    wash: ["sap", "yellow"],
+    title: "Types in your code",
+    text: "Inferred from your data or a schema, for TypeScript, Rust and more.",
+  },
+  {
+    icon: PiPlantLight,
+    wash: ["cerulean", "sap"],
+    title: "Grows without breaking",
+    text: "Append entries, add fields and cases. Older readers keep working.",
+  },
+  {
+    icon: PiShieldCheckLight,
+    wash: ["cerulean", "ultramarine"],
+    title: "Same in every language",
+    text: "A spec proven in Lean. Every parser agrees on every input.",
+  },
+];
+
+/** `**bold**` and `code` in our own copy. */
+const markup = (text: string) =>
+  text
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>");
+---
+
+<ul class="why not-content">
+  {
+    reasons.map((r, i) => {
+      const [main, bleed] = r.wash;
+      const Icon = r.icon;
+      return (
+        <li class="why__item">
+          <div class="why__icon">
+            <Wash
+              seed={300 + i * 11}
+              delay={(i % 2) * 120}
+              class="why__wash"
+              strokes={[
+                { x: 0.52, y: 0.54, rx: 0.3, ry: 0.28, color: main, strength: 1.15 },
+                { x: 0.76, y: 0.77, rx: 0.15, ry: 0.13, color: bleed, strength: 1.05 },
+              ]}
+            />
+            <Icon size={30} aria-hidden="true" />
+          </div>
+          <div>
+            <h3 class="why__title">{r.title}</h3>
+            <p class="why__text" set:html={markup(r.text)} />
+          </div>
+        </li>
+      );
+    })
+  }
+</ul>
+
+<style>
+  .why {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.6rem 2.5rem;
+    margin: 2rem 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  @media (min-width: 50rem) {
+    .why {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+  .why__item {
+    display: grid;
+    grid-template-columns: 2.75rem minmax(0, 1fr);
+    gap: 1.1rem;
+    align-items: start;
+  }
+  .why__icon {
+    position: relative;
+    isolation: isolate;
+    display: grid;
+    place-items: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    color: var(--ink);
+  }
+  .why__icon :global(.why__wash) {
+    inset: -1rem;
+    width: calc(100% + 2rem);
+    height: calc(100% + 2rem);
+    z-index: -1;
+  }
+  .why__title {
+    margin: 0.1rem 0 0.35rem;
+    font-family: var(--font-heading);
+    font-size: 1.1rem;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+  }
+  .why__text {
+    margin: 0;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    color: var(--ink-2);
+  }
+  .why__text :global(strong) {
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .why__text :global(code) {
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    padding: 0.1em 0.3em;
+    border-radius: 4px;
+    background: var(--sl-color-gray-6, #f3f1ee);
+    color: var(--ink);
+  }
+</style>

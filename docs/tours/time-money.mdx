@@ -1,0 +1,143 @@
+---
+title: Time and money
+description: Dates, moments, meetings, durations and amounts, each written as what it is.
+tableOfContents: false
+---
+
+import Story from "../../website/src/components/docs/story/Story.astro";
+import Step from "../../website/src/components/docs/story/Step.astro";
+
+export const steps = [
+`
+{
+  title: "Schema design workshop",
+  starts: "2027-03-29 10:00",
+  price: 19.9,
+  currency: "EUR",
+}
+`,
+`
+{
+  title: "Schema design workshop",
+  starts: ZonedDateTime("2027-03-29T10:00:00+01:00[Europe/Lisbon]"),
+  price: 19.9,
+  currency: "EUR",
+}
+`,
+`
+{
+  title: "Schema design workshop",
+  starts: ZonedDateTime("2027-03-29T10:00:00+01:00[Europe/Lisbon]"),
+  length: Duration("PT1H30M"),
+  signupBy: Date("2027-03-15"),
+  price: 19.9,
+  currency: "EUR",
+}
+`,
+`
+{
+  title: "Schema design workshop",
+  starts: ZonedDateTime("2027-03-29T10:00:00+01:00[Europe/Lisbon]"),
+  length: Duration("PT1H30M"),
+  signupBy: Date("2027-03-15"),
+  price: Money(19.90, EUR),
+}
+`,
+`
+{
+  title: "Schema design workshop",
+  starts: ZonedDateTime("2027-03-29T10:00:00+01:00[Europe/Lisbon]"),
+  length: Duration("PT1H30M"),
+  signupBy: Date("2027-03-15"),
+  price: Money(19.90, EUR),
+  bookings: [
+    { name: "Ada", at: Instant("2027-03-01T08:15:30Z"), paid: Money(19.90, EUR) },
+    { name: "Alan", at: Instant("2027-03-02T17:40:05Z"), paid: Money(0.00031, BTC) },
+  ],
+}
+`,
+`
+import std/time (Date, Duration, Instant, ZonedDateTime)
+import @haus/money (Money)
+
+type Booking = { name: String, at: Instant, paid: Money }
+
+type Root = {
+  title: String,
+  starts: ZonedDateTime,
+  length: Duration,
+  signupBy: Date,
+  price: Money,
+  bookings: Array Booking,
+}
+`,
+];
+
+You're selling seats for a workshop. Time and money are where this kind of data quietly goes wrong: a meeting an hour off after a clock change, a price that drifts to `19.899999`.
+
+<Story types>
+
+<Step label="workshop.haus" code={steps[0]}>
+
+### Which 10:00?
+
+Which time zone? Is `19.9` exact? Is the currency part of the price? To haus, these are just a `String` and a number.
+
+</Step>
+
+<Step label="workshop.haus" code={steps[1]}>
+
+### A meeting happens in a place
+
+It starts at 10:00 **in Lisbon**. `ZonedDateTime` keeps the local time, the offset and the zone, summer time included.
+
+</Step>
+
+<Step label="workshop.haus" code={steps[2]}>
+
+### How long, and until when?
+
+It lasts a `Duration`. Sign-up closes on a `Date`: a day, with no time or zone to get wrong.
+
+</Step>
+
+<Step label="workshop.haus" code={steps[3]}>
+
+### Don't let 19.90 become 19.9
+
+`Money(19.90, EUR)` keeps **every digit** and its currency. haus never rounds a number through a float.
+
+</Step>
+
+<Step label="workshop.haus" code={steps[4]}>
+
+### When exactly was it booked?
+
+A booking happened at one moment, wherever you look from: an `Instant`, in UTC. Any currency works, at any precision.
+
+</Step>
+
+<Step lang="haus-schema" label="workshop.schema.haus" code={steps[5]}>
+
+### Checked, not trusted
+
+Time types come from `std/time`, money from `@haus/money`. With a schema, `Date("2027-02-30")` is **an error**, not a date.
+
+</Step>
+
+</Story>
+
+## Which time type?
+
+| Type | For | Example |
+|---|---|---|
+| `Date` | a day: birthdays, deadlines | `Date("2027-03-15")` |
+| `Time` | a time of day: opening hours | `Time("09:00:00")` |
+| `DateTime` | a date and time with no zone | `DateTime("2027-03-29T10:00:00")` |
+| `Instant` | a moment: logs, timestamps | `Instant("2027-03-01T08:15:30Z")` |
+| `ZonedDateTime` | a time in a place: meetings | `ZonedDateTime("…+01:00[Europe/Lisbon]")` |
+| `Duration` | a length of time | `Duration("PT1H30M")` |
+| `YearMonth` | a month: billing periods | `YearMonth("2027-03")` |
+| `TimeZone` | a zone on its own | `TimeZone("Europe/Lisbon")` |
+
+The exact formats are in the [std/time profile](/docs/spec/time).

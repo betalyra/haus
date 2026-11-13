@@ -7,7 +7,7 @@ import { createCanvas, GlobalFonts, Path2D, type Canvas, type SKRSContext2D } fr
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { mark } from "../mark";
-import type { Pigment } from "../pigments";
+import { brushFor, hash, type Pigment } from "../pigments";
 import { ink, paintWash, plateCanvas } from "./paint";
 
 export const WIDTH = 1200;
@@ -65,16 +65,6 @@ const fit = (ctx: SKRSContext2D, text: string, family: string, width: number, si
   return { size, lines };
 };
 
-/** Brush colours, picked per page so neighbouring links don't all look alike. */
-const brushes: [Pigment, Pigment][] = [
-  ["rose", "gold"],
-  ["cerulean", "ultramarine"],
-  ["sap", "gold"],
-  ["violet", "rose"],
-  ["gold", "sienna"],
-];
-
-const hash = (s: string) => [...s].reduce((h, c) => (Math.imul(h, 31) + c.charCodeAt(0)) | 0, 7) >>> 0;
 
 /** The haus mark, as in the site header. */
 const drawMark = (ctx: SKRSContext2D, x: number, y: number, size: number) => {
@@ -150,7 +140,7 @@ export function ogImage({ title, description, eyebrow }: OgImage): Buffer {
   const lastBaseline = firstBaseline + (titleFit.lines.length - 1) * lineHeight;
   const wordX = left + ctx.measureText(lastLine).width - ctx.measureText(lastWord).width;
   const em = titleFit.size;
-  const [a, b] = brushes[hash(title) % brushes.length];
+  const [a, b] = brushFor(title);
   paintWash(
     ctx,
     { x: wordX - 0.3 * em, y: lastBaseline + 0.24 * em - 0.75 * em, w: ctx.measureText(lastWord).width + 0.55 * em, h: 0.75 * em },

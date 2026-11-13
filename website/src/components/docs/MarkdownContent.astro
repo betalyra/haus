@@ -1,0 +1,11 @@
+---
+/**
+ * Starlight's page content, plus the one tooltip for the hover types in its
+ * haus code blocks (src/lib/ec-hover.ts, HoverTips.astro).
+ */
+import Default from "@astrojs/starlight/components/MarkdownContent.astro";
+import HoverTips from "@/components/HoverTips.astro";
+---
+
+<Default><slot /></Default>
+<HoverTips />

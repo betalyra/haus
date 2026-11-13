@@ -1,0 +1,19 @@
+---
+/**
+ * One step of a <Story>: the prose, and the code it talks about. The code is
+ * carried in data-code; the Story reads it from there and tokenizes every step
+ * together, so tokens that stay can move instead of being redrawn.
+ */
+interface Props {
+  code: string;
+  /** Shiki language of this step (default haus); lets a story start from JSON. */
+  lang?: "haus" | "haus-schema" | "json" | "ts" | "rust" | "sh";
+  /** Small caption above the code while this step is active, e.g. a file name. */
+  label?: string;
+}
+const { code, lang = "haus", label } = Astro.props;
+---
+
+<section class="story-step" data-code={code.trim()} data-lang={lang} data-label={label}>
+  <slot />
+</section>

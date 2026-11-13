@@ -1,0 +1,107 @@
+---
+title: Coming from JSON
+description: The same order in JSON and in haus, and what changes on the way.
+tableOfContents: false
+---
+
+import Story from "../website/src/components/docs/story/Story.astro";
+import Step from "../website/src/components/docs/story/Step.astro";
+
+export const steps = [
+`
+{
+  "id": 1042,
+  "total": 30.30,
+  "currency": "EUR",
+  "paid": true,
+  "shipped": true,
+  "shippedAt": "2026-11-08T09:12:00Z",
+  "cancelled": false,
+  "note": null
+}
+`,
+`
+// Order 1042
+{
+  id: 1042,
+  total: 30.30,
+  currency: "EUR",
+  paid: True,
+  shipped: True,
+  shippedAt: "2026-11-08T09:12:00Z",
+  cancelled: False,
+  note: None,
+}
+`,
+`
+// Order 1042
+{
+  id: 1042,
+  total: 30.30,
+  currency: "EUR",
+  status: Shipped { at: Instant("2026-11-08T09:12:00Z") },
+  note: None,
+}
+`,
+`
+// Order 1042
+{
+  id: 1042,
+  total: Money(30.30, EUR),
+  status: Shipped { at: Instant("2026-11-08T09:12:00Z") },
+}
+`,
+];
+
+If you've written JSON, you can read haus. Here's one order, translated in four steps.
+
+<Story>
+
+<Step lang="json" label="order.json" code={steps[0]}>
+
+### Looks fine, until it doesn't
+
+`30.30` comes back as `30.3`. `shipped` and `cancelled` can both be `true`. The date is a string. And `null` might mean "no note", "unknown" or "forgot".
+
+</Step>
+
+<Step label="order.haus" code={steps[1]}>
+
+### Same data, less noise
+
+No quotes on keys, comments allowed, a trailing comma is fine. `true` becomes `True`, `null` becomes `None`. Already valid haus.
+
+</Step>
+
+<Step label="order.haus" code={steps[2]}>
+
+### Can it be shipped and cancelled?
+
+Not any more. Three flags become **one variant**, and the time moves inside `Shipped` as a real `Instant`.
+
+</Step>
+
+<Step label="order.haus" code={steps[3]}>
+
+### Nothing left to guess
+
+`Money(30.30, EUR)` keeps every digit and its currency. No note? Leave the field out.
+
+</Step>
+
+</Story>
+
+## At a glance
+
+| JSON | haus |
+|---|---|
+| `"key": …` | `key: …` |
+| `true`, `false` | `True`, `False` |
+| `null` | leave the field out, or `None` / `Some(…)` |
+| `{ "type": "email", "address": … }` | `Email(…)` |
+| `30.30` (a float, usually) | `30.30` (exact) |
+| `"2026-11-08"` | `Date("2026-11-08")` |
+| one array per file | a stream: one value per entry |
+| no comments | `//` and `/* */` |
+
+Next: the [tour](/docs/tour) shows what you can build with variants.

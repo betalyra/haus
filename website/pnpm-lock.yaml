@@ -65,6 +65,9 @@ importers:
       '@napi-rs/canvas':
         specifier: 1.1.1
         version: 1.1.1
+      '@shikijs/magic-move':
+        specifier: ^4.6.0
+        version: 4.6.0(react@19.3.1)(shiki@4.6.0)
       '@tailwindcss/vite':
         specifier: ^4.3.5
         version: 4.3.5(vite@8.3.7(@types/node@24.19.2)(jiti@2.7.0)(yaml@2.9.1))
@@ -77,6 +80,9 @@ importers:
       cn:
         specifier: ^0.5.2
         version: 0.5.2
+      diff-match-patch-es:
+        specifier: ^2.0.1
+        version: 2.0.1
       radix-ui:
         specifier: ^1.8.1
         version: 1.8.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -92,6 +98,9 @@ importers:
       shadcn:
         specifier: ^4.23.0
         version: 4.23.0
+      shiki:
+        specifier: 4.6.0
+        version: 4.6.0
       starlight-llms-txt:
         specifier: 0.12.0
         version: 0.12.0(@astrojs/markdown-satteri@0.4.9)(@astrojs/starlight@0.42.11(astro@7.4.11(@types/node@24.19.2)(jiti@2.7.0)(yaml@2.9.1)))(astro@7.4.11(@types/node@24.19.2)(jiti@2.7.0)(yaml@2.9.1))
@@ -1755,6 +1764,27 @@ packages:
     resolution: {integrity: sha512-1yMEX3oCVV54LUq/ovfpRkDQoYDkcvjSWFFa/YLUDMiSoRzMi2uxLJYbv41ahT8Lu9lFMaa7hecd3Q39trqUyg==}
     engines: {node: '>=20'}
 
+  '@shikijs/magic-move@4.6.0':
+    resolution: {integrity: sha512-grYmb/QOTrylHhA4Dj5IipAbHAj5zdRNfZf/VUrtCWZgs5hQCNC3S1C3AmHPG5uCZp1BckVcvqhPJXzD93+pPw==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      react: ^18.2.0 || ^19.0.0
+      shiki: ^4.0.0
+      solid-js: ^1.9.1
+      svelte: ^5.0.0-0
+      vue: ^3.4.0
+    peerDependenciesMeta:
+      react:
+        optional: true
+      shiki:
+        optional: true
+      solid-js:
+        optional: true
+      svelte:
+        optional: true
+      vue:
+        optional: true
+
   '@shikijs/primitive@4.6.0':
     resolution: {integrity: sha512-c54+TQEo9ToqgfL/AU8FpjnV09+GA9Oa7M5ROkkXteZfp5XzpAJGXjjvZQFQioJOwm/w/6Z3lIzQstAkl8coag==}
     engines: {node: '>=20'}
@@ -2238,6 +2268,9 @@ packages:
 
   devlop@1.1.0:
     resolution: {integrity: sha512-RWmIqhcFf1lRYBvNmr7qTNuyCt/7/ns2jbpp1+PalgE/rDQcBT0fioSMUpJ93irlUhC5hrg4cYqe6U+0ImW0rA==}
+
+  diff-match-patch-es@2.0.1:
+    resolution: {integrity: sha512-+Sl+/H47ArQiKPp8fA307M1RwyCwFqNhggw0mAEFherLNL/J2ZUFZsnELj65Cir91VfVPx3jlNzeKBdr+QAFTw==}
 
   diff@8.0.4:
     resolution: {integrity: sha512-DPi0FmjiSU5EvQV0++GFDOJ9ASQUVFh5kD+OzOnYdi7n3Wpm9hWWGfB/O2blfHcMVTL5WkQXSnRiK9makhrcnw==}
@@ -2996,6 +3029,9 @@ packages:
 
   ofetch@1.5.1:
     resolution: {integrity: sha512-2W4oUZlVaqAPAil6FUg/difl6YhqhUR7x2eZY4bQCko22UXg3hptq9KLQdqFClV+Wu85UX7hNtdGTngi/1BxcA==}
+
+  ohash@2.0.12:
+    resolution: {integrity: sha512-65S/5gk9YSsaRjcyf7Nfa6h/d3E8/1gslpXfI4W7Dxn/oap8IKRuNT5VXkLQ1YFKIEg4apRY4Pj6aiwFzrDdmw==}
 
   onetime@5.1.2:
     resolution: {integrity: sha512-kbpaSSGJTWdAY5KPVeMOKXSrPtr8C8C7wodJbcsd51jRnmD+GZu8Y0VoU6Dm5Z4vWr0Ig/1NKuWRKf7j5aaYSg==}
@@ -5458,6 +5494,14 @@ snapshots:
     dependencies:
       '@shikijs/types': 4.6.0
 
+  '@shikijs/magic-move@4.6.0(react@19.3.1)(shiki@4.6.0)':
+    dependencies:
+      diff-match-patch-es: 2.0.1
+      ohash: 2.0.12
+    optionalDependencies:
+      react: 19.3.1
+      shiki: 4.6.0
+
   '@shikijs/primitive@4.6.0':
     dependencies:
       '@shikijs/types': 4.6.0
@@ -5935,6 +5979,8 @@ snapshots:
   devlop@1.1.0:
     dependencies:
       dequal: 2.0.3
+
+  diff-match-patch-es@2.0.1: {}
 
   diff@8.0.4: {}
 
@@ -6866,6 +6912,8 @@ snapshots:
       destr: 2.0.5
       node-fetch-native: 1.6.7
       ufo: 1.6.4
+
+  ohash@2.0.12: {}
 
   onetime@5.1.2:
     dependencies:

@@ -1,0 +1,122 @@
+---
+title: Logs and streams
+description: A haus file is a sequence of values. Append to it, add new kinds of entries, and read it as it arrives.
+tableOfContents: false
+---
+
+import Story from "../../website/src/components/docs/story/Story.astro";
+import Step from "../../website/src/components/docs/story/Step.astro";
+
+export const steps = [
+`
+Paged { to: "Ada", at: Instant("2026-11-12T03:14:00Z") },
+`,
+`
+Paged { to: "Ada", at: Instant("2026-11-12T03:14:00Z") },
+Acknowledged { by: "Ada", at: Instant("2026-11-12T03:16:30Z") },
+`,
+`
+Paged { to: "Ada", at: Instant("2026-11-12T03:14:00Z") },
+Acknowledged { by: "Ada", at: Instant("2026-11-12T03:16:30Z") },
+Paged { to: "Alan", at: Instant("2026-11-12T09:02:00Z") },
+Escalated { to: "Grace", after: Duration("PT10M") },
+`,
+`
+import { parseStream } from "@haus-fmt/haus"
+
+const response = await fetch("/pages")
+
+for await (const entry of parseStream(response.body!)) {
+  console.log(entry)
+}
+`,
+`
+import { parseStream } from "@haus-fmt/haus"
+
+const response = await fetch("/pages")
+
+const entries = parseStream(response.body!, {
+  requireTerminator: true,
+})
+
+for await (const entry of entries) {
+  console.log(entry)
+}
+`,
+`
+import * as h from "@haus-fmt/haus/schema"
+
+const Entry = h.OpenVariant({
+  Paged: h.Record({ to: h.String, at: h.Instant }),
+  Acknowledged: h.Record({ by: h.String, at: h.Instant }),
+})
+
+for await (const entry of h.decodeStream(Entry, response.body!)) {
+  if (entry._tag === "Paged") console.log(entry.to)
+}
+`,
+];
+
+Your paging tool from the [tour](/docs/tour) logs every page. Logs grow forever, get tailed live and read by other tools. In haus, **every file is already a stream**: no second format needed.
+
+<Story types>
+
+<Step label="pages.haus" code={steps[0]}>
+
+### One page, one entry
+
+An entry is a value like any other, **followed by a comma**. Every entry gets one, the last one too.
+
+</Step>
+
+<Step label="pages.haus" code={steps[1]}>
+
+### New entries go at the end
+
+Append and you're done. No array to reopen, no bracket to move.
+
+> `>>`, `tail -f` and `cat a.haus b.haus` all keep the file valid.
+
+</Step>
+
+<Step label="pages.haus" code={steps[2]}>
+
+### A new kind of entry
+
+You add escalations. Tools that only know `Paged` and `Acknowledged` read `Escalated` as **Unknown** and carry on.
+
+</Step>
+
+<Step lang="ts" label="watch.ts" code={steps[3]}>
+
+### Read as it arrives
+
+The comma tells the reader an entry is complete, so it hands each one over **right away**. Memory stays bounded by the largest entry.
+
+</Step>
+
+<Step lang="ts" label="watch.ts" code={steps[4]}>
+
+### Was the connection cut?
+
+A dropped connection could leave `100` where `1000` was meant. **Strict mode** requires the last comma, and reports a truncated stream instead.
+
+</Step>
+
+<Step lang="ts" label="watch.ts" code={steps[5]}>
+
+### Typed entries
+
+With a schema, each entry is checked as it arrives. `OpenVariant` lets new kinds through as `Unknown`.
+
+</Step>
+
+</Story>
+
+## Good to know
+
+- Encoders write streams **one entry per line**, so `grep` and `wc -l` work like on NDJSON, and it's still haus.
+- A single document is a stream of one. A reader that expects one value rejects two.
+- In a schema, `type Root = Stream Entry` says the file is a stream.
+
+Next: [From schema to code](/docs/tours/typed).

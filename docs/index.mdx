@@ -1,0 +1,42 @@
+---
+title: Welcome to haus
+description: A data format for humans, friendly to write, pleasant to read, and at home in your code.
+tableOfContents: false
+---
+
+import { LinkCard, CardGrid } from "../website/src/components/docs/starlight";
+import Why from "../website/src/components/docs/Why.astro";
+
+Most data formats leave the meaning to conventions: a `type` field, dates as strings, floats for money, `null` for three different things. **haus writes the meaning into the data**, and every language reads it exactly the same way.
+
+```haus
+// Order 1042: shipped, paid in euros, a gift.
+{
+  id: 1042,
+  total: Money(30.30, EUR),
+  status: Shipped { at: Instant("2026-11-08T09:12:00Z") },
+  items: [
+    { sku: "TEA-01", quantity: 2 },
+    { sku: "MUG-07", quantity: 1, gift: True },
+  ],
+}
+```
+
+Hover a value to see its type. No schema needed.
+
+## Why haus
+
+<Why />
+
+## Start here
+
+<CardGrid>
+  <LinkCard title="Take the tour" description="Model the data for an on-call tool in six steps." href="/docs/tour" />
+  <LinkCard title="Try the playground" description="Write haus in the browser and see its types." href="/play" />
+  <LinkCard title="Install" description="Editor support, libraries and what's coming." href="/docs/install" />
+  <LinkCard title="Coming from JSON" description="The same data in both, side by side." href="/docs/from-json" />
+</CardGrid>
+
+:::caution[Experimental]
+haus is a draft and may still change. Play with it and tell us what you think, but don't build on it in production yet.
+:::

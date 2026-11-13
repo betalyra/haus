@@ -1,0 +1,67 @@
+---
+title: Install
+description: Editor support for haus, the libraries for your language, and what's coming next.
+---
+
+import { Tabs, TabItem, LinkCard } from "../website/src/components/docs/starlight";
+
+The quickest start needs nothing at all: the [playground](/play) runs in your browser.
+
+## Your editor
+
+### VS Code
+
+Install **haus** from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=betalyra.haus), or from the command line:
+
+```sh
+code --install-extension betalyra.haus
+```
+
+You get:
+
+- **Highlighting** for `.haus` and `.schema.haus` files, and for ` ```haus ` blocks in Markdown.
+- **Errors as you type**, with what to write instead.
+- **Types on hover**, inferred from the whole file or taken from its schema.
+- **Formatting**, an outline, and **Infer Schema** from any data file.
+
+### Other editors
+
+Cursor, VSCodium and Windsurf install extensions from Open VSX; haus is coming there soon. Support for more editors is planned. The extension's language server is plain LSP, so if you'd like to wire it into yours, [tell us on GitHub](https://github.com/betalyra/haus-fmt/issues).
+
+## Your language
+
+:::note[Not published yet]
+The libraries arrive on npm, crates.io and PyPI with the first release. Until then, use them from the [repository](https://github.com/betalyra/haus-fmt). The commands below are the ones you'll use then.
+:::
+
+<Tabs syncKey="lang">
+  <TabItem label="TypeScript">
+    ```sh
+    npm install @haus-fmt/haus
+    ```
+    Parser, writer, streams, schemas, and every [Standard Schema](https://standardschema.dev) library (Zod, Valibot, ArkType). For Effect, add `@haus-fmt/effect`.
+  </TabItem>
+  <TabItem label="Rust">
+    ```sh
+    cargo add haus-fmt
+    ```
+    Imported as `haus`. Add `haus-build` to generate Rust types from your schemas.
+  </TabItem>
+  <TabItem label="Python">
+    ```sh
+    pip install haus-fmt
+    ```
+    The parser and the stream reader. Typed decoding is on its way.
+  </TabItem>
+  <TabItem label="Roc">
+    A Roc package with decoding, encoding and streams. See the [Roc README](https://github.com/betalyra/haus-fmt/tree/main/roc).
+  </TabItem>
+</Tabs>
+
+## On the command line
+
+A `haus` command-line tool is coming, to format files, check data against a schema and infer schemas. Until then, the editor and the libraries do all of it.
+
+## Next
+
+<LinkCard title="Take the tour" description="Model the data for an on-call tool in six steps." href="/docs/tour" />

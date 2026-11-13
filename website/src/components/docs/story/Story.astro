@@ -1,0 +1,363 @@
+---
+/**
+ * A guided tour: the text scrolls, the code stays pinned beside it and morphs
+ * from step to step (Shiki Magic Move). Everything is prepared at build time
+ * with the haus grammar and theme; the browser only gets the small renderer.
+ *
+ *   <Story types>
+ *     <Step code={steps[0]}>First this.</Step>
+ *     <Step code={steps[1]}>Then that.</Step>
+ *   </Story>
+ *
+ * - What a step adds is marked, so the eye finds the change.
+ * - haus examples have hover types, as everywhere else.
+ * - `types`: under the code, the type haus infers from it, morphing along.
+ * - Narrow screens: no pinning; each step shows its own code under its text.
+ */
+import { createHighlighter } from "shiki";
+import { codeToKeyedTokens, createMagicMoveMachine } from "@shikijs/magic-move/core";
+import type { KeyedTokensInfo } from "@shikijs/magic-move/types";
+import { hausLang, hausSchemaLang, hausTheme } from "@/lib/code";
+import { hausHover, hoverSpans } from "@/lib/hover";
+import { DIFF_INSERT, diffCleanupSemantic, diffMain } from "diff-match-patch-es";
+import { inferSchema, parseAll } from "../../../../../typescript/packages/haus/src/index.ts";
+
+interface Props {
+  /** Show, under the code, the type haus infers from it at each step. */
+  types?: boolean;
+}
+const { types = false } = Astro.props;
+
+const html = await Astro.slots.render("default");
+
+const decode = (s: string) =>
+  s.replace(/&(quot|#34|#39|lt|gt|amp);/g, (_, e) => ({ quot: '"', "#34": '"', "#39": "'", lt: "<", gt: ">", amp: "&" })[e as string]!);
+
+// The steps, in order, as the <Step>s wrote them (attribute values may contain ">").
+const stepTag = /<section class="story-step"((?:[^>"]|"[^"]*")*)>/g;
+const steps = [...html.matchAll(stepTag)].map(([, attrs]) => {
+  const attr = (name: string) => {
+    const m = new RegExp(`${name}="([^"]*)"`).exec(attrs!);
+    return m ? decode(m[1]!) : undefined;
+  };
+  return { code: attr("data-code") ?? "", lang: attr("data-lang") ?? "haus", label: attr("data-label") ?? "" };
+});
+
+/** The type haus infers from a data step, without the "review this" header. */
+const inferred = (s: { code: string; lang: string }) => {
+  if (s.lang !== "haus") return "";
+  try {
+    return inferSchema(parseAll(s.code)).replace(/^(\/\/.*\n)+\n/, "").trim();
+  } catch {
+    return "";
+  }
+};
+const typeTexts = types ? steps.map(inferred) : [];
+
+const highlighter = await createHighlighter({ themes: [hausTheme as any], langs: [hausLang as any, hausSchemaLang as any, "json", "ts", "rust", "sh"] });
+
+const hoversOf = (code: string, lang: string) =>
+  lang === "haus" ? hoverSpans("data", code) : lang === "haus-schema" ? hoverSpans("schema", code) : [];
+
+/**
+ * Which characters of `code` are new since `before`. Whitespace is left out of
+ * the comparison, so a record that only moves onto several lines isn't new.
+ */
+function added(before: string, code: string): boolean[] {
+  const squeeze = (text: string) => {
+    const at: number[] = [];
+    let out = "";
+    for (let i = 0; i < text.length; i++) if (!/\s/.test(text[i]!)) (out += text[i]), at.push(i);
+    return { out, at };
+  };
+  const a = squeeze(before);
+  const b = squeeze(code);
+  const diff = diffMain(a.out, b.out);
+  diffCleanupSemantic(diff);
+  const isNew = new Array<boolean>(code.length).fill(false);
+  let j = 0;
+  for (const [op, text] of diff) {
+    if (op === DIFF_INSERT) for (let k = 0; k < text.length; k++) isNew[b.at[j + k]!] = true;
+    if (op !== -1) j += text.length;
+  }
+  return isNew;
+}
+
+/**
+ * One morphing sequence. Tokens a step adds get the class `is-new`, and each
+ * token's hover text is listed beside it, since the renderer only carries classes.
+ */
+function sequence(items: { code: string; lang: string }[]) {
+  let lang = "haus";
+  const machine = createMagicMoveMachine((code, lineNumbers) => codeToKeyedTokens(highlighter, code, { lang, theme: "haus-light" }, lineNumbers));
+  let before: string | null = null;
+  return items.map((item) => {
+    if (!item.code) return null;
+    // A step in another language is a new picture, not an edit: nothing to mark.
+    if (item.lang !== lang) before = null;
+    lang = item.lang;
+    const step: KeyedTokensInfo = machine.commit(item.code).current;
+    const spans = hoversOf(item.code, item.lang);
+    const isNew = before === null ? [] : added(before, item.code);
+    const tips = step.tokens.map((t) => spans.find((s) => t.content.trim() && t.offset >= s.start && t.offset < s.end)?.text ?? null);
+    step.tokens.forEach((t, j) => {
+      const fresh = t.content.trim() && isNew.slice(t.offset, t.offset + t.content.length).some(Boolean);
+      const classes = [fresh ? "is-new" : "", tips[j] ? "hover-tip" : ""].filter(Boolean);
+      // Always set: the renderer only replaces a reused element's classes when the token has some.
+      t.htmlClass = classes.join(" ") || "is-kept";
+    });
+    before = item.code;
+    return { step, tips };
+  });
+}
+
+const code = sequence(steps);
+const typed = sequence(typeTexts.map((text) => ({ code: text, lang: "haus-schema" })));
+
+// Narrow screens: each step's code, still, under its text.
+const transformers = (lang: string) => (lang === "haus" ? [hausHover("data")] : lang === "haus-schema" ? [hausHover("schema")] : []);
+const figure = (label: string, inner: string, extra = "") =>
+  `<figure class="code code--sm ${extra}"><figcaption class="code__label">${label}</figcaption>${inner}</figure>`;
+let n = 0;
+const body = html.replace(/(<section class="story-step"(?:[^>"]|"[^"]*")*>)([\s\S]*?)(<\/section>)/g, (_, open, inner, close) => {
+  const i = n++;
+  const s = steps[i]!;
+  const still = highlighter.codeToHtml(s.code, { lang: s.lang, theme: "haus-light", transformers: transformers(s.lang) });
+  const type = typeTexts[i] ? highlighter.codeToHtml(typeTexts[i]!, { lang: "haus-schema", theme: "haus-light" }) : "";
+  return `${open}${inner}<div class="story-still not-content">${figure(s.label, still)}${type ? figure("haus infers", type, "story-still__type") : ""}</div>${close}`;
+});
+
+const data = { code, types: typed, labels: steps.map((s) => s.label) };
+---
+
+<div class="story">
+  <div class="story__code not-content">
+    <figure class="story__card">
+      <figcaption class="story__label">{steps[0]?.label}</figcaption>
+      <pre class="story__pre shiki-magic-move-container"></pre>
+    </figure>
+    {
+      types && (
+        <figure class="story__card story__types">
+          <figcaption class="story__label">haus infers</figcaption>
+          <pre class="story__pre story__type-pre shiki-magic-move-container" />
+        </figure>
+      )
+    }
+    <script is:inline type="application/json" set:html={JSON.stringify(data)} />
+  </div>
+  <div class="story__steps">
+    <Fragment set:html={body} />
+  </div>
+</div>
+
+<script>
+  import { MagicMoveRenderer } from "@shikijs/magic-move/renderer";
+  import type { KeyedTokensInfo } from "@shikijs/magic-move/types";
+  import "@shikijs/magic-move/style.css";
+
+  type Frame = { step: KeyedTokensInfo; tips: (string | null)[] } | null;
+
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /** A pinned code card that morphs between frames; a null frame hides the card. */
+  const player = (pre: HTMLElement, frames: Frame[]) => {
+    const renderer = new MagicMoveRenderer(pre, { duration: reduced ? 0 : 700, stagger: 0.2, animateContainer: true });
+    const card = pre.closest<HTMLElement>("figure")!;
+    // After a render the elements sit in token order, right after the renderer's anchor.
+    const tip = (frame: NonNullable<Frame>) =>
+      [...pre.children].slice(1, 1 + frame.tips.length).forEach((el, i) => {
+        const t = frame.tips[i];
+        if (t) (el as HTMLElement).dataset.hover = t;
+        else delete (el as HTMLElement).dataset.hover;
+      });
+    let shown = false;
+    return (i: number) => {
+      const frame = frames[i];
+      card.hidden = !frame;
+      if (!frame) return;
+      if (shown) renderer.render(frame.step);
+      else renderer.replace(frame.step);
+      shown = true;
+      tip(frame);
+    };
+  };
+
+  for (const story of document.querySelectorAll<HTMLElement>(".story")) {
+    const data = JSON.parse(story.querySelector('script[type="application/json"]')!.textContent!);
+    const sections = [...story.querySelectorAll<HTMLElement>(".story-step")];
+    const label = story.querySelector<HTMLElement>(".story__label")!;
+    const showCode = player(story.querySelector<HTMLElement>(".story__pre")!, data.code);
+    const typePre = story.querySelector<HTMLElement>(".story__type-pre");
+    const showType = typePre ? player(typePre, data.types) : () => {};
+
+    let current = -1;
+    const go = (i: number) => {
+      if (i === current || i < 0) return;
+      current = i;
+      sections.forEach((s, j) => s.classList.toggle("is-active", j === i));
+      label.textContent = data.labels[i];
+      showCode(i);
+      showType(i);
+    };
+    go(0);
+
+    // The step whose text crosses a band a little above the middle is the current one.
+    const io = new IntersectionObserver(
+      (entries) => entries.forEach((e) => e.isIntersecting && go(sections.indexOf(e.target as HTMLElement))),
+      { rootMargin: "-35% 0px -55% 0px" },
+    );
+    sections.forEach((s) => io.observe(s));
+  }
+</script>
+
+<style is:global>
+  /* Room for the code beside the text: tour pages have no table of contents. */
+  :root:has(.story) {
+    --sl-content-width: 70rem;
+  }
+
+  .story {
+    margin-block: 2rem 1rem;
+  }
+
+  /* Narrow: steps one after another, each with its code. */
+  .story__code {
+    display: none;
+  }
+  .story-still {
+    margin-top: 1rem;
+    display: grid;
+    gap: 0.5rem;
+  }
+  .story-still__type {
+    background: #fbfaf8;
+  }
+  .story-step {
+    padding-block: 1.25rem;
+    counter-increment: story-step;
+  }
+
+  /* Step titles carry their number: a tour is a sequence. */
+  .sl-markdown-content .story-step h3 {
+    display: flex;
+    align-items: baseline;
+    gap: 0.65rem;
+    margin: 0 0 0.5rem;
+    font-size: 1.3rem;
+  }
+  .story-step h3::before {
+    content: counter(story-step);
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    width: 1.55rem;
+    height: 1.55rem;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--ultramarine) 12%, white);
+    color: var(--ultramarine-ink, #2d3f9c);
+    font: 600 0.78rem/1 var(--font-mono);
+    transform: translateY(-0.12rem);
+  }
+  .sl-markdown-content .story-step p {
+    margin-top: 0.6rem;
+  }
+  /* The one line to remember: a small note on a light wash. */
+  .sl-markdown-content .story-step blockquote {
+    margin: 1rem 0 0;
+    padding: 0.55rem 0.85rem;
+    border: 0;
+    border-radius: 10px;
+    background: color-mix(in oklab, var(--sap) 10%, white);
+    color: var(--ink);
+    font-style: normal;
+  }
+  .sl-markdown-content .story-step blockquote p {
+    margin: 0;
+  }
+
+  /* Wide: text on the left, the code pinned on the right, just under the header. */
+  @media (min-width: 72rem) {
+    .story {
+      display: grid;
+      grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+      gap: 3.5rem;
+    }
+    .story-still {
+      display: none;
+    }
+    .story__code {
+      order: 2;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      position: sticky;
+      top: calc(var(--sl-nav-height) + 1.5rem);
+      align-self: start;
+    }
+    .story__steps {
+      padding-bottom: 35vh;
+    }
+    .story-step {
+      min-height: 60vh;
+      padding-block: 0;
+      opacity: 0.3;
+      transition: opacity 300ms ease;
+    }
+    .story-step.is-active {
+      opacity: 1;
+    }
+  }
+
+  .story__card {
+    margin: 0;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--paper);
+  }
+  .story__card[hidden] {
+    display: none;
+  }
+  .story__types {
+    background: #fbfaf8;
+  }
+  .story__label {
+    padding: 0.85rem 1.2rem 0;
+    font: 0.75rem/1.4 var(--font-mono);
+    letter-spacing: 0.01em;
+    color: var(--ink-3);
+  }
+  .story__pre {
+    margin: 0;
+    padding: 0.6rem 1.2rem 1rem;
+    font: 0.82rem/1.6 var(--font-mono);
+    background: transparent !important;
+    tab-size: 2;
+    /* Tokens move inside the card while it morphs: no scrollbar flashing in and out. */
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .story__type-pre {
+    font-size: 0.76rem;
+  }
+
+  /* What this step added: a soft wash that settles in after the tokens arrive. */
+  .story__pre .is-new {
+    border-radius: 3px;
+    animation: story-new 450ms ease 600ms both;
+  }
+  @keyframes story-new {
+    from {
+      background-color: transparent;
+    }
+    to {
+      background-color: color-mix(in oklab, var(--ultramarine) 11%, transparent);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .story__pre .is-new {
+      animation-duration: 0ms;
+      animation-delay: 0ms;
+    }
+  }
+</style>

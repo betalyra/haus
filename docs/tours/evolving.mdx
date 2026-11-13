@@ -1,0 +1,148 @@
+---
+title: Evolving your data
+description: Add fields and cases without breaking older readers, and know when a change is breaking.
+tableOfContents: false
+---
+
+import Story from "../../website/src/components/docs/story/Story.astro";
+import Step from "../../website/src/components/docs/story/Step.astro";
+
+export const steps = [
+`
+type Contact = <
+  | Email String
+  | Slack { workspace: String, user: String }
+>
+
+type Person = { name: String, contact: Contact }
+
+type Root = Array Person
+`,
+`
+[
+  {
+    name: "Ada",
+    contact: Email("ada@example.com"),
+    timezone: "Europe/London",
+  },
+]
+`,
+`
+[
+  {
+    name: "Ada",
+    contact: Email("ada@example.com"),
+    timezone: "Europe/London",
+  },
+  {
+    name: "Alan",
+    contact: Teams { tenant: "bletchley", user: "alan" },
+  },
+]
+`,
+`
+type Contact = <
+  | Email String
+  | Slack { workspace: String, user: String }
+  | Teams { tenant: String, user: String }
+>
+
+type Person = {
+  name: String,
+  contact: Contact,
+  timezone?: String,
+}
+
+type Root = Array Person
+`,
+`
+import std/time (Date)
+
+type Status = closed < Available | Away { until: Date } >
+`,
+`
+type Contact = <
+  | Email String
+  | Slack { workspace: String, user: String }
+  | Teams { tenant: String, user: String }
+>
+
+type Person = {
+  name: String,
+  displayName?: String,
+  contact: Contact,
+  timezone?: String,
+}
+
+type Root = Array Person
+`,
+];
+
+Your paging tool from the [tour](/docs/tour) now has a mobile app too. The server updates daily, the app whenever people install the update. Both read `team.haus`.
+
+<Story>
+
+<Step lang="haus-schema" label="team.schema.haus" code={steps[0]}>
+
+### Two apps, one file
+
+Both apps read the team with this schema. Records and variants are **open** unless you say otherwise.
+
+</Step>
+
+<Step label="team.haus" code={steps[1]}>
+
+### The server needs time zones
+
+It starts writing `timezone`. The old app has never heard of it and doesn't care: open records **ignore fields they don't list**.
+
+</Step>
+
+<Step label="team.haus" code={steps[2]}>
+
+### Alan moved to Teams
+
+The old app doesn't know `Teams`. It doesn't crash: it reads it as **Unknown**, keeps the raw data, and can show "unsupported contact".
+
+</Step>
+
+<Step lang="haus-schema" label="team.schema.haus" code={steps[3]}>
+
+### Catch the schema up
+
+Add the new tag, and the new field as optional. Both are **minor** changes: every file that was valid stays valid.
+
+</Step>
+
+<Step lang="haus-schema" label="team.schema.haus" code={steps[4]}>
+
+### Some cases must not be guessed
+
+An app that doesn't understand a status shouldn't page someone anyway. `closed` makes an unknown status an **error**.
+
+The price: adding `Sick` later is a breaking change. That's the point.
+
+</Step>
+
+<Step lang="haus-schema" label="team.schema.haus" code={steps[5]}>
+
+### Renaming without breaking
+
+Renaming `name` would break every reader. Instead, add `displayName` next to it, move everyone over, and drop `name` in the next major version.
+
+</Step>
+
+</Story>
+
+## Cheat sheet
+
+| Change | Kind | Older readers |
+|---|---|---|
+| New optional field | minor | ignore it |
+| New tag in an open variant | minor | read it as Unknown |
+| New type | minor | don't see it |
+| Rename or remove a field or tag | major | break |
+| Change a field's type | major | break |
+| Make a type `closed` | major | break on anything new |
+
+Next: [Logs and streams](/docs/tours/streams).

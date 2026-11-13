@@ -1,11 +1,20 @@
 import type { LanguageRegistration, ThemeRegistrationRaw } from "shiki";
 import grammar from "../../../editors/vscode/syntaxes/haus.tmLanguage.json";
+import schemaGrammar from "../../../editors/vscode/syntaxes/haus-schema.tmLanguage.json";
 
 /** The haus grammar, straight from the VS Code extension. */
 export const hausLang = {
   ...(grammar as unknown as Omit<LanguageRegistration, "name">),
   name: "haus",
   scopeName: "source.haus",
+} satisfies LanguageRegistration;
+
+/** The schema grammar (`.schema.haus`), which embeds haus for default values. */
+export const hausSchemaLang = {
+  ...(schemaGrammar as unknown as Omit<LanguageRegistration, "name">),
+  name: "haus-schema",
+  scopeName: "source.haus.schema",
+  embeddedLangs: ["haus"],
 } satisfies LanguageRegistration;
 
 // Pigment inks from global.css: every colour here is >= 4.5:1 on white.
