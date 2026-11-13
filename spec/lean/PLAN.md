@@ -28,7 +28,7 @@ prototype, …) is outside Lean and stays covered by tests.
 | ✅ | **D. Unambiguity** | Every valid text has exactly one meaning. Follows from B + C, since the parser is a function. | days |
 | ⬜ | **E. Encoder round trip** | `parse (encode vs) = .ok vs`: encoded strings can't break out (no injection) | 1–2 weeks |
 | ⬜ | **F. Streams** | The stream reader returns the same values however the input is split | 1–2 weeks |
-| ⬜ | **H. Canonical form** (spec §12) | Equal values (§2) give identical bytes and vice versa, so hashes and signatures are well defined; done together with E, with a reference encoder for the canonical form | 1–2 weeks |
+| 🟡 | **H. Canonical form** (spec §12) | Equal values (§2) give identical bytes and vice versa, so hashes and signatures are well defined; done together with E. Done so far: the reference encoder ([`Haus/Canonical.lean`](Haus/Canonical.lean)), expected `.canonical` files in the suite, `canonical`/`equals`/`hash` in TypeScript, Rust and Roc (no `hash` in Roc yet), fuzzed against each other. Open: the proofs. | 1–2 weeks |
 | ⬜ | **I. Schema language** (separate project) | Decoding with any schema terminates in linear time (§9.8–10) | months |
 | 🟡 | **T. std/time** | A reference model of the profile (spec §13.2, `std/time.md`), the bindings' time checkers fuzzed against it, and its security and calendar properties proven | 1–3 weeks |
 

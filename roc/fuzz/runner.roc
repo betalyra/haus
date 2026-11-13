@@ -1,7 +1,9 @@
 ## The fuzzing runner (../../fuzz/README.md): `runner [--stream] DIR N` parses
 ## DIR/00000.haus … DIR/{N-1}.haus and prints one line each: `ok <values>` in
 ## the test-suite JSON encoding, or `err <line> <column> <reason>`. With
-## `--stream`, each file goes through the stream reader in chunks (see `chunks`).
+## `--stream`, each file goes through the stream reader in chunks (see `chunks`);
+## with `--canonical`, `ok` is followed by the canonical form of each value
+## (spec §12) as a JSON array of strings.
 app [main!] {
 	haus: "../package/main.roc",
 	pf: platform "https://github.com/roc-lang/basic-cli/releases/download/0.26.0/GddgvsGjiNXrHFW6au5i5dUDbTs8FinQdrgE2Gqmw53t.tar.zst",
@@ -10,23 +12,29 @@ app [main!] {
 import pf.OsStr
 import pf.Path
 import pf.Stdout
+import haus.Encode
 import haus.Stream
 import haus.Value
 
 main! : List(OsStr) => Try({}, _)
 main! = |args| {
-	(stream, dir, n) = match args.map(|a| OsStr.to_str_try(a) ?? "") {
-		["--stream", d, count] => (True, d, U64.from_str(count) ?? 0)
-		[d, count] => (False, d, U64.from_str(count) ?? 0)
-		_ => (False, "", 0)
+	(mode, dir, n) = match args.map(|a| OsStr.to_str_try(a) ?? "") {
+		["--stream", d, count] => (Stream, d, U64.from_str(count) ?? 0)
+		["--canonical", d, count] => (Canonical, d, U64.from_str(count) ?? 0)
+		[d, count] => (Parse, d, U64.from_str(count) ?? 0)
+		_ => (Parse, "", 0)
 	}
 	var $i = 0
 	while $i < n {
 		path : Path
 		path = "${dir}/${pad($i)}.haus"
 		bytes = path.read_bytes!()?
-		result = if stream streamed(bytes, $i) else Value.parse_bytes(bytes)
-		Stdout.line!(line(result))?
+		output = match mode {
+			Stream => line(streamed(bytes, $i))
+			Canonical => canonical_line(Value.parse_bytes(bytes))
+			Parse => line(Value.parse_bytes(bytes))
+		}
+		Stdout.line!(output)?
 		$i = $i + 1
 	}
 	Ok({})
@@ -37,6 +45,13 @@ line = |result| match result {
 	Ok(values) => "ok [${Str.join_with(values.map(Value.to_test_json), ",")}]"
 	# One line per case: line breaks in the reason are written as \n.
 	Err({ reason, line: l, column }) => "err ${l.to_str()} ${column.to_str()} ${reason.replace_each("\r", "\\r").replace_each("\n", "\\n")}"
+}
+
+## With `--canonical`: the canonical form of each value (spec §12), as JSON strings.
+canonical_line : Try(List(Value), Value.ParseError) -> Str
+canonical_line = |result| match result {
+	Ok(values) => "ok [${Str.join_with(values.map(|v| Value.to_test_json(Text(Encode.canonical(v)))), ",")}]"
+	Err(e) => line(Err(e))
 }
 
 ## The chunks of case `i`, the same in every runner: chunk k has size

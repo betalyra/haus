@@ -55,7 +55,7 @@ export function stringify(value: Value, options: FormatOptions = {}): string {
 }
 
 /** A hex literal at the length limit has a longer decimal form; such integers are written in hex. */
-function numberText(text: string): string {
+export function numberText(text: string): string {
   if (text.length > DEFAULT_LIMITS.maxNumberLength && /^-?\d+$/.test(text)) {
     const n = BigInt(text)
     return (n < 0n ? "-0x" : "0x") + (n < 0n ? -n : n).toString(16)

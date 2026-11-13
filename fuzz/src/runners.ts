@@ -6,7 +6,7 @@
 import { spawnSync } from "node:child_process"
 import { mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import { HausSyntaxError, parseAll, StreamReader } from "../../typescript/packages/haus/dist/index.js"
+import { canonical, HausSyntaxError, parseAll, StreamReader } from "../../typescript/packages/haus/dist/index.js"
 
 export type Result =
   | { readonly ok: true; readonly json: string }
@@ -66,23 +66,23 @@ function external(name: string, program: string, args: readonly string[] = []): 
 }
 
 /** The suite's JSON encoding (test-suite/README.md). */
-function canonical(v: any): unknown {
+function suiteJson(v: any): unknown {
   switch (v.kind) {
     case "string": return v.value
     case "number": return { num: v.text }
     case "bytes": return { bytes: Buffer.from(v.bytes).toString("hex") }
-    case "array": return v.items.map(canonical)
-    case "record": return { rec: Object.fromEntries([...v.fields].map(([k, x]: [string, unknown]) => [k, canonical(x)])) }
-    case "variant": return v.args.length ? { tag: v.tag, args: v.args.map(canonical) } : { tag: v.tag }
+    case "array": return v.items.map(suiteJson)
+    case "record": return { rec: Object.fromEntries([...v.fields].map(([k, x]: [string, unknown]) => [k, suiteJson(x)])) }
+    case "variant": return v.args.length ? { tag: v.tag, args: v.args.map(suiteJson) } : { tag: v.tag }
   }
 }
 
 const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
 
 /** Runs `parse` and turns its outcome into a result. A TypeError is the UTF-8 decoder's. */
-function result(parse: () => unknown[]): Result {
+function result(parse: () => unknown[], encode: (v: any) => unknown = suiteJson): Result {
   try {
-    return { ok: true, json: normalize(JSON.stringify(parse().map(canonical))) }
+    return { ok: true, json: normalize(JSON.stringify(parse().map(encode))) }
   } catch (e) {
     if (e instanceof HausSyntaxError) return { ok: false, line: e.line, column: e.column, reason: e.reason }
     if (e instanceof TypeError) return { ok: false, line: 0, column: 0, reason: "invalid UTF-8" }
@@ -134,11 +134,29 @@ export const runners: readonly Runner[] = [
   typescriptStream,
 ]
 
-/** Writes the cases to `dir` and runs every parser on them: results[case][runner]. */
+/**
+ * The canonical form (spec §12) of every value, by each binding: the same
+ * inputs must give the same text everywhere (`main.ts --canonical`).
+ */
+export const canonicalRunners: readonly Runner[] = [
+  external("lean", join(root, "spec/lean/.lake/build/bin/haus-ref"), ["--canonical-batch"]),
+  external("rust", join(root, "rust/target/release/examples/fuzz_runner"), ["--canonical"]),
+  external("roc", join(root, "fuzz/.build/roc-runner"), ["--canonical"]),
+  { name: "typescript", run: (_dir, cases) => cases.map((bytes) => result(() => parseAll(utf8.decode(bytes)), canonical)) },
+]
+
+/** The runners in use: the parsers, or with `--canonical` the canonical forms. */
+let active: readonly Runner[] = runners
+export const useCanonical = () => {
+  active = canonicalRunners
+}
+export const activeRunners = () => active
+
+/** Writes the cases to `dir` and runs every runner in use on them: results[case][runner]. */
 export function runAll(dir: string, cases: readonly Uint8Array[]): Result[][] {
   rmSync(dir, { recursive: true, force: true })
   mkdirSync(dir, { recursive: true })
   cases.forEach((c, i) => writeFileSync(join(dir, `${String(i).padStart(5, "0")}.haus`), c))
-  const byRunner = runners.map((r) => r.run(dir, cases))
+  const byRunner = active.map((r) => r.run(dir, cases))
   return cases.map((_, i) => byRunner.map((rs) => rs[i]!))
 }

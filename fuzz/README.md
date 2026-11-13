@@ -51,6 +51,14 @@ in `runners.ts`.
 | Stream readers accepted a byte order mark after a comma | design review S14 |
 | Roc's std/time check accepted durations with more than ~309 digits (too large for a float) | fixed: exact integers |
 
+## Canonical forms
+
+`node fuzz/src/main.ts --canonical` runs the same inputs through each
+binding's `canonical` (spec §12) instead of its parser: for every accepted
+input, all four must write exactly the same text (the Lean reference encoder
+through `haus-ref --canonical-batch`, the others through their runners with
+`--canonical`).
+
 ## std/time
 
 The same idea for the std/time checkers (spec §13.2,

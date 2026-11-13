@@ -15,7 +15,12 @@ homepage.workspace = true
 [lib]
 name = "haus"
 
+[features]
+# `haus::hash` (spec §12): SHA-256 of the canonical form.
+hash = ["dep:sha2"]
+
 [dependencies]
+sha2 = { version = "0.10", optional = true }
 
 [dev-dependencies]
 serde = "1"

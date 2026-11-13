@@ -59,10 +59,10 @@ jobs:
         run: cargo fmt --all --check
       - name: Clippy
         working-directory: rust
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - name: Test
         working-directory: rust
-        run: cargo test --workspace
+        run: cargo test --workspace --all-features
 
   typescript:
     name: TypeScript
@@ -161,6 +161,9 @@ jobs:
           echo "seed=$(( ${{ github.run_id }} % 1000000 ))" >> "$GITHUB_OUTPUT"
       - name: Parsers
         run: node fuzz/src/main.ts --count ${{ steps.budget.outputs.parser }} --seed ${{ steps.budget.outputs.seed }}
+      - name: Canonical forms
+        if: ${{ !cancelled() }}
+        run: node fuzz/src/main.ts --canonical --count ${{ steps.budget.outputs.parser }} --seed ${{ steps.budget.outputs.seed }}
       - name: std/time checkers
         if: ${{ !cancelled() }}
         run: node fuzz/src/time.ts --count ${{ steps.budget.outputs.time }} --seed ${{ steps.budget.outputs.seed }}

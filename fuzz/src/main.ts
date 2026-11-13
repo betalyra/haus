@@ -2,21 +2,25 @@
  * Differential testing: the same generated inputs through every haus parser,
  * reporting where they disagree. See ../README.md.
  *
- *   node fuzz/src/main.ts [--count N] [--seed S] [--out DIR]
+ *   node fuzz/src/main.ts [--count N] [--seed S] [--out DIR] [--canonical]
  */
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { parseArgs } from "node:util"
 import { input, Rng } from "./generate.ts"
-import { runAll, runners, type Result } from "./runners.ts"
+import { activeRunners, runAll, useCanonical, type Result } from "./runners.ts"
 
 const { values: args } = parseArgs({
   options: {
     count: { type: "string", default: "2000" },
     seed: { type: "string", default: String(Date.now() % 1_000_000) },
     out: { type: "string", default: "fuzz/.out" },
+    // Compare the canonical forms (spec §12) instead of the parsed values.
+    canonical: { type: "boolean", default: false },
   },
 })
+if (args.canonical) useCanonical()
+const runners = activeRunners()
 const count = Number(args.count)
 const seed = Number(args.seed)
 const out = args.out!

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 import { MAX_DEPTH, parse, parseAll, parseStream, StreamReader } from "../src/index.js"
-import { canonical } from "./canonical.js"
+import { suiteJson } from "./suite-json.js"
 import { parseText, syntax } from "./haus.js"
 
 describe("error messages and positions", () => {
@@ -44,17 +44,17 @@ describe("StreamReader", () => {
     const r = new StreamReader()
     expect(r.push("UserCreated { id: 1 ")).toEqual([])
     expect(r.push("}")).toEqual([]) // a payload could still follow
-    expect(r.push(",\nHeart").map(canonical)).toEqual([
+    expect(r.push(",\nHeart").map(suiteJson)).toEqual([
       { tag: "UserCreated", args: [{ rec: { id: { num: "1" } } }] },
     ])
     expect(r.push("beat")).toEqual([])
-    expect(r.end().map(canonical)).toEqual([{ tag: "Heartbeat" }])
+    expect(r.end().map(suiteJson)).toEqual([{ tag: "Heartbeat" }])
   })
 
   it("does not split on commas inside strings, comments or payloads", () => {
     const r = new StreamReader()
     const out = [...r.push('"a,b", /* , */ Pair(1, 2), // ,\n"""\n  x,\n  """,'), ...r.end()]
-    expect(out.map(canonical)).toEqual(["a,b", { tag: "Pair", args: [{ num: "1" }, { num: "2" }] }, "x,"])
+    expect(out.map(suiteJson)).toEqual(["a,b", { tag: "Pair", args: [{ num: "1" }, { num: "2" }] }, "x,"])
   })
 
   it("skips a byte order mark only at the start, not after a comma (found by fuzz/)", () => {
@@ -79,19 +79,19 @@ describe("StreamReader", () => {
 
   it("reads comments between values, split anywhere", () => {
     const text = '// header, with a comma\nA { x: 1 }, // after A, [unbalanced\n/* block, with } and " and /* nested, */ */\nB(2),\n\n// before C\nC { s: "// not a comment" } /* before the comma */ ,\n// trailing comment, {'
-    const whole = parseAll(text).map(canonical)
+    const whole = parseAll(text).map(suiteJson)
     expect(whole).toHaveLength(3)
     for (let k = 0; k <= text.length; k++) {
       const r = new StreamReader()
       const out = [...r.push(text.slice(0, k)), ...r.push(text.slice(k)), ...r.end()]
-      expect(out.map(canonical)).toEqual(whole)
+      expect(out.map(suiteJson)).toEqual(whole)
     }
   })
 })
 
 describe("parse", () => {
   it("accepts exactly one value", () => {
-    expect(canonical(parse("{ a: 1 },"))).toEqual({ rec: { a: { num: "1" } } })
+    expect(suiteJson(parse("{ a: 1 },"))).toEqual({ rec: { a: { num: "1" } } })
   })
 
   it.effect.each(["1, 2", "// empty"])("rejects %j", (src) =>
@@ -103,7 +103,7 @@ describe("parse", () => {
 
 describe("parseAll", () => {
   it("returns the top-level sequence", () => {
-    expect(parseAll("A, B,").map(canonical)).toEqual([{ tag: "A" }, { tag: "B" }])
+    expect(parseAll("A, B,").map(suiteJson)).toEqual([{ tag: "A" }, { tag: "B" }])
   })
 })
 

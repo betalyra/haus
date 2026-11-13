@@ -58,7 +58,7 @@ def canonicalLine (bytes : ByteArray) : String :=
   | some s =>
       match Parser.parse {} s.toList with
       | .ok vs => s!"ok {(Json.arr (vs.map fun v => Json.str (String.ofList (Canonical.canonical v))).toArray).compress}"
-      | .error _ => "err"
+      | .error _ => batchLine bytes
 
 def runBatch (line : ByteArray → String) (dir : System.FilePath) (n : Nat) : IO UInt32 := do
   let out ← IO.getStdout

@@ -161,7 +161,7 @@ pub fn write(v: &Value) -> String {
 
 fn line(v: &Value, out: &mut String) {
     match v {
-        Value::Number(n) => out.push_str(n),
+        Value::Number(n) => out.push_str(&number_text(n)),
         Value::String(s) => quote(s, out),
         Value::Bytes(b) => {
             out.push_str("x\"");
@@ -213,21 +213,55 @@ fn write_record(fields: &[(String, Value)], out: &mut String) {
         if i > 0 {
             out.push_str(", ");
         }
-        let bare = k.starts_with(|c: char| c.is_ascii_lowercase() || c == '_')
-            && k.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_');
-        if bare {
-            out.push_str(k)
-        } else {
-            quote(k, out)
-        }
+        key(k, out);
         out.push_str(": ");
         line(v, out);
     }
     out.push_str(" }");
 }
 
+/// A key: bare if it is an identifier (`[a-z_][A-Za-z0-9_]*`), quoted otherwise.
+pub(crate) fn key(k: &str, out: &mut String) {
+    let bare = k.starts_with(|c: char| c.is_ascii_lowercase() || c == '_')
+        && k.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_');
+    if bare { out.push_str(k) } else { quote(k, out) }
+}
+
+/// A number's normalized literal, except an integer longer than the number
+/// limit (spec §7), which is written in hex so that it parses again (§11, §12).
+pub(crate) fn number_text(n: &str) -> std::borrow::Cow<'_, str> {
+    let (sign, digits) = n.strip_prefix('-').map_or(("", n), |d| ("-", d));
+    if n.len() > crate::Limits::default().max_number_length && digits.bytes().all(|c| c.is_ascii_digit()) {
+        format!("{sign}0x{}", decimal_to_hex(digits)).into()
+    } else {
+        n.into()
+    }
+}
+
+/// Decimal digits as lowercase hex, without leading zeros.
+fn decimal_to_hex(digits: &str) -> String {
+    // Little-endian limbs of base 2^32.
+    let mut limbs: Vec<u64> = vec![0];
+    for d in digits.bytes() {
+        let mut carry = u64::from(d - b'0');
+        for limb in &mut limbs {
+            let v = *limb * 10 + carry;
+            *limb = v & 0xffff_ffff;
+            carry = v >> 32;
+        }
+        if carry > 0 {
+            limbs.push(carry);
+        }
+    }
+    let first = format!("{:x}", limbs.last().copied().unwrap_or(0));
+    limbs.iter().rev().skip(1).fold(first, |mut out, limb| {
+        let _ = write!(out, "{limb:08x}");
+        out
+    })
+}
+
 /// A `"…"` string with the minimal escapes.
-fn quote(s: &str, out: &mut String) {
+pub(crate) fn quote(s: &str, out: &mut String) {
     out.push('"');
     for c in s.chars() {
         match c {

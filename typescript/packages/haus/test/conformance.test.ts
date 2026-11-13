@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
-import { canonical } from "./canonical.js"
+import { suiteJson } from "./suite-json.js"
+import { canonical } from "../src/index.js"
 import { fixtures, parseBytes, repoFile, streamBytes } from "./haus.js"
 
 const chunkSizes = (bytes: Uint8Array) => [1, 2, 3, 7, 64, Math.max(bytes.length, 1)]
@@ -11,14 +12,20 @@ describe("valid", () => {
   it.effect.each(valid)("$name: parseAll", ({ bytes, expected }) =>
     Effect.gen(function* () {
       const values = yield* parseBytes(bytes)
-      expect(values.map(canonical)).toEqual(expected)
+      expect(values.map(suiteJson)).toEqual(expected)
+    }))
+
+  it.effect.each(valid)("$name: canonical form", ({ bytes, canonical: expected }) =>
+    Effect.gen(function* () {
+      const values = yield* parseBytes(bytes)
+      expect(values.map((v) => canonical(v) + "\n").join("")).toBe(expected)
     }))
 
   it.effect.each(valid)("$name: stream, any chunking", ({ bytes, expected }) =>
     Effect.forEach(chunkSizes(bytes), (size) =>
       Effect.gen(function* () {
         const values = yield* streamBytes(bytes, size)
-        expect(values.map(canonical), `chunk size ${size}`).toEqual(expected)
+        expect(values.map(suiteJson), `chunk size ${size}`).toEqual(expected)
       })))
 })
 

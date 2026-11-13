@@ -9,6 +9,17 @@ Encode := [].{
 	to_str : Value -> Str
 	to_str = |value| bytes_to_str(line(value))
 
+	## The canonical form (spec §12): one exact text per value, the same in
+	## every binding, so equal values (§2) give identical text. There is no
+	## `hash` yet: Roc has no SHA-256 in its standard library; hash the
+	## UTF-8 bytes of `canonical` with SHA-256 for the spec's `hash`.
+	canonical : Value -> Str
+	canonical = |value| bytes_to_str(canonical_bytes(value))
+
+	## Whether two values are equal (spec §2): the same canonical form.
+	equals : Value, Value -> Bool
+	equals = |a, b| canonical_bytes(a) == canonical_bytes(b)
+
 	## A stream: one value per line, each followed by a comma.
 	stream : List(Value) -> Str
 	stream = |values| Str.join_with(values.map(|v| "${to_str(v)},\n"), "")
@@ -96,7 +107,7 @@ Encode := [].{
 
 line : Value -> List(U8)
 line = |value| match value {
-	Num(text) => text.to_utf8()
+	Num(text) => number_text(text)
 	Text(s) => quote(s)
 	Bytes(b) => "x\"".to_utf8().concat(hex(b)).append('"')
 	Arr(items) => ['['].concat(joined(items.map(line))).append(']')
@@ -114,6 +125,115 @@ record_line = |fields|
 		entries = fields.map(|(k, v)| key(k).concat([':', ' ']).concat(line(v)))
 		['{', ' '].concat(joined(entries)).concat([' ', '}'])
 	}
+
+## The canonical form: no spaces, fields sorted by key.
+canonical_bytes : Value -> List(U8)
+canonical_bytes = |value| match value {
+	Num(text) => number_text(text)
+	Text(s) => quote(s)
+	Bytes(b) => "x\"".to_utf8().concat(hex(b)).append('"')
+	Arr(items) => ['['].concat(comma_joined(items.map(canonical_bytes))).append(']')
+	Rec(fields) => canonical_record(fields)
+	Tag(name, []) => name.to_utf8()
+	Tag(name, [Rec(fields)]) => name.to_utf8().concat(canonical_record(fields))
+	Tag(name, args) => name.to_utf8().append('(').concat(comma_joined(args.map(canonical_bytes))).append(')')
+}
+
+## Fields sorted by their keys' UTF-8 bytes, which is the order of code points.
+canonical_record : List((Str, Value)) -> List(U8)
+canonical_record = |fields| {
+	sorted = fields.map(|(k, v)| (k.to_utf8(), k, v)).sort_with(|(a, _, _), (b, _, _)| compare_bytes(a, b))
+	entries = sorted.map(|(_, k, v)| key(k).append(':').concat(canonical_bytes(v)))
+	['{'].concat(comma_joined(entries)).append('}')
+}
+
+compare_bytes : List(U8), List(U8) -> [Before, Same, After]
+compare_bytes = |a, b| {
+	var $i = 0
+	while $i < a.len() and $i < b.len() {
+		x = byte_at(a, $i)
+		y = byte_at(b, $i)
+		if x < y {
+			return Before
+		}
+		if x > y {
+			return After
+		}
+		$i = $i + 1
+	}
+	if a.len() < b.len() Before else if a.len() > b.len() After else Same
+}
+
+byte_at : List(U8), U64 -> U8
+byte_at = |bytes, i| match bytes.get(i) {
+	Ok(b) => b
+	Err(_) => 0
+}
+
+## Items separated by `,`.
+comma_joined : List(List(U8)) -> List(U8)
+comma_joined = |items| {
+	var $out = []
+	var $first = True
+	for item in items {
+		$out = if ($first) item else $out.append(',').concat(item)
+		$first = False
+	}
+	$out
+}
+
+## A number's normalized literal, except an integer longer than the number
+## limit (spec §7), which is written in hex so that it parses again (§11, §12).
+number_text : Str -> List(U8)
+number_text = |text| {
+	b = text.to_utf8()
+	negative = byte_at(b, 0) == '-'
+	digits = if (negative) b.sublist({ start: 1, len: b.len() - 1 }) else b
+	if b.len() > 1000 and digits.all(|c| c >= '0' and c <= '9') {
+		(if (negative) ['-'] else []).concat(['0', 'x']).concat(decimal_to_hex(digits))
+	} else {
+		b
+	}
+}
+
+## Decimal digits as lowercase hex, without leading zeros.
+decimal_to_hex : List(U8) -> List(U8)
+decimal_to_hex = |digits| {
+	# Little-endian limbs of base 2^32.
+	var $limbs = [0]
+	for d in digits {
+		var $carry = (d - '0').to_u64()
+		var $next = []
+		for limb in $limbs {
+			v = limb * 10 + $carry
+			$next = $next.append(v % 4294967296)
+			$carry = v // 4294967296
+		}
+		$limbs = if ($carry > 0) $next.append($carry) else $next
+	}
+	var $out = []
+	var $first = True
+	var $index = $limbs.len()
+	while $index > 0 {
+		$index = $index - 1
+		limb = match $limbs.get($index) {
+			Ok(l) => l
+			Err(_) => 0
+		}
+		# The most significant limb without leading zeros, the others padded to 8 digits.
+		var $part = []
+		var $v = limb
+		var $count = 0
+		while $v > 0 or ($first and $part.is_empty()) or (!$first and $count < 8) {
+			$part = [hex_digit(($v % 16).to_u8_wrap())].concat($part)
+			$v = $v // 16
+			$count = $count + 1
+		}
+		$out = $out.concat($part)
+		$first = False
+	}
+	$out
+}
 
 ## Items separated by `, `.
 joined : List(List(U8)) -> List(U8)
@@ -239,3 +359,32 @@ expect Encode.to_str(Text("a\"b\\\n\u(202E)")) == "\"a\\\"b\\\\\\n\\u{202E}\""
 expect Encode.stream([Tag("A", []), Num("1")]) == "A,\n1,\n"
 expect Encode.to_str(Encode.record([("a", Present(Num("1"))), ("b", Missing)])) == "{ a: 1 }"
 expect Encode.to_str(Text("\u(1B)\u(7F)\u(85)")) == "\"\\u{1B}\\u{7F}\\u{85}\""
+
+# The canonical form (spec §12): the same cases as the TypeScript and Rust bindings.
+canonical_of : Str -> Str
+canonical_of = |src| match Value.parse_all(src) {
+	Ok([v]) => Encode.canonical(v)
+	_ => "(not one value)"
+}
+
+equal_texts : Str, Str -> Bool
+equal_texts = |a, b| match (Value.parse_all(a), Value.parse_all(b)) {
+	(Ok([x]), Ok([y])) => Encode.equals(x, y)
+	_ => False
+}
+
+expect canonical_of("Order { total: 19.90, id: 0xFF, \"x-y\": 1e+5, p: Point(1, 2) }") == "Order{id:255,p:Point(1,2),total:19.90,\"x-y\":1e5}"
+expect canonical_of("{ b: [1_000, 0b11], /* c */ a: Tag({ x: x\"0B 34\" }) }") == "{a:Tag{x:x\"0b34\"},b:[1000,3]}"
+expect equal_texts("{ b: [1_000, 0b11], /* c */ a: Tag({ x: x\"0B 34\" }) }", "{a:Tag{x:x\"0b34\"},b:[1000,3]}")
+expect !equal_texts("1.0", "1") and !equal_texts("{}", "{ x: None }") and !equal_texts("-0", "0")
+expect !equal_texts("\"caf\\u{E9}\"", "\"cafe\\u{301}\"") and equal_texts("-0x0", "0")
+expect canonical_of("\"tab\\tquote\\\" \\u{41} \\u{1b} \\u{202e} café 😀\"") == "\"tab\\tquote\\\" A \\u{1B} \\u{202E} café 😀\""
+expect canonical_of("\"\"\"\n  two\n  lines\n  \"\"\"") == "\"two\\nlines\""
+expect canonical_of("{ \"😀\": 1, \"\u(FFFD)\": 2, a: 3, \"Z\": 4 }") == "{\"Z\":4,a:3,\"\u(FFFD)\":2,\"😀\":1}"
+expect canonical_of("[None, Some(1), Circle({ r: 1 }), Pair({ a: 1 }, 2)]") == "[None,Some(1),Circle{r:1},Pair({a:1},2)]"
+expect canonical_of("0x${"f".repeat(900)}") == "0x${"f".repeat(900)}"
+# The compact writer keeps a huge integer in hex too (spec §11), so its output parses again.
+expect match Value.parse_all("0x${"f".repeat(900)}") {
+	Ok([v]) => Encode.to_str(v) == "0x${"f".repeat(900)}"
+	_ => False
+}

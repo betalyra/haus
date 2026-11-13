@@ -14,6 +14,7 @@
 //! and [`Encode`], and [`from_str`] / [`to_string`] check every rule of the
 //! schema: closed records and variants, integer ranges, the std/time profile.
 
+mod canonical;
 mod codec;
 pub mod de;
 mod error;
@@ -23,6 +24,9 @@ pub mod stream;
 pub mod time;
 mod value;
 
+#[cfg(feature = "hash")]
+pub use canonical::hash;
+pub use canonical::{canonical, equals};
 pub use codec::{Codec, same_id};
 pub use de::{AnyTag, Bytes, Decimal, Decode, Int, Unknown};
 pub use error::{DecodeError, Error, Segment, SyntaxError};

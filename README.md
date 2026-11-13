@@ -127,7 +127,7 @@ Data that doesn't match its schema is an error in the editor, at the value that'
 
 | Path | Contents |
 |---|---|
-| [`spec/`](spec) | Grammar, semantics, standard format, prelude types |
+| [`spec/`](spec) | Grammar, semantics, standard format, prelude types, design review |
 | [`test-suite/`](test-suite) | Conformance files every parser must pass |
 | [`typescript/`](typescript) | Parser, schemas, formatter, type inference, Standard Schema, Effect adapter, typed imports (content mapper, Node, Vite), examples, demos |
 | [`rust/`](rust) | Parser, `haus-build` (Rust types from schemas, with codecs), examples |
@@ -135,7 +135,7 @@ Data that doesn't match its schema is an error in the editor, at the value that'
 | [`roc/`](roc) | Parser, decoding, encoding, streams; modules generated from schemas; examples |
 | [`editors/vscode/`](editors/vscode) | VS Code extension: highlighting, errors, hover with inferred types, formatting |
 | [`examples/`](examples) | Sample `.haus` and `.schema.haus` files, shared by the TypeScript and Rust examples |
-| [`docs/`](docs) | Design review and open issues |
+| [`docs/`](docs) | The documentation at [haus-fmt.org/docs](https://haus-fmt.org/docs) |
 
 ```sh
 cd typescript && pnpm install && pnpm test        # TypeScript packages

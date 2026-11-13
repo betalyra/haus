@@ -21,17 +21,17 @@ fn cases(dir: &str) -> Vec<PathBuf> {
 }
 
 /// A value in the suite's JSON encoding.
-fn canonical(v: &Value) -> Json {
+fn suite_json(v: &Value) -> Json {
     match v {
         Value::String(s) => json!(s),
         Value::Number(n) => json!({ "num": n }),
         Value::Bytes(b) => json!({ "bytes": b.iter().map(|x| format!("{x:02x}")).collect::<String>() }),
-        Value::Array(items) => Json::Array(items.iter().map(canonical).collect()),
+        Value::Array(items) => Json::Array(items.iter().map(suite_json).collect()),
         Value::Record(fields) => {
-            json!({ "rec": fields.iter().map(|(k, v)| (k.clone(), canonical(v))).collect::<Map<_, _>>() })
+            json!({ "rec": fields.iter().map(|(k, v)| (k.clone(), suite_json(v))).collect::<Map<_, _>>() })
         }
         Value::Variant { tag, args } if args.is_empty() => json!({ "tag": tag }),
-        Value::Variant { tag, args } => json!({ "tag": tag, "args": args.iter().map(canonical).collect::<Vec<_>>() }),
+        Value::Variant { tag, args } => json!({ "tag": tag, "args": args.iter().map(suite_json).collect::<Vec<_>>() }),
     }
 }
 
@@ -51,7 +51,7 @@ fn valid() {
         let expected = read_json(&path.with_extension("json"));
         match haus::parse_bytes(&fs::read(&path).unwrap()) {
             Ok(values) => {
-                let actual = Json::Array(values.iter().map(canonical).collect());
+                let actual = Json::Array(values.iter().map(suite_json).collect());
                 if actual != expected {
                     failures.push(format!("{name}: got {actual}"));
                 }
@@ -60,6 +60,22 @@ fn valid() {
         }
     }
     assert!(failures.is_empty(), "valid cases failed:\n{}", failures.join("\n"));
+}
+
+/// `NAME.canonical`: the canonical form of each value, one per line (spec §12).
+#[test]
+fn valid_canonical() {
+    let mut failures = Vec::new();
+    for path in cases("valid") {
+        let name = path.file_stem().unwrap().to_string_lossy().into_owned();
+        let expected = fs::read_to_string(path.with_extension("canonical")).unwrap();
+        let values = haus::parse_bytes(&fs::read(&path).unwrap()).unwrap();
+        let actual: String = values.iter().map(|v| haus::canonical(v) + "\n").collect();
+        if actual != expected {
+            failures.push(format!("{name}: got {actual}"));
+        }
+    }
+    assert!(failures.is_empty(), "canonical forms differ:\n{}", failures.join("\n"));
 }
 
 #[test]

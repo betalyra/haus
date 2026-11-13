@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 import { format, inferSchema, parseAll, parseDocument, parseWithLocations, stringify, infer, printShape } from "../src/index.js"
-import { canonical } from "./canonical.js"
+import { suiteJson } from "./suite-json.js"
 import { decode, fixtures, repoFile } from "./haus.js"
 
 const files = [
@@ -16,7 +16,7 @@ describe("format: round trip and idempotence", () => {
       const values = parseAll(src)
       for (const out of [format(values), format(parseWithLocations(src), { source: src })]) {
         // Same data after formatting…
-        expect(parseAll(out).map(canonical)).toEqual(values.map(canonical))
+        expect(parseAll(out).map(suiteJson)).toEqual(values.map(suiteJson))
         // …and formatting the output again changes nothing.
         expect(format(parseWithLocations(out), { source: out })).toBe(out)
       }
@@ -37,7 +37,7 @@ describe("format: comments are kept", () => {
     Effect.gen(function* () {
       const src = yield* decode(bytes)
       const { out, values } = withComments(src)
-      expect(parseAll(out).map(canonical)).toEqual(values.map(canonical))
+      expect(parseAll(out).map(suiteJson)).toEqual(values.map(suiteJson))
       expect(commentTexts(out)).toEqual(commentTexts(src))
       expect(withComments(out).out).toBe(out)
     }))
@@ -104,7 +104,7 @@ describe("format: pretty (default)", () => {
     const src = '{ text: "line 1\\nsay \\"\\"\\"hi\\"\\"\\"\\n" }'
     const out = fmt(src)
     expect(out).toBe('{\n  text: """\n    line 1\n    say \\"""hi\\"""\n\n    """,\n}\n')
-    expect(parseAll(out).map(canonical)).toEqual(parseAll(src).map(canonical))
+    expect(parseAll(out).map(suiteJson)).toEqual(parseAll(src).map(suiteJson))
   })
 
   it("breaks a long positional payload", () => {
@@ -125,7 +125,7 @@ describe("format: compact (one item per line)", () => {
     Effect.gen(function* () {
       const values = parseAll(yield* decode(bytes))
       const out = format(values, { style: "compact" })
-      expect(parseAll(out).map(canonical)).toEqual(values.map(canonical))
+      expect(parseAll(out).map(suiteJson)).toEqual(values.map(suiteJson))
       expect(format(parseAll(out), { style: "compact" })).toBe(out)
       expect(out.split("\n").filter(Boolean)).toHaveLength(values.length)
     }))

@@ -2,7 +2,8 @@
 //! DIR/00000.haus … DIR/{N-1}.haus and prints one line each:
 //! `ok <values>` in the test-suite JSON encoding, or `err <line> <column> <reason>`.
 //! With `--stream`, each file goes through the stream reader in chunks
-//! (see `chunks`).
+//! (see `chunks`); with `--canonical`, `ok` is followed by the canonical form
+//! of each value (spec §12) as a JSON array of strings.
 
 use haus::Value;
 use serde_json::{Map, Value as Json, json};
@@ -55,18 +56,30 @@ fn streamed(bytes: &[u8], i: usize) -> Result<Vec<Value>, haus::SyntaxError> {
     Ok(values)
 }
 
+/// With `--canonical`: the canonical form of each value (spec §12), as JSON strings.
+fn canonical_line(result: Result<Vec<Value>, haus::SyntaxError>) -> String {
+    match result {
+        Ok(values) => format!("ok {}", Json::Array(values.iter().map(|v| json!(haus::canonical(v))).collect())),
+        Err(e) => line(Err(e)),
+    }
+}
+
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
-    let (stream, dir, n) = match args.as_slice() {
-        [flag, dir, n] if flag == "--stream" => (true, dir, n),
-        [dir, n] => (false, dir, n),
-        _ => panic!("usage: fuzz_runner [--stream] DIR N"),
+    let (mode, dir, n) = match args.as_slice() {
+        [flag, dir, n] if flag == "--stream" || flag == "--canonical" => (flag.as_str(), dir, n),
+        [dir, n] => ("", dir, n),
+        _ => panic!("usage: fuzz_runner [--stream | --canonical] DIR N"),
     };
     let n: usize = n.parse().expect("N");
     let mut out = BufWriter::new(std::io::stdout().lock());
     for i in 0..n {
         let bytes = fs::read(format!("{dir}/{i:05}.haus")).expect("read case");
-        let result = if stream { streamed(&bytes, i) } else { haus::parse_bytes(&bytes) };
-        writeln!(out, "{}", line(result)).unwrap();
+        let result = match mode {
+            "--stream" => line(streamed(&bytes, i)),
+            "--canonical" => canonical_line(haus::parse_bytes(&bytes)),
+            _ => line(haus::parse_bytes(&bytes)),
+        };
+        writeln!(out, "{result}").unwrap();
     }
 }
