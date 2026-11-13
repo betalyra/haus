@@ -65,9 +65,23 @@ def isScalar (n : Nat) : Bool := n ≤ 0x10FFFF && !(0xD800 ≤ n && n ≤ 0xDFF
 def expMagnitude (e : Text) : Nat := digitsValue 10 (e.filter isDigit)
 
 /--
+An exponent's digits and sign, as its value: `+05` is `5`, `-0` is `0`.
+The marker `e` is written by the caller.
+-/
+def normalizeExponent (e : Text) : Text :=
+  let (neg, ds) := match e with
+    | '-' :: r => (true, r)
+    | '+' :: r => (false, r)
+    | r => (false, r)
+  let ds := match ds.dropWhile (· == '0') with
+    | [] => ['0']
+    | ds => ds
+  if neg && ds != ['0'] then '-' :: ds else ds
+
+/--
 The normalized literal of a number (§2): digit separators removed, the
-exponent marker written `e`, hex and binary converted to decimal integers.
-`-0x0` is `0`; a decimal `-0` stays `-0`.
+exponent written `e` and its value (`E+05` is `e5`), hex and binary
+converted to decimal integers. `-0x0` is `0`; a decimal `-0` stays `-0`.
 -/
 def normalizeNumber (lit : Text) : String :=
   let (neg, body) := match lit with
@@ -78,7 +92,20 @@ def normalizeNumber (lit : Text) : String :=
   match body with
   | '0' :: 'x' :: ds => integer (digitsValue 16 ds)
   | '0' :: 'b' :: ds => integer (digitsValue 2 ds)
-  | ds => String.ofList ((if neg then ['-'] else []) ++ ds.map fun c => if c == 'E' then 'e' else c)
+  | ds =>
+    let mantissa := ds.takeWhile (fun c => c != 'e' && c != 'E')
+    let exponent := match ds.dropWhile (fun c => c != 'e' && c != 'E') with
+      | _ :: e => 'e' :: normalizeExponent e
+      | [] => []
+    String.ofList ((if neg then ['-'] else []) ++ mantissa ++ exponent)
+
+#guard normalizeNumber "1E+0_5".toList == "1e5"
+#guard normalizeNumber "-2.50e-03".toList == "-2.50e-3"
+#guard normalizeNumber "1e-0".toList == "1e0"
+#guard normalizeNumber "1e000".toList == "1e0"
+#guard normalizeNumber "1_000.0".toList == "1000.0"
+#guard normalizeNumber "-0x0".toList == "0" && normalizeNumber "-0".toList == "-0"
+#guard normalizeNumber "0xFF".toList == "255"
 
 /--
 The content of a block string ends at the first `"""` that isn't escaped:

@@ -1,17 +1,17 @@
 # haus design review
 
-Date: 2026-11-07 (status updated the same day) · Scope: spec draft 0.1 (`spec/`), TypeScript packages, Effect adapter, Roc package.
+Date: 2026-11-07 (status updated 2026-11-13) · Scope: spec draft 0.1 (`spec/`), TypeScript packages, Effect adapter, Rust and Roc packages, the Lean model (`spec/lean/`).
 
 **Status legend:** ✅ done · 🟡 partly done · ⬜ open · — decided not to change
 
 ## Verdict
 
-The core idea holds up. haus fixes JSON's real pain points: comments, trailing commas, unquoted keys, exact numbers, sum types, and streaming. It does so without adding the features that made YAML and XML dangerous: references, includes, remote schemas, executable tags. The grammar is small and strict, and two independent parsers agree on a shared conformance suite.
+The core idea holds up. haus fixes JSON's real pain points: comments, trailing commas, unquoted keys, exact numbers, sum types, and streaming. It does so without adding the features that made YAML and XML dangerous: references, includes, remote schemas, executable tags. The grammar is small and strict. Three parsers (TypeScript, Rust, Roc) agree on a shared conformance suite and on millions of generated inputs, checked against a reference parser in Lean that is proven to accept exactly the grammar (`spec/lean/`).
 
 The weak spots were in four areas:
 1. **Resource limits** were not specified, and the Roc parser could be stalled.
 2. **A few syntax rules** could silently change meaning.
-3. **Missing pieces:** there is no serializer, no canonical form, and no schema parser.
+3. **Missing pieces:** there was no serializer and no canonical form, and there is no schema parser yet.
 4. **Some semantics were undefined:** equality, the position units in error messages, and stream termination.
 
 The security and spec issues are now fixed (§1, §2). What's left is mostly new functionality (§3).
@@ -44,12 +44,14 @@ The security and spec issues are now fixed (§1, §2). What's left is mostly new
 | 🟡 | S6 | **A cut-off stream looks valid.** | TypeScript has a `requireTerminator` option that reports a truncated stream. Spec §6. **Open:** the Roc parser can't stream yet, and there's no end-of-stream marker (decided against one for now). |
 | 🟡 | S7 | **Unicode spoofing.** | Raw bidi controls are rejected everywhere (strings, block strings, comments) in both parsers, with 6 conformance tests, and VS Code highlights them as invalid. The spec says keys are compared by code point with no normalization, and notes the risk of NUL characters. **Open:** a linter for lookalike characters and mixed NFC/NFD keys. |
 | ✅ | S8 | **Error positions differed between parsers** (UTF-16 vs code points). | Both now count code points. Spec §8. |
-| ⬜ | S9 | **No canonical form**, so values can't be hashed or signed. | Spec §9.7 says to sign the exact bytes. The canonical form is planned (spec §11) and needs the serializer. |
+| 🟡 | S9 | **No canonical form**, so values can't be hashed or signed. | Specified: spec §12 defines the canonical form, `equals` and a SHA-256 `hash`, the same in every binding. **Open:** the Lean reference encoder with its proofs, and the bindings. |
 | ✅ | S10 | **Work that grows faster than the input.** Probing with hostile inputs found: schema inference printing was exponential in nesting depth (depth 20 took 0.8 s, so a small file could hang the editor); formatting with comments was quadratic (8,000 commented entries took 1.4 s); a large stream value arriving in small chunks was quadratic; Effect's union decoding is exponential for recursive unions of untagged structs. | All linear now (depth 250 infers in 3 ms, 8,000 comments format in 22 ms, chunked values scale linearly). The Effect adapter rejects recursive schemas with ambiguous unions up front. Inference now recognises recursive data (a tag inside the same tag, or a record inside one with the same keys) and prints a named type (`type Comment = …`) instead of unrolling it; shapes are merged with union-find, so unification is linear too. Regression tests in `adversarial.test.ts` (core and Effect). |
 | ✅ | S11 | **Schema decoding had no bound beyond the parser's limits**, and values built in code (deep, shared or cyclic) weren't checked at all. | Spec §9.8–10. `h.*` and the Effect adapter enforce depth, a work budget (16 steps per input value; 16 Mi steps when encoding), cycle detection on encode and checks on raw `Unknown` values. Recursion is opt-in via `h.Recursive` with its own depth limit (64) and a check for unguarded cycles. Error paths are built only when an error occurs. **Open:** Effect's own encoder runs before ours and has no budget, so a JS value with heavy sharing still costs time there; Roc decoders are plain functions without a budget. |
 | ✅ | S12 | **Raw control characters in comments and strings.** Comments allowed ESC and NUL, strings DEL and C1 (U+0080–U+009F, including CSI). A comment like `// \e[2K\e[1Aaccess: Admin` rewrites what `cat` shows in a terminal, while the data says something else. Found while proving the character properties in Lean. | Raw C0 (except tab and line breaks), DEL and C1 are rejected everywhere, in all four parsers, and every writer escapes them. Spec §4 and `grammar.ebnf`, 10 conformance cases, proven for the grammar in `spec/lean/Haus/Props/Chars.lean`. |
 | ✅ | S13 | **The Rust stream reader crashed on a stream ending in `/`.** At the end of input it read one byte past its buffer: a panic, so a denial of service for anything reading streams from the network. | Found by differential testing (`fuzz/`), shrunk to the one-byte input `/`. Fixed, with a regression test. TypeScript and Roc were not affected. |
 | ✅ | S14 | **Stream readers accepted a byte order mark after every comma**, and TypeScript's `parseStream` skipped two at the start. Whole-file parsing rejects both, so the same bytes meant different things streamed and unstreamed. All three bindings had it, so they agreed with each other. | Found by comparing each stream reader with whole-file parsing (`fuzz/`). A BOM is now skipped only at the start of the input, in all three. Regression tests in each binding. |
+| ✅ | S15 | **Roc's std/time check accepted huge durations.** Duration components were compared as floats, and a number too long to parse as one (over ~309 digits) counted as 0, so `P999…9Y` passed the 2³² limit. | Found while writing the Lean model of std/time; exact integer arithmetic now. Regression tests in all three bindings, and `fuzz/src/time.ts` fuzzes every binding's std/time check against the model (it finds this bug in the old code). |
+| ✅ | S16 | **A rule only in the code.** All bindings rejected zone names over 255 characters, but `std/time.md` didn't say so. | Added to `std/time.md`, and to the Lean model, which proves zone names can't leave the tz database when looked up as files. |
 
 ### 1.3 Rules for binding authors
 
@@ -84,16 +86,16 @@ Ecosystem gotchas, documented in the examples:
 
 | | Item | Notes |
 |---|---|---|
-| ✅ | **Serializer** | `format` / `stringify` (standard layout, spec §11), comments and blank lines kept, round-trip and idempotence tested on every conformance file; Format Document in VS Code. Schema-aware encoding: `h.stringify` / `h.encodeStream`, Effect `Haus.encode` / `Haus.encodeStream`. **Open:** encoding in Roc. |
+| ✅ | **Serializer** | `format` / `stringify` (standard layout, spec §11), comments and blank lines kept, round-trip and idempotence tested on every conformance file; Format Document in VS Code. Schema-aware encoding: `h.stringify` / `h.encodeStream`, Effect `Haus.encode` / `Haus.encodeStream`, Rust `to_string`, Roc `Encode` (compact layout). |
 | ✅ | **Limits API and spec defaults** | See S4. Configurable limits in Roc are still open. |
-| 🟡 | **Spec prose** | [`spec/README.md`](../spec/README.md), draft 0.1: data model, equality, numbers, Unicode, variants, streams, limits, error positions, security, evolution. **Open:** the schema language and the canonical form. |
-| 🟡 | **Conformance suite expansion** | Added: limits at and just past the boundary, bidi controls, the D1 cases (now 93 files: 23 valid, 70 invalid). **Open:** NFC/NFD keys, `\u{0}`, the largest code point, expected error positions, and differential fuzzing (random inputs, checking that TypeScript and Roc agree). |
+| 🟡 | **Spec prose** | [`README.md`](README.md), draft 0.1: data model, equality, numbers, Unicode, variants, streams, limits, error positions, security, evolution, canonical form and hashing. **Open:** the schema language. |
+| 🟡 | **Conformance suite expansion** | Added: limits at and just past the boundary, bidi controls, control characters, line breaks, byte order marks, exponents, the D1 cases (now 117 files: 27 valid, 90 invalid). Differential fuzzing of all parsers, stream readers and std/time checks runs in CI (`fuzz/`). **Open:** NFC/NFD keys, `\u{0}`, the largest code point, and the expected canonical form of each valid file. |
 
 ### 3.2 Should have
 
 | | Item |
 |---|---|
-| ⬜ | **Canonical form** for hashing, signing and deduplication (spec §12). |
+| 🟡 | **Canonical form** for hashing, signing and deduplication: specified (spec §12). **Open:** implementation and proofs. |
 | ⬜ | **Schema language** spec, parser and checker: spreads (`...Name`, replacing row parameters), open vs closed, `Stream`, generics. Rules for recursion and expressiveness are settled (spec §9.9–10): explicit, guarded, regular recursion and no computation in schemas. |
 | ⬜ | **JSON interop:** a mapping both ways, `from-json` / `to-json`, and the `application/haus` MIME type. |
 | ⬜ | **CLI:** `check`, `fmt`, `convert`, and a jq-like `query` using the path syntax from error messages. |
@@ -118,7 +120,7 @@ Ecosystem gotchas, documented in the examples:
 | 🟡 | API payloads | Sum types, exact money, open variants, schema-aware encoding and decoding. Missing: a MIME type. |
 | ✅ | Event streams and logs | Comma-terminated values, open variants, size limit per value, truncation detection (TypeScript). |
 | ✅ | Partial updates (PATCH) | A record of optional fields: send only what changes; `x?: Maybe T` can also clear (D3, spec §1.1). |
-| ⬜ | Signed or hashed documents | Sign the exact bytes today. A canonical form for hashing equal values is planned. |
+| 🟡 | Signed or hashed documents | Sign the exact bytes today. The canonical form and hash are specified (spec §12); implementations are next. |
 | 🟡 | Tabular data | Works, but repeats every key. Acceptable with compression. |
 | 🟡 | Scientific and ML numbers | `NaN`/`Infinity` done (D5). Large numeric arrays are inefficient as text. |
 | 🟡 | Binary blobs | `Bytes("base64")` works for small blobs. |
@@ -129,8 +131,8 @@ Ecosystem gotchas, documented in the examples:
 
 ## 5. Remaining order
 
-1. The canonical form (needs the serializer, which now exists).
-2. More conformance cases and differential fuzzing between TypeScript and Roc.
-3. Configurable limits in Roc; `Map`/`Set` decoders.
+1. The canonical form in Lean (with the round-trip and uniqueness proofs) and in every binding.
+2. More conformance cases (see 3.1).
+3. Configurable limits and streaming in Roc; `Map`/`Set` decoders.
 4. JSON interop and a CLI.
 5. Schema language parser and checker, then code generation, LSP and Tree-sitter.

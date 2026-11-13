@@ -341,7 +341,29 @@ decimal_literal = |src, start, digits_start| {
 		.sublist({ start, len: end - start })
 		.keep_if(|b| b != '_')
 		.map(|b| if (b == 'E') 'e' else b)
-	Ok((bytes_to_str(text), end))
+	Ok((bytes_to_str(normalize_exponent(text)), end))
+}
+
+## The exponent of a decimal literal as its value (§2): `1e+05` is `1e5`, `1e-0` is `1e0`.
+normalize_exponent : List(U8) -> List(U8)
+normalize_exponent = |text| {
+	var $at = 0
+	while $at < text.len() and at(text, $at) != 'e' {
+		$at = $at + 1
+	}
+	if $at == text.len() {
+		return text
+	}
+	mantissa = text.sublist({ start: 0, len: $at + 1 })
+	rest = text.sublist({ start: $at + 1, len: text.len() - $at - 1 })
+	negative = at(rest, 0) == '-'
+	var $p = if (at(rest, 0) == '+' or negative) 1 else 0
+	while $p + 1 < rest.len() and at(rest, $p) == '0' {
+		$p = $p + 1
+	}
+	digits = rest.sublist({ start: $p, len: rest.len() - $p })
+	sign = if (negative and digits != ['0']) ['-'] else []
+	mantissa.concat(sign).concat(digits)
 }
 
 ## Hex or binary digits, converted to a decimal integer of any size.

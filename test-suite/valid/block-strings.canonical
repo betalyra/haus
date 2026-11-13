@@ -1,0 +1,1 @@
+{blank:"a\n\nb",empty:"",escapes:"tab:\t unicode:☺",quotes:"say \"hi\" and \"\"twice\"\" and \"\"\"",relative:"  indented\nbase",simple:"line one\nline two",trailing_newline:"text\n"}

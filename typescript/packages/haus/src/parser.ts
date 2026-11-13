@@ -241,7 +241,7 @@ export class Parser {
       DEC.lastIndex = start
       const m = DEC.exec(this.src)
       if (!m) this.fail("invalid number", start)
-      text = m[0].replaceAll("_", "").replace("E", "e")
+      text = normalizeExponent(m[0].replaceAll("_", "").replace("E", "e"))
       this.pos = DEC.lastIndex
     }
     const next = this.src.charCodeAt(this.pos)
@@ -541,3 +541,12 @@ const codePoints = (s: string): number => {
 /** The value of a hex digit, or -1. */
 const hexValue = (c: number): number =>
   c >= 48 && c <= 57 ? c - 48 : c >= 97 && c <= 102 ? c - 87 : c >= 65 && c <= 70 ? c - 55 : -1
+
+/** The exponent of a decimal literal as its value (§2): `1e+05` is `1e5`, `1e-0` is `1e0`. */
+function normalizeExponent(text: string): string {
+  const at = text.indexOf("e")
+  if (at < 0) return text
+  const negative = text[at + 1] === "-"
+  const digits = text.slice(at + 1).replace(/^[+-]/, "").replace(/^0+(?=.)/, "")
+  return text.slice(0, at + 1) + (negative && digits !== "0" ? "-" : "") + digits
+}

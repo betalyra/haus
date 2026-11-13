@@ -8,6 +8,8 @@ import Lean.Data.Json
     haus-ref --suite DIR   run the conformance suite in DIR (valid/ and invalid/)
     haus-ref --batch DIR N for DIR/00000.haus … DIR/{N-1}.haus, one line each:
                            `ok <values>` or `err <line> <column> <reason>` (fuzz/)
+    haus-ref --canonical FILE     the canonical form of each value in FILE, one per line (spec §12)
+    haus-ref --canonical-batch DIR N  like --batch, printing `ok ["<canonical>", …]` (fuzz/)
     haus-ref --time TYPE TEXT     whether TEXT is a valid std/time TYPE (exit 0 or 1)
     haus-ref --time-batch FILE    for each line `TYPE HEX` of FILE (the text as hex-encoded
                                   UTF-8): `ok` or `no` (fuzz/)
@@ -49,11 +51,20 @@ def batchLine (bytes : ByteArray) : String :=
           -- One line per case: line breaks in the reason (from a quoted key, say) as \n.
           s!"err {l} {c} {(e.reason.replace "\r" "\\r").replace "\n" "\\n"}"
 
-def runBatch (dir : System.FilePath) (n : Nat) : IO UInt32 := do
+/-- One result of `--canonical-batch`: the canonical form of each value, as JSON strings. -/
+def canonicalLine (bytes : ByteArray) : String :=
+  match String.fromUTF8? bytes with
+  | none => "err 0 0 invalid UTF-8"
+  | some s =>
+      match Parser.parse {} s.toList with
+      | .ok vs => s!"ok {(Json.arr (vs.map fun v => Json.str (String.ofList (Canonical.canonical v))).toArray).compress}"
+      | .error _ => "err"
+
+def runBatch (line : ByteArray → String) (dir : System.FilePath) (n : Nat) : IO UInt32 := do
   let out ← IO.getStdout
   for i in [0:n] do
     let name := String.ofList (List.replicate (5 - (toString i).length) '0') ++ toString i
-    out.putStrLn (batchLine (← IO.FS.readBinFile (dir / s!"{name}.haus")))
+    out.putStrLn (line (← IO.FS.readBinFile (dir / s!"{name}.haus")))
   return 0
 
 /-- Decode UTF-8 and parse. -/
@@ -77,6 +88,12 @@ def runSuite (dir : System.FilePath) : IO UInt32 := do
     | .ok vs, .ok json =>
         let got := (Json.arr (vs.map toJson).toArray).compress
         if got != json.compress then failures := failures.push s!"valid/{name}: got {got}"
+        -- The canonical form of each value, one per line (spec §12).
+        let file := dir / "valid" / s!"{name}.canonical"
+        if ← file.pathExists then
+          let canonical := String.join (vs.map fun v => String.ofList (Canonical.canonical v) ++ "\n")
+          if canonical != (← IO.FS.readFile file) then
+            failures := failures.push s!"valid/{name}.canonical: got {canonical}"
     | .error e, _ => failures := failures.push s!"valid/{name}: rejected: {e}"
     | _, .error e => failures := failures.push s!"valid/{name}.json: {e}"
   for entry in (← (dir / "invalid").readDir).qsort (·.fileName < ·.fileName) do
@@ -115,7 +132,13 @@ def runTimeBatch (file : System.FilePath) : IO UInt32 := do
 
 def main : List String → IO UInt32
   | ["--suite", dir] => runSuite dir
-  | ["--batch", dir, n] => runBatch dir n.toNat!
+  | ["--batch", dir, n] => runBatch batchLine dir n.toNat!
+  | ["--canonical-batch", dir, n] => runBatch canonicalLine dir n.toNat!
+  | ["--canonical", file] => do
+      match parseBytes (← IO.FS.readBinFile file) with
+      | .ok vs => for v in vs do IO.println (String.ofList (Canonical.canonical v))
+                  return 0
+      | .error e => IO.eprintln s!"error: {e}"; return 1
   | ["--time", ty, text] =>
       match timeType? ty with
       | some t => do
@@ -127,4 +150,4 @@ def main : List String → IO UInt32
       match parseBytes (← IO.FS.readBinFile file) with
       | .ok vs => IO.println (Json.arr (vs.map toJson).toArray).compress; return 0
       | .error e => IO.eprintln s!"error: {e}"; return 1
-  | _ => do IO.eprintln "usage: haus-ref FILE | --suite DIR | --batch DIR N | --time TYPE TEXT | --time-batch FILE"; return 2
+  | _ => do IO.eprintln "usage: haus-ref FILE | --suite DIR | --batch DIR N | --canonical FILE | --canonical-batch DIR N | --time TYPE TEXT | --time-batch FILE"; return 2

@@ -1,0 +1,2 @@
+// An exponent is its value (spec §2): sign and leading zeros don't matter.
+[1e5, 1e+5, 1E05, 1e+0_5, 2.5e-03, 1e-0, 1e+0, 1e000, -1.50E-007, 0e0]

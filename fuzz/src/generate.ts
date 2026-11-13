@@ -55,7 +55,11 @@ function number(r: Rng): string {
     case 1: return sign + (1 + r.int(9)) + digits(r, r.int(6))
     case 2: return sign + "1_000" + (r.chance(0.5) ? "_000" : "")
     case 3: return sign + r.int(100) + "." + digits(r, 1 + r.int(4))
-    case 4: return sign + (1 + r.int(9)) + r.pick(["e", "E"]) + r.pick(["", "+", "-"]) + (1 + r.int(400))
+    case 4: {
+      // Exponents are compared by value: signs, leading zeros and separators must not matter.
+      const exp = r.pick([String(1 + r.int(400)), "0", "00", "05", "0_5", "000", "6144", "06144", "6_145"])
+      return sign + (1 + r.int(9)) + (r.chance(0.3) ? ".50" : "") + r.pick(["e", "E"]) + r.pick(["", "+", "-"]) + exp
+    }
     case 5: return sign + "0x" + digits(r, 1 + r.int(6), "0123456789abcdefABCDEF")
     case 6: return sign + "0b" + digits(r, 1 + r.int(12), "01")
     case 7: return sign + (1 + r.int(9)) + digits(r, 15 + r.int(30)) // beyond 2^53

@@ -59,7 +59,7 @@ A large document is updated by sending only what changes: a record of the same s
 
 Two values are equal when they have the same kind and:
 
-- **numbers:** the normalized literals are equal. Normalizing removes digit separators, writes the exponent marker as `e`, and converts hex and binary literals to decimal integers. So `1_000` = `1000` and `0xFF` = `255`, but `1.0` ≠ `1` and `1e2` ≠ `100`: scale and notation are part of the value. Numeric equality ("is 1.0 the same amount as 1?") belongs to the schema or the application.
+- **numbers:** the normalized literals are equal. Normalizing removes digit separators, writes the exponent as `e` followed by its value (no `+`, no leading zeros, no `-` on zero), and converts hex and binary literals to decimal integers. So `1_000` = `1000`, `0xFF` = `255` and `1E+05` = `1e5`, but `1.0` ≠ `1` and `1e2` ≠ `100`: scale and notation are part of the value. Numeric equality ("is 1.0 the same amount as 1?") belongs to the schema or the application.
 - **strings:** the code point sequences are identical. There is no Unicode normalization (§4).
 - **bytes:** the byte sequences are identical. Case and spacing in the literal don't matter (`x"0B 34"` = `x"0b34"`).
 - **bytes vs. other kinds:** a byte string is never equal to a string or an array of numbers.
@@ -123,7 +123,7 @@ Errors report a 1-based line and column. Columns count **Unicode code points**, 
 4. **Record keys are data.** A key such as `__proto__`, `constructor` or `$type` MUST NOT reach an object's prototype or any internal field. JavaScript bindings use own properties, a null prototype or a `Map`.
 5. **Unknown variants carry raw data.** The raw value kept for an unknown tag in an open variant is untrusted and subject to the same limits when stored or forwarded.
 6. **Fail on the first error.** Parsers MUST NOT guess or repair invalid input. Two parsers that "repair" differently disagree about what a document says.
-7. **Signatures.** Sign the exact bytes and transport them unchanged, as JWS and COSE do. A canonical form for hashing equal values (§12) is planned.
+7. **Signatures.** Either sign the exact bytes and transport them unchanged, as JWS and COSE do, or sign the canonical form (§12), so that equal values verify whatever their layout.
 8. **Decoding with a schema is linear in the input,** whatever the schema. Implementations MUST:
    - choose a variant's case by looking up its tag, never by trying cases in turn and backtracking. A union of members that the value's tag or kind can't tell apart MUST NOT be allowed in a recursive schema;
    - limit the nesting depth while decoding and encoding (default 256, as in §7), including for values built in code rather than parsed;
@@ -191,16 +191,45 @@ Person { name: "Jane Smith", age: 28, type: Designer },
 
 Tools that cannot keep comments MUST refuse to format in the pretty layout rather than drop them.
 
-## 12. Planned: canonical form
+## 12. Canonical form, equality and hashing
 
-A canonical serialization, so that equal values (§2) produce identical bytes:
-- no comments and no whitespace outside strings
-- fields sorted by code point
-- normalized number literals (§2)
-- the shortest escaping for strings
-- `Tag { … }` for single-record payloads
+The canonical form writes a value as one exact sequence of bytes, so that
+two values are equal (§2) exactly when their canonical forms are identical.
+It is for hashing, signing, deduplication, content addressing and comparing
+values in tests; for people there are the layouts of §11.
 
-This enables hashing, deduplication and content addressing.
+Bindings SHOULD provide `canonical(value)`, `equals(a, b)` and
+`hash(value)`. A binding that provides any of them MUST follow this section
+exactly, so that every binding gives the same bytes and the same hash.
+
+The canonical form of a value is UTF-8 without a byte order mark, with no
+comments, no whitespace outside strings, and no trailing comma or line break:
+
+| Value | Canonical form |
+|---|---|
+| number | its normalized literal (§2): `255`, `19.90`, `-0`, `1e5`. An integer whose decimal form would be longer than the default number limit (§7, 1000 characters) is written in lowercase hex instead, without leading zeros: `-0x1f…`. |
+| string | `"…"`, never a block string. These are escaped: `\"`, `\\`, line feed as `\n`, carriage return as `\r`, tab as `\t`, and every other raw control character (U+0000–U+001F, U+007F–U+009F) and bidi control (U+202A–U+202E, U+2066–U+2069) as `\u{…}` with uppercase hex digits and no leading zeros (`\u{1B}`). Every other character is written as itself, in UTF-8. |
+| bytes | `x"…"`: two lowercase hex digits per byte, nothing between them. |
+| array | `[` the elements, separated by `,` `]`. |
+| record | `{` the fields, separated by `,` `}`. Each field is `key:value`. Fields are sorted by their keys' code points, which is the order of their UTF-8 bytes (not of UTF-16 units, JavaScript's default). A key is bare if it is an identifier (`[a-z_][A-Za-z0-9_]*`), and otherwise written as a string. |
+| variant | the tag alone without arguments (`None`); `Tag{…}` when the only argument is a record; otherwise `Tag(` the arguments, separated by `,` `)`. |
+
+```haus
+Order { total: 19.90, id: 0xFF, "x-y": 1e+5, p: Point(1, 2) }
+```
+
+is, in canonical form:
+
+```
+Order{id:255,p:Point(1,2),total:19.90,"x-y":1e5}
+```
+
+The canonical form parses back to the same value.
+
+- **Equality:** `equals(a, b)` is equality as in §2. Comparing canonical forms is one correct way to compute it.
+- **Hashing:** `hash(value)` is the SHA-256 digest of the canonical form, written as 64 lowercase hex digits. A stream is hashed value by value.
+- **What is hashed:** values, not documents. Layout, comments, key order and the different spellings of the same value (`0xFF` and `255`, `"\u{41}"` and `"A"`, `Tag({ … })` and `Tag { … }`) don't change the hash. What §2 tells apart does: `1.0` and `1`, a missing field and `None`, NFC and NFD strings. Hash the values a parser or encoder gives, not native values after decoding, which may have lost such differences (a JavaScript `number` can't tell `1.0` from `1`).
+- **Stability:** this is version 1 of the canonical form and of `hash`. It will not change: a change would change every stored hash. Another hash algorithm or form, if one is ever added, gets its own name.
 
 ## 13. Prelude, standard modules and schema packages
 
