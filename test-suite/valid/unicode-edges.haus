@@ -1,0 +1,12 @@
+// Unicode edge cases. Keys are compared by code point, without normalization:
+// the NFC and NFD spellings of "café" are two different keys.
+{
+  "caf\u{E9}": 1,
+  "cafe\u{301}": 2,
+  raw_nfc: "café",
+  raw_nfd: "café",
+  nul: "a\u{0}b",
+  max: "\u{10FFFF}",
+  raw_max: "􏿿",
+  astral: "😀 \u{1F600}",
+}

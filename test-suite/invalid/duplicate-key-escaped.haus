@@ -1,0 +1,2 @@
+// The same key twice: once escaped, once raw. Keys are compared after escapes are read.
+{ "caf\u{E9}": 1, "café": 2 }

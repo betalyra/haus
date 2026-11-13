@@ -36,6 +36,7 @@ possible input):
 |---|---|
 | `File.noBidi` (A1) | It contains no raw bidi control character, anywhere |
 | `File.controls` (A2) | Its only control characters are tab, LF and CR |
+| `File.crlf` (A2) | Every CR is directly followed by LF: no lone carriage returns |
 | `File.uniqueKeys` (A3) | Every record in it, at any depth, has unique keys |
 | `File.bounded` (A4) | Every value is within the limits: depth, numbers, strings, byte strings |
 | `char_isScalar` (A5) | Every string is valid Unicode, with no lone surrogates |

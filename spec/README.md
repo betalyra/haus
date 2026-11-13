@@ -110,6 +110,8 @@ Implementations MUST enforce limits while parsing, MUST let users configure them
 | characters in one string, or between the quotes of a byte string | 16 Mi (16,777,216) |
 | characters in one top-level value of a stream | 64 Mi (67,108,864) |
 
+A stream reader counts a value's characters from the previous top-level comma (or the start of the stream, after a byte order mark) up to the next one: whitespace and comments before the value count, the commas don't. A value of exactly the limit is accepted.
+
 Parsing time MUST be linear in the input size for any input within the limits. For example, duplicate-key checks must use hashing, not a list scan.
 
 ## 8. Error positions

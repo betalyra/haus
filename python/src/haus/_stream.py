@@ -194,7 +194,9 @@ class StreamReader:
 
         while i < n:
             # The current value may grow up to here; one more character is an error.
-            limit = start + self._max_value_length - self._done_length
+            # A byte order mark at the start of the stream isn't part of the first value.
+            bom = self._first and (self._done[0] if self._done else buf[start:])[:1] == "\ufeff"
+            limit = start + self._max_value_length + bom - self._done_length
             if i > limit:
                 raise self._origin.error(f"value longer than {self._max_value_length} characters")
             end = min(n, limit + 1)

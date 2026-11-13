@@ -43,7 +43,7 @@ Each is a theorem of the form `File L t vs → …`.
 | Theorem | Security issue | Spec |
 |---|---|---|
 | ✅ A1. No raw bidi control character anywhere in a valid file (`File.noBidi`, `Haus/Props/Chars.lean`) | "Trojan Source": text that displays differently from what it is | §4, review S7 |
-| ✅ A2. The only control characters in a valid file are tab, LF and CR (`File.controls`). Found by the proof attempt: comments allowed ESC and NUL, strings allowed DEL and C1; now forbidden everywhere (spec §4). Still to state: every CR is directly followed by LF. | Terminal escape injection, truncation at NUL | §4 |
+| ✅ A2. The only control characters in a valid file are tab, LF and CR (`File.controls`). Found by the proof attempt: comments allowed ESC and NUL, strings allowed DEL and C1; now forbidden everywhere (spec §4). And every CR is directly followed by LF (`File.crlf`, `Haus/Props/LineBreaks.lean`). | Terminal escape injection, truncation at NUL | §4 |
 | ✅ A3. Every record, at any depth, has unique keys (`File.uniqueKeys`, `Haus/Props/Values.lean`) | Parsers that pick different duplicates | review §1.1 |
 | ✅ A4. Every value is within the limits: nesting depth, number length, exponent, string and byte string length (`File.bounded`) | Resource exhaustion | §7, review S4, S5 |
 | ✅ A5. Every string is valid Unicode with no lone surrogates (`char_isScalar`) | Encoding confusion | §4 (holds by construction: Lean's `Char`) |

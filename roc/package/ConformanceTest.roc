@@ -53,6 +53,8 @@ import "../../test-suite/valid/tab-in-block-string.haus" as valid_tab_in_block_s
 import "../../test-suite/valid/tab-in-block-string.canonical" as valid_tab_in_block_string_canonical : List(U8)
 import "../../test-suite/valid/trailing-commas.haus" as valid_trailing_commas : List(U8)
 import "../../test-suite/valid/trailing-commas.canonical" as valid_trailing_commas_canonical : List(U8)
+import "../../test-suite/valid/unicode-edges.haus" as valid_unicode_edges : List(U8)
+import "../../test-suite/valid/unicode-edges.canonical" as valid_unicode_edges_canonical : List(U8)
 import "../../test-suite/valid/variants.haus" as valid_variants : List(U8)
 import "../../test-suite/valid/variants.canonical" as valid_variants_canonical : List(U8)
 import "../../test-suite/invalid/bad-escape.haus" as invalid_bad_escape : List(U8)
@@ -86,6 +88,7 @@ import "../../test-suite/invalid/control-nul-in-block-comment.haus" as invalid_c
 import "../../test-suite/invalid/double-comma-top-level.haus" as invalid_double_comma_top_level : List(U8)
 import "../../test-suite/invalid/double-comma.haus" as invalid_double_comma : List(U8)
 import "../../test-suite/invalid/double-separator.haus" as invalid_double_separator : List(U8)
+import "../../test-suite/invalid/duplicate-key-escaped.haus" as invalid_duplicate_key_escaped : List(U8)
 import "../../test-suite/invalid/duplicate-key.haus" as invalid_duplicate_key : List(U8)
 import "../../test-suite/invalid/duplicate-quoted-key.haus" as invalid_duplicate_quoted_key : List(U8)
 import "../../test-suite/invalid/empty-exponent.haus" as invalid_empty_exponent : List(U8)
@@ -325,6 +328,12 @@ expect ConformanceTest.run(valid_trailing_commas) == "[{\"rec\":{\"list\":[{\"nu
 # valid/trailing-commas.canonical
 expect ConformanceTest.canonical(valid_trailing_commas) == valid_trailing_commas_canonical
 
+# valid/unicode-edges.haus
+expect ConformanceTest.run(valid_unicode_edges) == "[{\"rec\":{\"café\":{\"num\":\"1\"},\"café\":{\"num\":\"2\"},\"raw_nfc\":\"café\",\"raw_nfd\":\"café\",\"nul\":\"a\\u0000b\",\"max\":\"􏿿\",\"raw_max\":\"􏿿\",\"astral\":\"😀 😀\"}}]"
+
+# valid/unicode-edges.canonical
+expect ConformanceTest.canonical(valid_unicode_edges) == valid_unicode_edges_canonical
+
 # valid/variants.haus
 expect ConformanceTest.run(valid_variants) == "[[{\"tag\":\"None\"},{\"tag\":\"Some\",\"args\":[{\"num\":\"1\"}]},{\"tag\":\"Point\",\"args\":[{\"num\":\"1\"},{\"num\":\"2\"}]},{\"tag\":\"Circle\",\"args\":[{\"rec\":{\"radius\":{\"num\":\"5\"}}}]},{\"tag\":\"Circle\",\"args\":[{\"rec\":{\"radius\":{\"num\":\"5\"}}}]},{\"tag\":\"Circle\",\"args\":[{\"rec\":{\"radius\":{\"num\":\"5\"}}}]},{\"tag\":\"Err\",\"args\":[{\"tag\":\"NotFound\",\"args\":[\"x\"]}]},{\"tag\":\"Polygon\",\"args\":[[{\"tag\":\"Point\",\"args\":[{\"num\":\"0\"},{\"num\":\"0\"}]},{\"tag\":\"Point\",\"args\":[{\"num\":\"1\"},{\"num\":\"1\"}]}]]},{\"tag\":\"True\"},{\"tag\":\"False\"},{\"tag\":\"A1_b\"}]]"
 
@@ -423,6 +432,9 @@ expect ConformanceTest.rejects(invalid_double_comma)
 
 # invalid/double-separator.haus
 expect ConformanceTest.rejects(invalid_double_separator)
+
+# invalid/duplicate-key-escaped.haus
+expect ConformanceTest.rejects(invalid_duplicate_key_escaped)
 
 # invalid/duplicate-key.haus
 expect ConformanceTest.rejects(invalid_duplicate_key)

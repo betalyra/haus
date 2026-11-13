@@ -1,5 +1,6 @@
 import Haus.Sound.Values
 import Haus.Props.Chars
+import Haus.Props.LineBreaks
 import Haus.Props.Values
 
 /-!
@@ -22,6 +23,11 @@ theorem parse_noBidi (h : parse L input = .ok vs) : ∀ c ∈ input, isBidi c = 
 theorem parse_controls (h : parse L input = .ok vs) :
     ∀ c ∈ input, isRawControl c = true → c = '\t' ∨ c = '\n' ∨ c = '\r' :=
   (parse_sound L input vs h).controls
+
+/-- A2: every carriage return in an accepted input is directly followed by a line feed. -/
+theorem parse_crlf (h : parse L input = .ok vs) :
+    ∀ pre post, input = pre ++ '\r' :: post → post.head? = some '\n' :=
+  (parse_sound L input vs h).crlf
 
 /-- A3: every record the parser returns, at any depth, has unique keys. -/
 theorem parse_uniqueKeys (h : parse L input = .ok vs) : ∀ v ∈ vs, UniqueKeys v :=
