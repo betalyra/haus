@@ -1,5 +1,6 @@
 import Haus.Lexical
 import Haus.Value
+import Haus.Lists
 import Haus.Grammar
 import Haus.Parser
 import Haus.Sound.Monad
@@ -16,3 +17,6 @@ import Haus.Complete.Whitespace
 import Haus.Complete.Strings
 import Haus.Complete.Values
 import Haus.Correct
+import Haus.Time.Spec
+import Haus.Time.Check
+import Haus.Time.Correct

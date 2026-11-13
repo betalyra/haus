@@ -103,9 +103,6 @@ theorem intercalate_append_singleton (sep : Text) (xs : List Text) (y : Text) :
     rw [List.cons_append, List.intercalate_cons_of_ne_nil (by simp), ih]
     simp [List.append_assoc]
 
-theorem run'_eq {α : Type} (x : P α) (t : Text) : x.run' t = (x.run t).map Prod.fst := by
-  simp only [StateT.run', StateT.run, Functor.map]
-
 /-- One decoded content line: with its line break, a `BlockLine` of the grammar. -/
 theorem blockLine_sound (indent line s : Text) (h : blockLine indent line = .ok s) :
     ∃ raw nl, line ++ ['\n'] = raw ++ nl ∧ Newline nl ∧ BlockLine indent raw s := by

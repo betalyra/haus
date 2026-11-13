@@ -12,6 +12,7 @@ and a reference parser that computes it.
 | [`Haus/Sound/`](Haus/Sound) | Proofs that the parser only accepts what the grammar allows |
 | [`Haus/Complete/`](Haus/Complete) | Proofs that the parser accepts everything the grammar allows |
 | [`Haus/Correct.lean`](Haus/Correct.lean) | Both together, and unambiguity |
+| [`Haus/Time/`](Haus/Time) | The std/time profile ([`std/time.md`](../std/time.md)): the rules, a checker, and the proof that it computes them |
 | [`Main.lean`](Main.lean) | `haus-ref`, the parser on the command line |
 
 It needs [elan](https://github.com/leanprover/elan) (`brew install elan-init`);
@@ -21,6 +22,7 @@ the Lean version is pinned in `lean-toolchain`. No Mathlib.
 lake build
 .lake/build/bin/haus-ref FILE                    # values in the test-suite JSON encoding
 .lake/build/bin/haus-ref --suite ../../test-suite # the conformance suite
+.lake/build/bin/haus-ref --time Date 2026-02-29     # a std/time check
 ```
 
 ## What is proven
@@ -65,4 +67,11 @@ is always enough. Only Lean's standard axioms are used
 
 The full plan, including the security properties, is in [`PLAN.md`](PLAN.md).
 
-Next: the std/time model, then encoding round trips and stream splitting.
+**About std/time:** `Time.check_iff : check ty s = true ↔ Valid ty s`. The
+checker behind `haus-ref --time` computes exactly the rules of
+[`std/time.md`](../std/time.md), written as definitions in
+[`Haus/Time/Spec.lean`](Haus/Time/Spec.lean). Every row of the spec's rules
+table is also a `#guard` test in [`Haus/Time/Check.lean`](Haus/Time/Check.lean).
+
+Next: fuzzing the bindings' std/time checkers against this model, then
+encoding round trips and stream splitting.

@@ -156,17 +156,6 @@ theorem number_sound (L : Limits) (t rest : Text) (v : Value) (h : (number L).ru
 
 /-! ## Strings -/
 
-theorem mem_takeWhile {p : Char → Bool} {l : Text} {x : Char} (h : x ∈ l.takeWhile p) : p x = true := by
-  induction l with
-  | nil => simp at h
-  | cons y ys ih =>
-    simp only [List.takeWhile] at h
-    split at h
-    · rcases List.mem_cons.mp h with rfl | h
-      · assumption
-      · exact ih h
-    · simp at h
-
 theorem escape_sound (t r : Text) (c : Char) (h : escape.run t = .ok (c, r)) :
     ∃ e, t = e ++ r ∧ Escape e c := by
   simp only [escape, run_bind, run_get] at h

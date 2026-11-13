@@ -89,6 +89,26 @@ fn rejects() {
     }
 }
 
+/// The duration bounds are exact, whatever the number of digits.
+#[test]
+fn bounds() {
+    for text in ["P4294967295Y", "PT9007199254740991S", "P104249991374D"] {
+        assert_eq!(check("Duration", text), Ok(()), "{text}");
+    }
+    let nines = "9".repeat(400);
+    let rejected = [
+        ("Duration", "PT9007199254740992S".to_string(), "below 2^53 seconds"),
+        ("Duration", format!("P{nines}Y"), "too large"),
+        ("Duration", format!("PT{nines}S"), "below 2^53 seconds"),
+        ("TimeZone", "a".repeat(256), "not an IANA zone name"),
+        ("TimeZone", "Europe//Lisbon".to_string(), "not an IANA zone name"),
+    ];
+    for (ty, text, reason) in rejected {
+        let got = check(ty, &text).expect_err(&format!("accepted {ty} {text}"));
+        assert!(got.contains(reason), "{ty} {text}: {got}");
+    }
+}
+
 #[test]
 fn decodes_through_the_tag() {
     use haus::{from_str, time::Date};

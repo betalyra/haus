@@ -4,7 +4,13 @@ import Haus.Complete.Lexical
 # Completeness of whitespace and comments
 
 `ws` reads exactly the whitespace the grammar describes, provided what follows
-can't continue it.
+can't continue it (`WsFollow`).
+
+`wsLoop` takes fuel, and a line comment at the end of a file needs one more
+step than the whitespace before it. So `wsLoop_complete` is stated for any
+continuation: given how `wsLoop` behaves on what follows (for fuel above
+some `k`), it behaves the same after reading `WS` first. `ws_complete` and
+`wsEnd_complete` plug in the two continuations that occur.
 -/
 
 namespace Haus.Complete
@@ -80,17 +86,6 @@ end
 
 /-! ## Whitespace -/
 
-theorem takeWhile_stop {p : Char → Bool} {ds : Text} (hds : ∀ c ∈ ds, p c = true) {x : Text}
-    (hx : ∀ c, x.head? = some c → p c = false) : (ds ++ x).takeWhile p = ds ∧ (ds ++ x).dropWhile p = x := by
-  induction ds with
-  | nil =>
-    cases x with
-    | nil => simp
-    | cons c r => simp [hx c rfl]
-  | cons c ds ih =>
-    obtain ⟨h1, h2⟩ := ih fun y hy => hds y (by simp [hy])
-    simp [hds c (by simp), h1, h2]
-
 theorem wsLoop_stop {r : Text} (hr : WsFollow r) (n : Nat) : (wsLoop (n + 1)).run r = .ok ((), r) := by
   simp only [wsLoop, run_bind, run_get]
   split
@@ -98,7 +93,7 @@ theorem wsLoop_stop {r : Text} (hr : WsFollow r) (n : Nat) : (wsLoop (n + 1)).ru
 
 theorem wsLoop_blank {c : Char} (hc : isBlank c = true) (n : Nat) (r : Text) :
     (wsLoop (n + 1)).run (c :: r) = (wsLoop n).run r := by
-  have : c = ' ' ∨ c = '\t' := by simpa [isBlank] using hc
+  have := isBlank_iff.mp hc
   rcases this with rfl | rfl <;> simp [wsLoop]
 
 theorem wsLoop_newline {nl : Text} (h : Newline nl) (n : Nat) (r : Text) :
@@ -116,7 +111,7 @@ theorem wsLoop_line {body : Text} (hb : LineBody body) {x : Text}
     · have hn : c ≠ '\n' := by rintro rfl; simp [isRawControl] at h1
       have hr : c ≠ '\r' := by rintro rfl; simp [isRawControl] at h1
       simp [hn, hr]
-  obtain ⟨ht, hd⟩ := takeWhile_stop hp (x := x) fun c hc => by rcases hx c hc with rfl | rfl <;> decide
+  obtain ⟨ht, hd⟩ := takeWhile_append hp (x := x) fun c hc => by rcases hx c hc with rfl | rfl <;> decide
   have hf : body.findIdx? (fun c => isBidi c || (isRawControl c && c != '\t')) = none := by
     rw [List.findIdx?_eq_none_iff]
     intro c hc

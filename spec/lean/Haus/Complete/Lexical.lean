@@ -7,6 +7,13 @@ import Haus.Sound.Monad
 
 The reverse of `Haus.Sound.Lexical`: each grammar rule, followed by input
 that can't continue it, is read exactly by its lexer.
+
+The lexers are greedy: `sepTail` takes digits as long as there are any,
+`lexFrac` takes a `.` whenever digits follow it. So every lemma here has a
+*follow condition*, a hypothesis about the text `x` after the rule: it must
+not be something the lexer would read on. For a whole number literal that
+is `NoIdent`: no `[A-Za-z0-9_.]` after it. `Haus.Complete.Values` shows the
+grammar only ever puts a number where that holds.
 -/
 
 namespace Haus.Complete
@@ -29,14 +36,14 @@ theorem sepTail_complete {p : Char → Bool} (hp : p '_' = false) {a : Text} (h 
       split
       · rename_i heq; simp at heq; exact absurd heq.1 hc
       · rename_i c' r' heq; simp at heq; obtain ⟨rfl, rfl⟩ := heq; simp [hpc]
-      · simp at *
+      · rename_i heq; simp at heq
   | digit c rest hc _ ih =>
     have hc_ : c ≠ '_' := by rintro rfl; simp [hp] at hc
     unfold sepTail
     split
     · rename_i heq; simp at heq; exact absurd heq.1 hc_
     · rename_i c' r' heq; simp at heq; obtain ⟨rfl, rfl⟩ := heq; simp [hc, ih]
-    · simp at *
+    · rename_i heq; simp at heq
   | sep c rest hc _ ih => simp [sepTail, hc, ih]
 
 theorem digits_complete {p : Char → Bool} (hp : p '_' = false) {t : Text} (h : Digits p t)
@@ -79,7 +86,7 @@ theorem lexInt_complete {i : Text} (h : IntPart i) (x : Text)
     split
     · rename_i heq; simp at heq; exact absurd heq.1 h0
     · rename_i heq; simp at heq; obtain ⟨rfl, rfl⟩ := heq; simpa [h0] using this
-    · simp at *
+    · rename_i heq; simp at heq
 
 /-- After an exponent marker: digits and what follows, which can't be a sign. -/
 theorem lexSign_digits {ds : Text} (h : Digits isDigit ds) (r : Text) : lexSign (ds ++ r) = ([], ds ++ r) := by
@@ -235,15 +242,6 @@ theorem number_complete {L : Limits} {t : Text} (h : NumberLit L t) (r : Text) (
 
 /-! ## Strings -/
 
-theorem takeWhile_prefix {p : Char → Bool} {ds : Text} (hds : ∀ c ∈ ds, p c = true) {d : Char} (hd : p d = false)
-    (r : Text) : (ds ++ d :: r).takeWhile p = ds ∧ (ds ++ d :: r).dropWhile p = d :: r := by
-  induction ds with
-  | nil => simp [hd]
-  | cons c ds ih =>
-    have hc := hds c (by simp)
-    obtain ⟨h1, h2⟩ := ih fun x hx => hds x (by simp [hx])
-    simp [hc, h1, h2]
-
 theorem escape_complete {e : Text} {c : Char} (h : Escape e c) (r : Text) : escape.run (e ++ r) = .ok (c, r) := by
   cases h with
   | quote => rfl
@@ -252,7 +250,7 @@ theorem escape_complete {e : Text} {c : Char} (h : Escape e c) (r : Text) : esca
   | cr => rfl
   | tab => rfl
   | unicode ds h1 h6 hhex hs =>
-    obtain ⟨ht, hd⟩ := takeWhile_prefix hhex (d := '}') (by decide) r
+    obtain ⟨ht, hd⟩ := takeWhile_append hhex (x := '}' :: r) fun c hc => by simp at hc; subst hc; decide
     have h1' : ¬ ds.length < 1 := by omega
     have h6' : ¬ ds.length > 6 := by omega
     have hne : ds ≠ [] := by rintro rfl; simp at h1

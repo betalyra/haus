@@ -1,4 +1,5 @@
 import Haus.Parser
+import Haus.Lists
 
 /-!
 # Reasoning about parsers
@@ -56,5 +57,9 @@ open Haus Parser
   cases e <;> rfl
 
 @[simp] theorem run_throw {α : Type} (e : Error) (t : Text) : (throw e : P α).run t = .error e := rfl
+
+/-- Running a parser for its result only. -/
+theorem run'_eq {α : Type} (x : P α) (t : Text) : x.run' t = (x.run t).map Prod.fst := by
+  simp only [StateT.run', StateT.run, Functor.map]
 
 end Haus.Sound

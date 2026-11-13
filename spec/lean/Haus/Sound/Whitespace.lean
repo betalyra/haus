@@ -171,16 +171,6 @@ theorem WsRead.prepend {p w r : Text} (hp : ∀ w, WS w → WS (p ++ w)) (h : Ws
     | ws _ h => exact .ws _ (hp _ h)
     | lineComment w1 b h1 hb => simpa using WSEnd.lineComment (p ++ w1) b (hp w1 h1) hb
 
-theorem head_dropWhile {p : Char → Bool} {l : Text} {c : Char} (h : (l.dropWhile p).head? = some c) :
-    p c = false := by
-  induction l with
-  | nil => simp at h
-  | cons x xs ih =>
-    simp only [List.dropWhile] at h
-    split at h
-    · exact ih h
-    · simp at h; subst h; simp_all
-
 /-- A line comment, then whatever `ws` read after it. -/
 theorem lineComment_step {body rest0 w' r : Text} (hb : LineBody body)
     (hrest : rest0 = [] ∨ rest0.head? = some '\n' ∨ rest0.head? = some '\r')

@@ -8,6 +8,8 @@ import Lean.Data.Json
     haus-ref --suite DIR   run the conformance suite in DIR (valid/ and invalid/)
     haus-ref --batch DIR N for DIR/00000.haus … DIR/{N-1}.haus, one line each:
                            `ok <values>` or `err <line> <column> <reason>` (fuzz/)
+    haus-ref --time TYPE TEXT     whether TEXT is a valid std/time TYPE (exit 0 or 1)
+    haus-ref --time-batch FILE    for each line `["TYPE", "TEXT"]` of FILE: `ok` or `no`
 -/
 
 open Haus Lean
@@ -85,11 +87,36 @@ def runSuite (dir : System.FilePath) : IO UInt32 := do
   IO.println s!"{count - failures.size}/{count} passed"
   return if failures.isEmpty then 0 else 1
 
+def timeType? (name : String) : Option Time.TimeType :=
+  Time.TimeType.all.find? (·.name == name)
+
+/-- One line of `--time-batch`: `["TYPE", "TEXT"]`. -/
+def timeLine (line : String) : String :=
+  match Json.parse line with
+  | .ok (.arr #[.str ty, .str text]) =>
+      match timeType? ty with
+      | some t => if Time.check t text.toList then "ok" else "no"
+      | none => s!"err unknown type {ty}"
+  | _ => "err bad line"
+
+def runTimeBatch (file : System.FilePath) : IO UInt32 := do
+  let out ← IO.getStdout
+  for line in (← IO.FS.lines file) do
+    if !line.isEmpty then out.putStrLn (timeLine line)
+  return 0
+
 def main : List String → IO UInt32
   | ["--suite", dir] => runSuite dir
   | ["--batch", dir, n] => runBatch dir n.toNat!
+  | ["--time", ty, text] =>
+      match timeType? ty with
+      | some t => do
+          let ok := Time.check t text.toList
+          IO.println (if ok then "ok" else "invalid"); return if ok then 0 else 1
+      | none => do IO.eprintln s!"{ty} is not a std/time type"; return 2
+  | ["--time-batch", file] => runTimeBatch file
   | [file] => do
       match parseBytes (← IO.FS.readBinFile file) with
       | .ok vs => IO.println (Json.arr (vs.map toJson).toArray).compress; return 0
       | .error e => IO.eprintln s!"error: {e}"; return 1
-  | _ => do IO.eprintln "usage: haus-ref FILE | haus-ref --suite DIR | haus-ref --batch DIR N"; return 2
+  | _ => do IO.eprintln "usage: haus-ref FILE | --suite DIR | --batch DIR N | --time TYPE TEXT | --time-batch FILE"; return 2

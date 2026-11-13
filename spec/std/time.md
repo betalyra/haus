@@ -33,7 +33,7 @@ for each value, and nothing depends on a registry.
 | Fraction | 1–9 digits (nanoseconds), on seconds only | `12:00:00.1234567890`, `PT1.5H` |
 | Separators | upper-case `T` and `Z` | `t`, `z`, a space instead of `T` |
 | Offset | `Z` or `±hh:mm`, up to `±23:59` | `-00:00` (write `Z`), `+24:00`, `+0100` |
-| Zone | an IANA name by its syntax: parts of `A–Z a–z 0–9 . _ + -` separated by `/`, the first starting with a letter, no `.` or `..` parts; or an offset `±hh:mm` | `[!Europe/Lisbon]`, `[Europe/../etc]` |
+| Zone | an IANA name by its syntax: at most 255 characters, parts of `A–Z a–z 0–9 . _ + -` separated by `/`, the first starting with a letter, no empty, `.` or `..` parts; or an offset `±hh:mm` | `[!Europe/Lisbon]`, `[Europe/../etc]`, `[Europe//Lisbon]` |
 | RFC 9557 tags | exactly one zone | `[Europe/Lisbon][u-ca=iso8601]`, other calendars |
 | Duration | at least one component; `T` followed by at least one; years, months and weeks below 2³²; days and time together below 2⁵³ seconds | `P`, `PT`, `P1DT`, `+PT1H`, `p1d` |
 | Other ISO 8601 forms | — | week dates (`2026-W45-1`), ordinal dates (`2026-313`), the basic format (`20261109`), intervals (`…/…`), repetitions (`R5/…`) |
@@ -59,7 +59,9 @@ Nothing that depends on a registry:
   order.
 - The other types compare by their fields (`Date` by year, month and day).
 
-The TypeScript implementation's tests
+The rules are also a Lean model
+([`spec/lean/Haus/Time/Spec.lean`](../lean/Haus/Time/Spec.lean)), with a
+checker proven to compute them (`haus-ref --time TYPE TEXT`). The TypeScript
+implementation's tests
 ([`std-time.test.ts`](../../typescript/packages/haus/test/std-time.test.ts))
-cover every row above; language-neutral test vectors and a Lean reference
-model are planned.
+cover every row above.

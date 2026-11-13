@@ -5,6 +5,24 @@ import Haus.Complete.Strings
 
 Values, records, arrays and payloads call each other, so their completeness
 is proven together, by induction on the grammar's derivation.
+
+**What follows a value.** The lexical lemmas need to know what comes after
+a number or a tag (`NoIdent`, and no `(` or `{` after the blanks behind a
+bare tag), and `ws` needs to know what comes after whitespace (`WsFollow`).
+`ValFollow` covers all of them: after optional blanks, a line break, a
+comment, a comma, a closing bracket or the end. The grammar only puts a
+value before whitespace followed by one of those (`ws_valFollow`).
+
+**Fuel.** Each lemma assumes fuel above twice the length of the text it
+reads (`2 * t.length < fuel`): every level of nesting costs a few units and
+reads at least two characters (its brackets). The parser starts with
+`4 * (length + 1)`, which is enough for every value in the file. Because
+each lemma holds for *all* fuel above the bound, no separate monotonicity
+lemma is needed.
+
+**Names.** The lemmas about grammar rules are declared as
+`Haus.Grammar.Val.complete` and so on (with `_root_`), so that a derivation
+`hv : Val L n t v` can be used as `hv.complete`.
 -/
 
 namespace Haus.Complete
@@ -30,7 +48,7 @@ theorem valFollow_noIdent {r : Text} (h : ValFollow r) : NoIdent r := by
     simp at hc; subst hc
     cases hb : isBlank d
     · exact stopChar_not_ident (h d (by simp [List.dropWhile, hb]))
-    · have : d = ' ' ∨ d = '\t' := by simpa [isBlank] using hb
+    · have := isBlank_iff.mp hb
       rcases this with rfl | rfl <;> decide
 
 theorem valFollow_noPayload {r : Text} (h : ValFollow r) :
@@ -161,7 +179,7 @@ theorem key_complete {L : Limits} {k : Text} {key : String} (h : Key L k key) {x
   | ident ht =>
     obtain ⟨c, cs, rfl, hc, hcs⟩ := ht
     have hci : isIdentChar c = true := by simp [isIdentChar, hc]
-    obtain ⟨htw, hdw⟩ := takeWhile_stop (p := isIdentChar) (ds := c :: cs)
+    obtain ⟨htw, hdw⟩ := takeWhile_append (p := isIdentChar) (ds := c :: cs)
       (by intro y hy; rcases List.mem_cons.mp hy with rfl | hy; exact hci; exact hcs y hy)
       (x := x) fun d hd => (hx d hd).1
     have hq : c ≠ '"' := by rintro rfl; simp [isLowerStart] at hc
@@ -173,7 +191,7 @@ theorem key_complete {L : Limits} {k : Text} {key : String} (h : Key L k key) {x
       obtain ⟨rfl, -⟩ := List.cons.inj heq
       simp only [hc, ↓reduceIte, run_bind, run_takeWhile, run_pure]
       rw [← List.cons_append, htw, hdw]
-    · simp at *
+    · rename_i heq; simp at heq
   | quoted _ hs =>
     have hb := basicString_complete hs x
     cases hs with
@@ -189,7 +207,7 @@ theorem key_complete {L : Limits} {k : Text} {key : String} (h : Key L k key) {x
       · rename_i y heq; simp at heq; exact absurd ⟨y, heq⟩ hnt
       · exact hb
       · rename_i c' _ h1 h2 heq; exact absurd (List.cons.inj heq).1.symm h2
-      · simp at *
+      · rename_i heq; simp at heq
 
 theorem expect_complete (c : Char) (what : String) (r : Text) : (expect c what).run (c :: r) = .ok ((), r) := by
   simp [expect]
@@ -251,7 +269,7 @@ theorem value_bytes {L : Limits} {f n : Nat} {t r : Text} {v : Value}
 theorem tag_takeWhile_complete {t : Text} (h : Tag t) {x : Text} (hx : ∀ c, x.head? = some c → isIdentChar c = false) :
     (t ++ x).takeWhile isIdentChar = t ∧ (t ++ x).dropWhile isIdentChar = x := by
   obtain ⟨c, cs, rfl, hc, hcs⟩ := h
-  refine takeWhile_stop ?_ hx
+  refine takeWhile_append ?_ hx
   intro y hy
   rcases List.mem_cons.mp hy with rfl | hy
   · simp [isIdentChar, hc]
@@ -278,10 +296,10 @@ theorem variant_payload {L : Limits} {t sp inner r : Text} {xs : List Value} {f 
     | cons d sp' =>
       simp at hc; subst hc
       have := hsp d (by simp)
-      have : d = ' ' ∨ d = '\t' := by simpa [isBlank] using this
+      have := isBlank_iff.mp this
       rcases this with rfl | rfl <;> decide
   obtain ⟨htw, hdw⟩ := tag_takeWhile_complete h hnb
-  obtain ⟨hsw, hsd⟩ := takeWhile_stop hsp (x := '(' :: inner ++ ')' :: r) (by simp; decide)
+  obtain ⟨hsw, hsd⟩ := takeWhile_append hsp (x := '(' :: inner ++ ')' :: r) (by simp; decide)
   simp only [List.append_assoc, List.cons_append] at htw hdw hsw hsd hi ⊢
   simp [variant, htw, hdw, hsd, hi, hxs]
 
@@ -297,10 +315,10 @@ theorem variant_record {L : Limits} {t sp rt r : Text} {fs : List (String × Val
     | cons d sp' =>
       simp at hc; subst hc
       have := hsp d (by simp)
-      have : d = ' ' ∨ d = '\t' := by simpa [isBlank] using this
+      have := isBlank_iff.mp this
       rcases this with rfl | rfl <;> decide
   obtain ⟨htw, hdw⟩ := tag_takeWhile_complete h hnb
-  obtain ⟨hsw, hsd⟩ := takeWhile_stop hsp (x := '{' :: rt' ++ r) (by simp; decide)
+  obtain ⟨hsw, hsd⟩ := takeWhile_append hsp (x := '{' :: rt' ++ r) (by simp; decide)
   simp only [List.append_assoc, List.cons_append] at htw hdw hsw hsd hr ⊢
   simp [variant, htw, hdw, hsd, hr]
 
@@ -339,7 +357,7 @@ theorem fields_comma {L : Limits} {g n : Nat} {start : Text} {acc : List (String
   simp only [fields, run_bind, run_get]
   split
   · rename_i heq; exact absurd (List.cons.inj heq).1 hc
-  · simp at *
+  · rename_i heq; simp at heq
   · simp [hk, hw1, hw2, hv, hdup, hw3, hw4, expect]
 
 theorem fields_last {L : Limits} {g n : Nat} {start : Text} {acc : List (String × Value)}
@@ -351,7 +369,7 @@ theorem fields_last {L : Limits} {g n : Nat} {start : Text} {acc : List (String 
   simp only [fields, run_bind, run_get]
   split
   · rename_i heq; exact absurd (List.cons.inj heq).1 hc
-  · simp at *
+  · rename_i heq; simp at heq
   · simp [hk, hw1, hw2, hv, hdup, hw3, expect]
 
 /-! ## Assembling arrays and records -/
@@ -411,7 +429,7 @@ theorem ws_head {w : Text} (h : WS w) : ∀ c, w.head? = some c → c = ' ' ∨ 
   | nil => simp at hc
   | blank d rest hd _ =>
     simp at hc; subst hc
-    have : d = ' ' ∨ d = '\t' := by simpa [isBlank] using hd
+    have := isBlank_iff.mp hd
     rcases this with h | h <;> simp [h]
   | newline nl rest hnl => cases hnl <;> simp at hc <;> subst hc <;> simp
   | lineComment => simp at hc; subst hc; simp

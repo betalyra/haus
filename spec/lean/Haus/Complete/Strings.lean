@@ -3,6 +3,13 @@ import Haus.Sound.BlockString
 
 /-!
 # Completeness of byte strings and block strings
+
+A block string is found by its closing `"""` (`findClose`), split into lines
+at line feeds, and decoded line by line. The proof follows the same steps
+backwards. One condition is not obvious: `findClose` pairs a backslash with
+the next character, and treats `"` as a possible start of `"""`. So the
+content before the closing quotes must not end with `\` or `"`; it doesn't,
+because it ends with a line break or the indent (`blockLines_last`).
 -/
 
 namespace Haus.Complete
@@ -20,19 +27,19 @@ theorem byteChars_complete {raw : Text} {bs : List UInt8} (h : ByteChars raw bs)
     split
     · rename_i heq; exact absurd (List.cons.inj heq).1 hq
     · rename_i heq; obtain ⟨rfl, rfl⟩ := List.cons.inj heq; simp [hc, ih]
-    · simp at *
+    · rename_i heq; simp at heq
   | byte h l raw bs hh hl _ ih =>
     have hq : h ≠ '"' := by rintro rfl; simp [isHexDigit, isDigit] at hh
     have hb : isBlank h = false := by
       cases hc : isBlank h
       · rfl
-      · have : h = ' ' ∨ h = '\t' := by simpa [isBlank] using hc
+      · have := isBlank_iff.mp hc
         rcases this with rfl | rfl <;> simp [isHexDigit, isDigit] at hh
     rw [List.cons_append, byteChars.eq_def]
     split
     · rename_i heq; exact absurd (List.cons.inj heq).1 hq
     · rename_i heq; obtain ⟨rfl, rfl⟩ := List.cons.inj heq; simp [hb, hh, hl, ih, Except.map]
-    · simp at *
+    · rename_i heq; simp at heq
 
 theorem bytes_complete {L : Limits} {raw : Text} {bs : List UInt8} (h : ByteChars raw bs)
     (hlen : raw.length ≤ L.maxStringLength) (r : Text) :
@@ -273,7 +280,7 @@ theorem blockString_complete {L : Limits} {t : Text} {s : String} (h : BlockStri
   | mk sp nl content indent ss hsp hnl hi hl hq hlen =>
     have hb := blockBody_complete L (['"', '"', '"'] ++ sp ++ nl ++ content ++ indent ++ ['"', '"', '"'] ++ r)
       hl hi hq hlen r
-    obtain ⟨ht, hd⟩ := takeWhile_stop hsp (x := nl ++ content ++ indent ++ ['"', '"', '"'] ++ r)
+    obtain ⟨ht, hd⟩ := takeWhile_append hsp (x := nl ++ content ++ indent ++ ['"', '"', '"'] ++ r)
       (by cases hnl <;> simp [isBlank])
     simp only [blockString, run_bind, run_get, run_skip, run_takeWhile]
     cases hnl <;> simp only [List.append_assoc, List.cons_append, List.nil_append] at ht hd hb ⊢ <;> simp [hd, hb]

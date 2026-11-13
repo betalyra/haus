@@ -116,10 +116,10 @@ design, and so outside the model.
 
 | | Step | Gives | Effort |
 |---|---|---|---|
-| ⬜ | T1. Reference model | Each type's rules as a definition, and a checker that computes it | days |
+| ✅ | T1. Reference model | Each type's rules as a definition, and a checker proven to compute them (`check_iff`); `haus-ref --time` | days |
 | ⬜ | T2. Fuzzing | The TypeScript, Rust and Roc std/time checkers against the model, on generated dates, times, offsets, zones and durations (leap years, `24:00:00`, `-00:00`, the 2⁵³ duration bound) | 1–2 days |
 | ⬜ | T3. Zone names can't traverse paths | No accepted zone has a `.` or `..` part, so looking one up as a tz database file can't escape it (`Europe/../../etc/passwd`) | ~1 day |
-| ⬜ | T4. Durations can't overflow | Every accepted duration fits in 64-bit nanoseconds | 1–2 days |
+| ⬜ | T4. Durations can't overflow | Years, months and weeks fit in 32 bits; days and time together fit in a signed 64-bit count of seconds plus nanoseconds, and exactly in a JavaScript number of seconds. (Not in 64-bit nanoseconds, which end at about 292 years: the profile allows up to 2⁵³ seconds.) | ~1 day |
 | ⬜ | T5. The calendar is right | Valid `Date` strings correspond exactly to the days from 0000-01-01 to 9999-12-31 | ~1 week |
 | ⬜ | T6. One spelling per value | Formatting a parsed value gives back the same string; the only spellings of the same value are those the profile names (`Instant` offsets, `.250` and `.25`) | ~1 week |
 
@@ -134,4 +134,6 @@ form (H).
   case. So far: the lone carriage return (now an error everywhere), the
   string limit counting UTF-16 units in TypeScript (fixed), and raw control
   characters in comments and strings (now an error everywhere), the Rust
-  stream crash and the byte order mark in streams (fixed).
+  stream crash and the byte order mark in streams (fixed), and Roc's std/time
+  check accepting duration components too long to parse as a float (fixed,
+  found while writing the model).

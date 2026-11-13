@@ -187,3 +187,28 @@ expect match Time.check("TimeZone", "/Lisbon") {
 	Ok(_) => False
 	Err(e) => e.contains("not an IANA zone name")
 }
+
+# The duration bounds are exact, whatever the number of digits.
+expect Time.check("Duration", "P4294967295Y") == Ok({})
+expect Time.check("Duration", "PT9007199254740991S") == Ok({})
+expect Time.check("Duration", "P104249991374D") == Ok({})
+expect match Time.check("Duration", "PT9007199254740992S") {
+	Ok(_) => False
+	Err(e) => e.contains("below 2^53 seconds")
+}
+expect match Time.check("Duration", "P${"9".repeat(400)}Y") {
+	Ok(_) => False
+	Err(e) => e.contains("too large")
+}
+expect match Time.check("Duration", "PT${"9".repeat(400)}S") {
+	Ok(_) => False
+	Err(e) => e.contains("below 2^53 seconds")
+}
+expect match Time.check("TimeZone", "a".repeat(256)) {
+	Ok(_) => False
+	Err(e) => e.contains("not an IANA zone name")
+}
+expect match Time.check("TimeZone", "Europe//Lisbon") {
+	Ok(_) => False
+	Err(e) => e.contains("not an IANA zone name")
+}

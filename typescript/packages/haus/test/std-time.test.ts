@@ -80,4 +80,16 @@ describe("std/time profile", () => {
   it.each(invalid)("rejects %s %s", (type, text, reason) => {
     expect(checkStdTime(type, text)).toContain(reason)
   })
+
+  it("keeps the duration bounds exact, whatever the number of digits", () => {
+    for (const text of ["P4294967295Y", "PT9007199254740991S", "P104249991374D"]) {
+      expect(checkStdTime("Duration", text)).toBeUndefined()
+    }
+    const nines = "9".repeat(400)
+    expect(checkStdTime("Duration", "PT9007199254740992S")).toContain("below 2^53 seconds")
+    expect(checkStdTime("Duration", `P${nines}Y`)).toContain("too large")
+    expect(checkStdTime("Duration", `PT${nines}S`)).toContain("below 2^53 seconds")
+    expect(checkStdTime("TimeZone", "a".repeat(256))).toContain("not an IANA zone name")
+    expect(checkStdTime("TimeZone", "Europe//Lisbon")).toContain("not an IANA zone name")
+  })
 })

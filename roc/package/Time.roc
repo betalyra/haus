@@ -165,21 +165,30 @@ duration = |s| {
 	if ends_with_t {
 		return invalid("T must be followed by hours, minutes or seconds")
 	}
-	number = |v| match F64.from_str(v) {
-		Ok(n) => n
-		Err(_) => 0.0
-	}
 	for v in $values.sublist({ start: 0, len: 3 }) {
-		if v != "" and number(v) >= 4294967296.0 {
+		if component_value(v) >= 4294967296 {
 			return invalid("${v} is too large (years, months and weeks stay below 2^32)")
 		}
 	}
-	seconds = number(get($values, 3)) * 86400.0 + number(get($values, 4)) * 3600.0 + number(get($values, 5)) * 60.0 + number(get($values, 6))
-	if seconds >= 9007199254740992.0 {
+	seconds = component_value(get($values, 3)) * 86400 + component_value(get($values, 4)) * 3600 + component_value(get($values, 5)) * 60 + component_value(get($values, 6))
+	if seconds >= 9007199254740992 {
 		invalid("days and time together must stay below 2^53 seconds")
 	} else {
 		Ok({})
 	}
+}
+
+## The value of a component's digits (0 for ""), exactly. It stops growing
+## at 10^24, which is above every bound, so any number of digits fits.
+component_value : Str -> U128
+component_value = |v| {
+	var $n = 0
+	for b in v.to_utf8() {
+		if $n < 1000000000000000000000000 {
+			$n = $n * 10 + (b - '0').to_u128()
+		}
+	}
+	$n
 }
 
 ## A duration component at `p`: its digits and the position after its unit
