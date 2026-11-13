@@ -159,3 +159,14 @@ fn a_byte_order_mark_is_only_skipped_at_the_start() {
     assert!(read("A,\u{FEFF}").is_err());
     assert!(read("A,\u{FEFF} B, C").is_err());
 }
+
+/// Many values in one chunk take linear time (design review S17): 200,000
+/// values took about 14 s when each value moved the rest of the buffer.
+#[test]
+fn many_values_in_one_chunk_take_linear_time() {
+    let text: String = (0..200_000).map(|i| format!("{{ id: {i} }},\n")).collect();
+    let started = std::time::Instant::now();
+    let values = Reader::default().push(text.as_bytes()).unwrap();
+    assert_eq!(values.len(), 200_000);
+    assert!(started.elapsed() < std::time::Duration::from_secs(5), "took {:?}", started.elapsed());
+}

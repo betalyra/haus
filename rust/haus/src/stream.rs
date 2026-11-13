@@ -55,8 +55,12 @@ enum Mode {
 #[derive(Debug)]
 pub struct Reader {
     options: Options,
-    /// The current value's bytes, from its start (after the previous comma).
+    /// Bytes received and not yet parsed. The current value starts at `start`;
+    /// the bytes before it belong to values already returned, and are dropped
+    /// once per chunk rather than after each value, which would make a chunk
+    /// with many values take quadratic time.
     buf: Vec<u8>,
+    start: usize,
     /// How far `buf` has been scanned.
     scanned: usize,
     /// Characters scanned in the current value (bytes that start a code point).
@@ -79,6 +83,7 @@ impl Reader {
         Reader {
             options,
             buf: Vec::new(),
+            start: 0,
             scanned: 0,
             chars: 0,
             mode: Mode::Normal,
@@ -167,7 +172,7 @@ impl Reader {
                     }
                     b',' if self.depth == 0 => {
                         out.push(self.cut(i)?);
-                        i = 0;
+                        i += 1;
                         continue;
                     }
                     _ => 1,
@@ -218,25 +223,28 @@ impl Reader {
             self.chars += self.buf[i..end].iter().filter(|&&b| b & 0xC0 != 0x80).count();
             i = end;
         }
-        self.scanned = i;
+        self.buf.drain(..self.start);
+        self.scanned = i - self.start;
+        self.start = 0;
         Ok(out)
     }
 
-    /// Parse the value before the comma at `comma`, and drop it from the buffer.
+    /// Parse the value before the comma at `comma`; the next one starts after it.
     fn cut(&mut self, comma: usize) -> Result<Value, SyntaxError> {
         let origin = self.origin;
         let text = self.text(comma)?;
         let value = parse_single(text, &self.options.limits).map_err(|e| e.from(origin))?;
         self.origin = origin.after(text).after(",");
-        self.buf.drain(..=comma);
+        self.start = comma + 1;
         self.chars = 0;
         Ok(value)
     }
 
     /// The current value's text, up to `end`.
     fn text(&self, end: usize) -> Result<&str, SyntaxError> {
-        std::str::from_utf8(&self.buf[..end]).map_err(|e| {
-            let valid = std::str::from_utf8(&self.buf[..e.valid_up_to()]).unwrap_or_default();
+        let bytes = &self.buf[self.start..end];
+        std::str::from_utf8(bytes).map_err(|e| {
+            let valid = std::str::from_utf8(&bytes[..e.valid_up_to()]).unwrap_or_default();
             let at = self.origin.after(valid);
             SyntaxError { reason: "invalid UTF-8".into(), offset: at.offset, line: at.line, column: at.column }
         })
@@ -246,7 +254,8 @@ impl Reader {
     fn unbalanced(&self, at: usize) -> SyntaxError {
         let error = |text: &str| match parse_single(text, &self.options.limits) {
             Err(e) => e.from(self.origin),
-            Ok(_) => SyntaxError::at(text, at, format!("unexpected '{}'", self.buf[at] as char)).from(self.origin),
+            Ok(_) => SyntaxError::at(text, at - self.start, format!("unexpected '{}'", self.buf[at] as char))
+                .from(self.origin),
         };
         match self.text(at + 1) {
             Ok(text) => error(text),
