@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { canonical, compareCodePoints, equals, hash, parse, parseAll } from "../src/index.js"
+import { canonical, compare, compareCodePoints, equals, hash, parse, parseAll } from "../src/index.js"
 
 const c = (src: string) => canonical(parse(src))
 
@@ -44,6 +44,15 @@ describe("canonical form (spec §12)", () => {
   it("keeps a huge hex integer in hex", () => {
     const big = "0x" + "f".repeat(900)
     expect(c(big)).toBe(big)
+  })
+})
+
+describe("compare (spec §12)", () => {
+  it("orders by the bytes of the canonical forms", () => {
+    const vs = parseAll('9, 10, [], "\u{FFFD}", "😀", { b: 1, a: 2 }, { a: 2, b: 1 }, Some(1), -1')
+    expect([...vs].sort(compare).map(canonical)).toEqual(['"\u{FFFD}"', '"😀"', "-1", "10", "9", "Some(1)", "[]", "{a:2,b:1}", "{a:2,b:1}"])
+    expect(compare(vs[5]!, vs[6]!)).toBe(0)
+    expect(compare(parse("1.0"), parse("1"))).toBe(1)
   })
 })
 

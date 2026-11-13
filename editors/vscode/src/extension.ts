@@ -1,13 +1,19 @@
 // Starts the haus language server for .haus files.
 import * as vscode from "vscode"
 import { LanguageClient, TransportKind, type ServerOptions } from "vscode-languageclient/node"
+import { extendMarkdownIt } from "./highlight"
 
 let client: LanguageClient | undefined
 
 /** Diagnostic code of "not in the schema" hints (see server.ts). */
 const NOT_IN_SCHEMA = "not-in-schema"
 
-export async function activate(context: vscode.ExtensionContext): Promise<void> {
+/** What the extension gives VS Code: haus highlighting for the Markdown preview. */
+interface Api {
+  extendMarkdownIt: typeof extendMarkdownIt
+}
+
+export async function activate(context: vscode.ExtensionContext): Promise<Api> {
   const hints = new Map<string, readonly vscode.Diagnostic[]>()
   const notInSchema = vscode.window.createTextEditorDecorationType({
     light: { textDecoration: "underline dotted rgba(0, 0, 0, 0.45)" },
@@ -36,7 +42,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     },
   })
   await client.start()
-
 
   vscode.window.visibleTextEditors.forEach(decorate)
   context.subscriptions.push(notInSchema, vscode.window.onDidChangeVisibleTextEditors((editors) => editors.forEach(decorate)))
@@ -70,6 +75,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }),
     ),
   )
+
+  return { extendMarkdownIt }
 }
 
 export function deactivate(): Promise<void> | undefined {

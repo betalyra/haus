@@ -13,6 +13,7 @@ Editor support for `.haus` data files and `.schema.haus` schemas. Learn the form
 - ✨ **Formatting:**
   - **Format Document** (Shift+Alt+F) or **haus: Pretty Print** gives one entry per line and keeps comments.
   - **haus: Compact** puts every item on one line and drops comments.
+- 📝 **haus in Markdown:** ` ```haus ` and ` ```haus-schema ` code blocks are highlighted in the Markdown editor and the Markdown preview.
 - 📐 **haus: Infer Schema from This File** opens a `.schema.haus` draft (command palette or the editor title bar).
 
 Try it on [`person.haus`](https://github.com/betalyra/haus-fmt/blob/main/examples/person.haus), or on the recursive [`thread.haus`](https://github.com/betalyra/haus-fmt/blob/main/examples/thread.haus), [`filesystem.haus`](https://github.com/betalyra/haus-fmt/blob/main/examples/filesystem.haus) and [`settings-ui.haus`](https://github.com/betalyra/haus-fmt/blob/main/examples/settings-ui.haus).

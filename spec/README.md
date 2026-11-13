@@ -199,7 +199,7 @@ It is for hashing, signing, deduplication, content addressing and comparing
 values in tests; for people there are the layouts of §11.
 
 Bindings SHOULD provide `canonical(value)`, `equals(a, b)` and
-`hash(value)`. A binding that provides any of them MUST follow this section
+`hash(value)`, and MAY provide `compare(a, b)`. A binding that provides any of them MUST follow this section
 exactly, so that every binding gives the same bytes and the same hash.
 
 The canonical form of a value is UTF-8 without a byte order mark, with no
@@ -227,6 +227,7 @@ Order{id:255,p:Point(1,2),total:19.90,"x-y":1e5}
 The canonical form parses back to the same value.
 
 - **Equality:** `equals(a, b)` is equality as in §2. Comparing canonical forms is one correct way to compute it.
+- **Order:** `compare(a, b)` orders values by the bytes of their canonical forms (UTF-8), shorter first when one is a prefix of the other. It is a total order consistent with equality, for sorting and for values as keys of ordered maps; it is not numeric order (`10` sorts before `9`).
 - **Hashing:** `hash(value)` is the SHA-256 digest of the canonical form, written as 64 lowercase hex digits. A stream is hashed value by value.
 - **What is hashed:** values, not documents. Layout, comments, key order and the different spellings of the same value (`0xFF` and `255`, `"\u{41}"` and `"A"`, `Tag({ … })` and `Tag { … }`) don't change the hash. What §2 tells apart does: `1.0` and `1`, a missing field and `None`, NFC and NFD strings. Hash the values a parser or encoder gives, not native values after decoding, which may have lost such differences (a JavaScript `number` can't tell `1.0` from `1`).
 - **Stability:** this is version 1 of the canonical form and of `hash`. It will not change: a change would change every stored hash. Another hash algorithm or form, if one is ever added, gets its own name.

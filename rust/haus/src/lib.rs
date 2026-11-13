@@ -26,7 +26,7 @@ mod value;
 
 #[cfg(feature = "hash")]
 pub use canonical::hash;
-pub use canonical::{canonical, equals};
+pub use canonical::{canonical, compare, equals};
 pub use codec::{Codec, same_id};
 pub use de::{AnyTag, Bytes, Decimal, Decode, Int, Unknown};
 pub use error::{DecodeError, Error, Segment, SyntaxError};

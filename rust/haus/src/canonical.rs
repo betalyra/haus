@@ -24,6 +24,19 @@ pub fn equals(a: &Value, b: &Value) -> bool {
     canonical(a) == canonical(b)
 }
 
+/// Orders values by the bytes of their canonical forms (spec §12): a total
+/// order consistent with [`equals`], for sorting and ordered maps. Not
+/// numeric order: `10` sorts before `9`.
+///
+/// ```
+/// let mut vs: Vec<haus::Value> = ["9", "10", "\"a\"", "[]"].iter().map(|s| haus::from_str(s).unwrap()).collect();
+/// vs.sort_by(haus::compare);
+/// assert_eq!(vs.iter().map(haus::canonical).collect::<Vec<_>>(), ["\"a\"", "10", "9", "[]"]);
+/// ```
+pub fn compare(a: &Value, b: &Value) -> std::cmp::Ordering {
+    canonical(a).cmp(&canonical(b))
+}
+
 /// The SHA-256 digest of the canonical form, as 64 lowercase hex digits
 /// (spec §12). Needs the `hash` feature.
 #[cfg(feature = "hash")]

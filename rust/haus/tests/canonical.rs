@@ -60,6 +60,19 @@ fn keeps_a_huge_hex_integer_in_hex() {
     assert_eq!(haus::ser::write(&parse(&big)), big);
 }
 
+#[test]
+fn compare_orders_by_the_canonical_bytes() {
+    let mut vs: Vec<Value> = ["9", "10", "[]", "\"\u{FFFD}\"", "\"😀\"", "{ b: 1, a: 2 }", "Some(1)", "-1"]
+        .iter()
+        .map(|s| parse(s))
+        .collect();
+    vs.sort_by(haus::compare);
+    let got: Vec<String> = vs.iter().map(canonical).collect();
+    assert_eq!(got, ["\"\u{FFFD}\"", "\"😀\"", "-1", "10", "9", "Some(1)", "[]", "{a:2,b:1}"]);
+    assert_eq!(haus::compare(&parse("{ b: 1, a: 2 }"), &parse("{ a: 2, b: 1 }")), std::cmp::Ordering::Equal);
+    assert_eq!(haus::compare(&parse("1.0"), &parse("1")), std::cmp::Ordering::Greater);
+}
+
 #[cfg(feature = "hash")]
 #[test]
 fn hash_is_sha256_of_the_canonical_form() {

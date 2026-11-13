@@ -20,6 +20,12 @@ Encode := [].{
 	equals : Value, Value -> Bool
 	equals = |a, b| canonical_bytes(a) == canonical_bytes(b)
 
+	## Orders values by the bytes of their canonical forms (spec §12): a total
+	## order consistent with `equals`, for sorting (`values.sort_with(Encode.compare)`).
+	## Not numeric order: `10` sorts before `9`.
+	compare : Value, Value -> [Before, Same, After]
+	compare = |a, b| compare_bytes(canonical_bytes(a), canonical_bytes(b))
+
 	## A stream: one value per line, each followed by a comma.
 	stream : List(Value) -> Str
 	stream = |values| Str.join_with(values.map(|v| "${to_str(v)},\n"), "")
@@ -373,6 +379,12 @@ equal_texts = |a, b| match (Value.parse_all(a), Value.parse_all(b)) {
 	_ => False
 }
 
+compare_texts : Str, Str -> [Before, Same, After]
+compare_texts = |a, b| match (Value.parse_all(a), Value.parse_all(b)) {
+	(Ok([x]), Ok([y])) => Encode.compare(x, y)
+	_ => Same
+}
+
 expect canonical_of("Order { total: 19.90, id: 0xFF, \"x-y\": 1e+5, p: Point(1, 2) }") == "Order{id:255,p:Point(1,2),total:19.90,\"x-y\":1e5}"
 expect canonical_of("{ b: [1_000, 0b11], /* c */ a: Tag({ x: x\"0B 34\" }) }") == "{a:Tag{x:x\"0b34\"},b:[1000,3]}"
 expect equal_texts("{ b: [1_000, 0b11], /* c */ a: Tag({ x: x\"0B 34\" }) }", "{a:Tag{x:x\"0b34\"},b:[1000,3]}")
@@ -383,6 +395,11 @@ expect canonical_of("\"\"\"\n  two\n  lines\n  \"\"\"") == "\"two\\nlines\""
 expect canonical_of("{ \"😀\": 1, \"\u(FFFD)\": 2, a: 3, \"Z\": 4 }") == "{\"Z\":4,a:3,\"\u(FFFD)\":2,\"😀\":1}"
 expect canonical_of("[None, Some(1), Circle({ r: 1 }), Pair({ a: 1 }, 2)]") == "[None,Some(1),Circle{r:1},Pair({a:1},2)]"
 expect canonical_of("0x${"f".repeat(900)}") == "0x${"f".repeat(900)}"
+expect match Value.parse_all("9, 10, [], \"😀\", { b: 1, a: 2 }, Some(1), -1") {
+	Ok(vs) => vs.sort_with(Encode.compare).map(Encode.canonical) == ["\"😀\"", "-1", "10", "9", "Some(1)", "[]", "{a:2,b:1}"]
+	_ => False
+}
+expect compare_texts("{ b: 1, a: 2 }", "{ a: 2, b: 1 }") == Same and compare_texts("1.0", "1") == After
 # The compact writer keeps a huge integer in hex too (spec §11), so its output parses again.
 expect match Value.parse_all("0x${"f".repeat(900)}") {
 	Ok([v]) => Encode.to_str(v) == "0x${"f".repeat(900)}"

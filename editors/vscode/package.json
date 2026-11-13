@@ -79,6 +79,17 @@
         "language": "haus-schema",
         "scopeName": "source.haus.schema",
         "path": "./syntaxes/haus-schema.tmLanguage.json"
+      },
+      {
+        "scopeName": "markdown.haus.codeblock",
+        "path": "./syntaxes/haus-markdown.tmLanguage.json",
+        "injectTo": [
+          "text.html.markdown"
+        ],
+        "embeddedLanguages": {
+          "meta.embedded.block.haus": "haus",
+          "meta.embedded.block.haus-schema": "haus-schema"
+        }
       }
     ],
     "commands": [
@@ -127,7 +138,8 @@
         "editor.insertSpaces": true,
         "editor.defaultFormatter": "betalyra.haus"
       }
-    }
+    },
+    "markdown.markdownItPlugins": true
   },
   "dependencies": {},
   "devDependencies": {

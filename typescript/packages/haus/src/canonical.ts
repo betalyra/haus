@@ -66,6 +66,15 @@ export function equals(a: Value, b: Value): boolean {
 }
 
 /**
+ * Orders values by the bytes of their canonical forms (spec §12): a total
+ * order consistent with `equals`, for sorting (`values.sort(compare)`) and
+ * ordered maps. Returns -1, 0 or 1. Not numeric order: `10` sorts before `9`.
+ */
+export function compare(a: Value, b: Value): -1 | 0 | 1 {
+  return Math.sign(compareCodePoints(canonical(a), canonical(b))) as -1 | 0 | 1
+}
+
+/**
  * The SHA-256 digest of the canonical form, as 64 lowercase hex digits
  * (spec §12). Uses Web Crypto, so it is asynchronous.
  */

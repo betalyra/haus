@@ -317,6 +317,10 @@ export {
   type Named, type NamedInfo, type NotInSchema, type TypeLambda,
 } from "./codec.js"
 
+// ── equality and order ───────────────────────────────────────
+
+export { HausKey, key, ValueEquivalence, ValueOrder } from "./equal.js"
+
 // ── schema files ─────────────────────────────────────────────
 
 export { compileSchemaFile, definitionDoc, fromSchemaFile, schemaDeclarations, withCodecs, type CompiledSchemaFile, type DeclarationOptions, type FromSchemaFileOptions } from "./schema-file.js"
