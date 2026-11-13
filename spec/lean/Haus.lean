@@ -20,3 +20,4 @@ import Haus.Correct
 import Haus.Time.Spec
 import Haus.Time.Check
 import Haus.Time.Correct
+import Haus.Time.Props

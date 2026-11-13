@@ -30,12 +30,11 @@ prototype, …) is outside Lean and stays covered by tests.
 | ⬜ | **F. Streams** | The stream reader returns the same values however the input is split | 1–2 weeks |
 | ⬜ | **H. Canonical form** (spec §12, once specified) | Equal values (§2) give identical bytes, so hashes and signatures are well defined | 1–2 weeks |
 | ⬜ | **I. Schema language** (separate project) | Decoding with any schema terminates in linear time (§9.8–10) | months |
-| ⬜ | **T. std/time** | A reference model of the profile (spec §13.2, `std/time.md`), the bindings' time checkers fuzzed against it, and its security and calendar properties proven | 1–3 weeks |
+| 🟡 | **T. std/time** | A reference model of the profile (spec §13.2, `std/time.md`), the bindings' time checkers fuzzed against it, and its security and calendar properties proven | 1–3 weeks |
 
-Order: A, B, C, D and most of G are done. Next T1–T4 (the std/time model, fuzzing it, and its two cheap security
-properties): independent of the parser proofs, and the next most likely
-place for real bugs. Then E and F. T5 and T6 together with H, which waits
-for the canonical form; I for a stable schema language.
+Order: A, B, C, D, G and T1–T4 are done. Next E (encoder round trip), then
+F (streams). T5 and T6 together with H, which waits for the canonical form;
+I for a stable schema language.
 
 ## A. Security properties of the grammar
 
@@ -106,9 +105,12 @@ and the conformance suite, and fuzzes 100,000 parser cases and 2 million
 std/time cases per pull request; 1 million and 20 million nightly.
 
 Open:
-- Error positions differ in ~1% of rejected inputs, mostly Lean reporting
-  errors inside block strings at the block's start. Decide whether §8 should
-  fix which position is reported.
+Decided: §8 fixes the units of an error position, not which error a parser
+reports first, nor any message. Fixing it would rule out parsers that
+validate in separate passes (UTF-8 and control characters first, as fast
+parsers do) and need exceptions anyway (unterminated strings are reported
+at their opening quote). The fuzzer counts position differences for
+information only.
 
 ## T. std/time
 
@@ -121,13 +123,12 @@ design, and so outside the model.
 |---|---|---|---|
 | ✅ | T1. Reference model | Each type's rules as a definition, and a checker proven to compute them (`check_iff`); `haus-ref --time` | days |
 | ✅ | T2. Fuzzing | The TypeScript, Rust and Roc std/time checkers against the model ([`fuzz/src/time.ts`](../../fuzz/src/time.ts)): 2 million cases, no disagreements. It finds the Roc bound bug when run against the old code. | 1–2 days |
-| ⬜ | T3. Zone names can't traverse paths | No accepted zone has a `.` or `..` part, so looking one up as a tz database file can't escape it (`Europe/../../etc/passwd`) | ~1 day |
-| ⬜ | T4. Durations can't overflow | Years, months and weeks fit in 32 bits; days and time together fit in a signed 64-bit count of seconds plus nanoseconds, and exactly in a JavaScript number of seconds. (Not in 64-bit nanoseconds, which end at about 292 years: the profile allows up to 2⁵³ seconds.) | ~1 day |
+| ✅ | T3. Zone names can't traverse paths | `ZoneName.lookup_eq`: looked up as a file under `base`, a valid zone name resolves to exactly `base/…` (modelled like `os.path.join`: `.`, `..`, absolute names); `ZoneName.chars`: no `\`, `:` or NUL | ~1 day |
+| ✅ | T4. Durations can't overflow | `Duration.fits`: years, months and weeks below 2³²; days and time below 2⁵³ seconds (exact as a JavaScript number, and a signed 64-bit count of seconds); `Fraction.nanos_lt`: a fraction below 10⁹ nanoseconds. Mostly by construction: the bounds are in the rules, and `check_iff` makes the checker enforce them. | ~1 day |
 | ⬜ | T5. The calendar is right | Valid `Date` strings correspond exactly to the days from 0000-01-01 to 9999-12-31 | ~1 week |
 | ⬜ | T6. One spelling per value | Formatting a parsed value gives back the same string; the only spellings of the same value are those the profile names (`Instant` offsets, `.250` and `.25`) | ~1 week |
 
-Order: T1–T4 after D (see the order above); T5 and T6 with the canonical
-form (H).
+T5 and T6 wait for the canonical form (H).
 
 ## Also
 

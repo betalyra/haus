@@ -72,6 +72,9 @@ checker behind `haus-ref --time` computes exactly the rules of
 [`std/time.md`](../std/time.md), written as definitions in
 [`Haus/Time/Spec.lean`](Haus/Time/Spec.lean). Every row of the spec's rules
 table is also a `#guard` test in [`Haus/Time/Check.lean`](Haus/Time/Check.lean).
+[`Haus/Time/Props.lean`](Haus/Time/Props.lean) proves what valid values
+guarantee: a zone name looked up as a file under a directory stays inside
+it (`ZoneName.lookup_eq`), and a duration's fields fit in 32 bits, 2⁵³
+seconds and 10⁹ nanoseconds (`Duration.fits`, `Fraction.nanos_lt`).
 
-Next: fuzzing the bindings' std/time checkers against this model, then
-encoding round trips and stream splitting.
+Next: encoding round trips and stream splitting.

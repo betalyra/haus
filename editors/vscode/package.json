@@ -2,8 +2,8 @@
   "name": "haus",
   "displayName": "Haus",
   "description": "Highlighting, errors, inferred types on hover, formatting and schema inference for the haus data format",
-  "version": "0.6.0",
-  "publisher": "haus-fmt",
+  "version": "0.1.0",
+  "publisher": "betalyra",
   "license": "MIT",
   "icon": "icons/icon.png",
   "homepage": "https://haus-fmt.org",
@@ -125,7 +125,7 @@
       "[haus]": {
         "editor.tabSize": 2,
         "editor.insertSpaces": true,
-        "editor.defaultFormatter": "haus-fmt.haus"
+        "editor.defaultFormatter": "betalyra.haus"
       }
     }
   },
