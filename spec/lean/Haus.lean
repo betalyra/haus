@@ -11,3 +11,8 @@ import Haus.Sound.Bytes
 import Haus.Sound.BlockString
 import Haus.Sound.Values
 import Haus.Secure
+import Haus.Complete.Lexical
+import Haus.Complete.Whitespace
+import Haus.Complete.Strings
+import Haus.Complete.Values
+import Haus.Correct

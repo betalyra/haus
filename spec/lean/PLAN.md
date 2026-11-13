@@ -24,16 +24,15 @@ prototype, …) is outside Lean and stays covered by tests.
 | ✅ | **A. Security properties of the grammar** | Theorems about every valid file, independent of any parser (below) | days |
 | 🟡 | **G. Differential testing** | The bindings agree with `haus-ref` on generated and mutated inputs, in CI | ~1 week, can start any time |
 | ✅ | **B. Soundness** | The parser only accepts what the grammar allows. A's properties then hold for its output. | 2–3 weeks |
-| ⬜ | **C. Completeness** | The parser accepts everything the grammar allows: `parse L t = .ok vs ↔ File L t vs` | 3–5 weeks |
-| ⬜ | **D. Unambiguity** | Every valid text has exactly one meaning. Follows almost for free from B + C, since the parser is a function. | days |
+| ✅ | **C. Completeness** | The parser accepts everything the grammar allows: `parse L t = .ok vs ↔ File L t vs` | 3–5 weeks |
+| ✅ | **D. Unambiguity** | Every valid text has exactly one meaning. Follows from B + C, since the parser is a function. | days |
 | ⬜ | **E. Encoder round trip** | `parse (encode vs) = .ok vs`: encoded strings can't break out (no injection) | 1–2 weeks |
 | ⬜ | **F. Streams** | The stream reader returns the same values however the input is split | 1–2 weeks |
 | ⬜ | **H. Canonical form** (spec §12, once specified) | Equal values (§2) give identical bytes, so hashes and signatures are well defined | 1–2 weeks |
 | ⬜ | **I. Schema language** (separate project) | Decoding with any schema terminates in linear time (§9.8–10) | months |
 | ⬜ | **T. std/time** | A reference model of the profile (spec §13.2, `std/time.md`), the bindings' time checkers fuzzed against it, and its security and calendar properties proven | 1–3 weeks |
 
-Order: A, G and B are done. Next C, then D, which follows from B and C.
-Then T1–T4 (the std/time model, fuzzing it, and its two cheap security
+Order: A, B, C, D and most of G are done. Next T1–T4 (the std/time model, fuzzing it, and its two cheap security
 properties): independent of the parser proofs, and the next most likely
 place for real bugs. Then E and F. T5 and T6 together with H, which waits
 for the canonical form; I for a stable schema language.
@@ -74,16 +73,21 @@ Mismatches found while proving: none between parser and grammar. Two grammar
 rules were restated in an equivalent, simpler form (block string text joined
 with `List.intercalate`; the closing `"""` stated over content and indent).
 
-## C. Completeness (next)
+## C. Completeness ✅ and D. Unambiguity ✅
 
-The other direction from B: when the grammar derives `File L t vs`, then
-`parse L t = .ok vs`. Approach:
+`parse_complete`: when the grammar derives `File L t vs`, then
+`parse L t = .ok vs`. With B, `parse_correct` gives both directions, and
+`File.unique` (D) follows: the parser is a function, so two derivations of
+the same text give the same values. In [`Haus/Complete/`](Haus/Complete):
 
-| Part | Notes |
+| Part | How |
 |---|---|
-| Follow conditions | The parser reads greedily, so each lemma needs a condition on what follows: a number or tag is not followed by `[A-Za-z0-9_.]`; a bare tag not by blanks then `(` or `{`; whitespace not by whitespace or `/`. Then show the grammar only puts constructs where these hold: after a value comes whitespace, `,`, a closing bracket or the end. |
-| Lexical | For each part, the reverse of its soundness lemma: `sepTail` stops where the digits stop, `lexNumber` reads exactly the literal, `escape` and `chars` read exactly the string, `findClose` finds the right `"""`, `splitLines` gives back the lines, `blockComment` reads exactly a nested comment, `ws` reads exactly `WS`. |
-| Values and files | Induction over grammar derivations (the mirror of `values_ok`), with a fuel bound: fuel ≥ 3·length + 3 is enough, since each call uses at most three units per character read; the parser's 4·(length + 1) satisfies it. Plus fuel monotonicity. |
+| Follow conditions | The parser reads greedily, so each lemma says what may follow: a number or tag nothing in `[A-Za-z0-9_.]`, a bare tag not blanks then `(` or `{`, whitespace not whitespace or `/`. The grammar only puts a value before whitespace, `,`, a closing bracket or the end, which satisfies all of them. |
+| Lexical | The reverse of each soundness lemma: `lexNumber` reads exactly the literal, `chars` exactly the string, `blockComment` exactly a nested comment, `ws` exactly `WS`, `findClose` finds the closing `"""` (the content before it never ends with `\` or `"`), `splitLines` gives back the lines. |
+| Values and files | Induction over the grammar's derivation (mutual, like the grammar). A value needs fuel above twice its length, so the parser's `4 * (length + 1)` is always enough; no fuel monotonicity needed. |
+
+Nothing in the parser or the grammar had to change: no valid input is
+rejected.
 
 ## G. Differential testing
 

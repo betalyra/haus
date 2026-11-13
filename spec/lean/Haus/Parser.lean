@@ -4,14 +4,14 @@ import Haus.Value
 /-!
 # The reference parser
 
-Computes `Haus.Grammar.File`: `parse L t = .ok vs` should hold exactly when
-`File L t vs` does (not proven yet). Written for clarity, not speed.
+Computes `Haus.Grammar.File`: `parse L t = .ok vs` holds exactly when
+`File L t vs` does (`Haus.parse_correct`). Written for clarity, not speed.
 
 A parser `P α` reads from the remaining input (its state) and returns an `α`
 or an `Error`. Every function is total, so that it can be reasoned about:
-the recursive ones take *fuel*, a bound on their recursion depth. Each level
-of recursion reads at least one character for every three calls, so
-`4 * (length + 1)` is always enough, and running out is a bug, not an
+the recursive ones take *fuel*, a bound on their recursion depth. A value
+needs fuel above twice its length, so `4 * (length + 1)` is always enough
+(the completeness proof shows it), and running out is a bug, not an
 answer.
 -/
 
