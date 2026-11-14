@@ -60,7 +60,7 @@ Typed := [].{
 
 	decode_root : Value -> Try(Root, Decode.Error)
 	decode_root = |v| {
-		fs = Decode.record(v)?
+		fs = Decode.strict_record(v)?
 		Ok({ id: Decode.field(fs, "id", Decode.int)?, customer: Decode.field(fs, "customer", decode_user_id)?, placed: Decode.field(fs, "placed", |x1| Decode.codec(x1, Decode.time("Date"), CivilDate.decode))?, total: Decode.field(fs, "total", |x2| Decode.codec(x2, HausMoney.decode_money, Cents.decode))?, deliver_to: Decode.field(fs, "deliverTo", |x3| Decode.codec(x3, HausGeo.decode_lat_lng, GeoJson.decode))?, status: Decode.field(fs, "status", decode_status)? })
 	}
 

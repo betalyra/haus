@@ -12,12 +12,13 @@
  *   String → string             Int, Int64, UInt64 → bigint                    Int8 … UInt32 → number
  *   Decimal → string ("19.90")  Float32, Float64 → number                     Bool → boolean
  *   Bytes → Uint8Array          Maybe a → A | null                            Array a → readonly A[]
- *   Map v → ReadonlyMap<string, V>                                            Instant → Date, other std/time types → string
+ *   Map v → ReadonlyMap<string, V>                                            std/time types → string (as written)
  *   { a: T, b?: T } → { readonly a: T; readonly b?: T }                       (closed { … } rejects other fields)
  *   < Debug | Info > → "Debug" | "Info"                                       (closed, only tags without payload)
  *   < Circle { r: Float64 } | Empty > → { _tag: "Circle"; r: number } | { _tag: "Empty" }
  *   < Point Float64 Float64 > → { _tag: "Point"; values: readonly [number, number] }
  *   open variants → … | Unknown                                               (other tags kept as raw values)
+ *   < > → string | Unknown                                                    (any tag: a bare tag as its name)
  */
 import * as h from "./schema.js"
 import { parseSchemaFile, type Builtin, type Case, type Definition, type Field, type Instance, type ParseSchemaOptions, type SchemaFile, type Type } from "./schema-file.js"
@@ -51,7 +52,8 @@ const builtin = (name: Builtin): h.AnySchema => {
     case "UInt16": return h.UInt16
     case "UInt32": return h.UInt32
     case "UInt64": return h.UInt64
-    default: return h.Float64 // Float32, Float64
+    case "Float32": return h.Float32
+    default: return h.Float64
   }
 }
 
@@ -80,7 +82,7 @@ export const fromSchemaFile = (file: SchemaFile): CompiledSchemaFile => {
       case "builtin":
         return builtin(t.name)
       case "std":
-        return t.name === "Instant" ? h.Instant : t.name === "Date" ? h.Date : h.StdTime(t.name)
+        return t.name === "Date" ? h.Date : h.StdTime(t.name)
       case "array":
         return h.Array(build(t.item))
       case "map":
@@ -91,6 +93,7 @@ export const fromSchemaFile = (file: SchemaFile): CompiledSchemaFile => {
         return h.Record(fields(t.fields), { closed: t.closed })
       case "variant": {
         if (isEnum(t.cases) && !t.open) return h.Enum(...t.cases.map((c) => c.tag))
+        if (t.cases.length === 0) return h.AnyTag // < >
         const cases = Object.fromEntries(t.cases.map((c) => {
           switch (c.payload.kind) {
             case "none":
@@ -204,7 +207,7 @@ export const schemaDeclarations = (file: SchemaFile, options: DeclarationOptions
           default: return "number"
         }
       case "std":
-        return t.name === "Instant" ? "Date" : "string"
+        return "string"
       case "array":
         return `ReadonlyArray<${print(t.item)}>`
       case "map":
@@ -215,6 +218,7 @@ export const schemaDeclarations = (file: SchemaFile, options: DeclarationOptions
         return record(t.fields)
       case "variant": {
         if (isEnum(t.cases) && !t.open) return t.cases.map((c) => JSON.stringify(c.tag)).join(" | ")
+        if (t.cases.length === 0) return "string | h$.Unknown"
         const cases = t.cases.map((c) => {
           const tag = `readonly _tag: ${JSON.stringify(c.tag)}`
           switch (c.payload.kind) {

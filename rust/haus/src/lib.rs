@@ -18,6 +18,7 @@ mod canonical;
 mod codec;
 pub mod de;
 mod error;
+mod float;
 mod parser;
 pub mod ser;
 pub mod stream;

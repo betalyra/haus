@@ -1,0 +1,55 @@
+// See numbers.cases.haus for the format.
+
+// ── payload forms ──
+Ok { type: "Shape", input: Circle { r: 1.5 } },
+Ok { type: "Shape", input: Circle({ r: 1.5 }), output: Circle { r: 1.5 } },
+Ok { type: "Shape", input: Circle { r: 1.5, color: "red" }, output: Circle { r: 1.5 } },
+Err { type: "Shape", input: Circle(1.5) },
+Err { type: "Shape", input: Circle },
+Err { type: "Shape", input: Circle({ r: 1 }, { r: 2 }) },
+Err { type: "Shape", input: Circle {} },
+Ok { type: "Shape", input: Point(1, 2) },
+Err { type: "Shape", input: Point(1) },
+Err { type: "Shape", input: Point(1, 2, 3) },
+Err { type: "Shape", input: Point { x: 1, y: 2 } },
+Err { type: "Shape", input: Point([1, 2]) },
+Ok { type: "Shape", input: Empty },
+Err { type: "Shape", input: Empty(1) },
+Err { type: "Shape", input: Empty {} },
+// a single positional argument may be a record: `Wrap Box` takes `Wrap { … }`
+Ok { type: "Shape", input: Wrap { w: 1 } },
+Ok { type: "Shape", input: Wrap({ w: 1 }), output: Wrap { w: 1 } },
+Ok { type: "Shape", input: Wrap { w: 1, h: 2 }, output: Wrap { w: 1 } },
+Err { type: "Shape", input: Wrap(1) },
+Ok { type: "Shape", input: Pair(1, "a") },
+Err { type: "Shape", input: Pair("a", 1) },
+
+// ── open: an unknown tag is kept exactly; a known tag with a wrong payload is an error ──
+Ok { type: "Shape", input: Hexagon },
+Ok { type: "Shape", input: Hexagon { side: 1.50, x: [1, Some(2)] } },
+Ok { type: "Shape", input: Hexagon(0x10, "a", x"ff") , output: Hexagon(16, "a", x"ff") },
+Err { type: "Shape", input: "Circle" },
+Err { type: "Shape", input: { r: 1 } },
+
+// ── closed ──
+Ok { type: "Level", input: Debug },
+Ok { type: "Level", input: Info },
+Err { type: "Level", input: Warn },
+Err { type: "Level", input: Debug(1) },
+Err { type: "Level", input: "Debug" },
+Ok { type: "Strict", input: A },
+Ok { type: "Strict", input: B(1) },
+Ok { type: "Strict", input: C { x: 1, y: 2 }, output: C { x: 1 } },
+Err { type: "Strict", input: B },
+Err { type: "Strict", input: D },
+Err { type: "Strict", input: D(1) },
+Ok { type: "ClosedPayload", input: Circle { r: 1 } },
+Err { type: "ClosedPayload", input: Circle { r: 1, x: 2 } },
+
+// ── < >: every variant is an unknown value ──
+Ok { type: "Any", input: EUR },
+Ok { type: "Any", input: Custom("XBT") },
+Ok { type: "Any", input: Money { amount: 19.90, currency: EUR } },
+Err { type: "Any", input: "EUR" },
+Err { type: "Any", input: 1 },
+Ok { type: "Holder", input: { shape: Hexagon, any: [EUR, USD(1)] } },

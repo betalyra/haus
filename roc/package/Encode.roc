@@ -50,7 +50,10 @@ Encode := [].{
 	decimal : Str -> Value
 	decimal = |text| Num(text)
 
-	## A float; NaN and the infinities are tags (prelude).
+	## A Float64 in its one spelling (spec §15): the fewest digits that read
+	## back as the same binary64 value, laid out like JavaScript's
+	## `Number.prototype.toString` without `+` in the exponent (`1e21`,
+	## `1.5e-7`, `-0`). NaN and the infinities are tags (prelude).
 	f64 : F64 -> Value
 	f64 = |x|
 		if x != x {
@@ -60,7 +63,23 @@ Encode := [].{
 		} else if x < -1.7976931348623157e308 {
 			Tag("NegInfinity", [])
 		} else {
-			Num(x.to_str())
+			# Roc's `to_str` has the digits the spec asks for: the fewest that read
+			# back as the same float, the closest of them, ties to even.
+			Num(float_text(x.to_str()))
+		}
+
+	## A Float32 in its one spelling: the fewest digits that read back as the
+	## same binary32 value (`0.1`, not `0.10000000149011612`), laid out as for `f64`.
+	f32 : F32 -> Value
+	f32 = |x|
+		if x != x {
+			Tag("NaN", [])
+		} else if x > 3.4028235e38 {
+			Tag("Infinity", [])
+		} else if x < -3.4028235e38 {
+			Tag("NegInfinity", [])
+		} else {
+			Num(float_text(x.to_str()))
 		}
 
 	## A std/time value: `Date("2026-11-09")`.
@@ -114,6 +133,67 @@ Encode := [].{
 		Bare(name) => Tag(name, [])
 		Other(name, args) => Tag(name, args)
 	}
+}
+
+## Roc's float text (`1e20`, `1e-6`, `-0`, `0.30000000000000004`) laid out as
+## spec §15 says: with the digits d₁…dₖ and the value 0.d₁…dₖ × 10ⁿ, like
+## JavaScript's `Number.prototype.toString` without `+` in the exponent.
+float_text : Str -> Str
+float_text = |shortest| {
+	b = shortest.to_utf8()
+	sign = if (byte_at(b, 0) == '-') "-" else ""
+	# The digits, how many come before the point, and the exponent.
+	var $digits = []
+	var $before = 0.I64
+	var $point = False
+	var $in_exp = False
+	var $exp = 0.I64
+	var $exp_sign = 1.I64
+	for c in b {
+		if $in_exp {
+			if c == '-' {
+				$exp_sign = -1
+			} else if c >= '0' and c <= '9' {
+				$exp = $exp * 10 + (c - '0').to_i64()
+			}
+		} else if c == 'e' or c == 'E' {
+			$in_exp = True
+		} else if c == '.' {
+			$point = True
+		} else if c >= '0' and c <= '9' {
+			$digits = $digits.append(c)
+			if !$point {
+				$before = $before + 1
+			}
+		}
+	}
+	var $lead = 0
+	while $lead < $digits.len() and byte_at($digits, $lead) == '0' {
+		$lead = $lead + 1
+	}
+	var $end = $digits.len()
+	while $end > $lead and byte_at($digits, $end - 1) == '0' {
+		$end = $end - 1
+	}
+	if $end == $lead {
+		return "${sign}0"
+	}
+	d = $digits.sublist({ start: $lead, len: $end - $lead })
+	k = d.len().to_i64_wrap()
+	n = $before + $exp_sign * $exp - $lead.to_i64_wrap()
+	zeros = |count| List.repeat('0', count.to_u64_wrap())
+	body =
+		if k <= n and n <= 21 {
+			d.concat(zeros(n - k))
+		} else if 0 < n and n <= 21 {
+			d.sublist({ start: 0, len: n.to_u64_wrap() }).append('.').concat(d.sublist({ start: n.to_u64_wrap(), len: (k - n).to_u64_wrap() }))
+		} else if -6 < n and n <= 0 {
+			['0', '.'].concat(zeros(-n)).concat(d)
+		} else {
+			rest = if (k > 1) ['.'].concat(d.sublist({ start: 1, len: (k - 1).to_u64_wrap() })) else []
+			d.sublist({ start: 0, len: 1 }).concat(rest).append('e').concat((n - 1).to_str().to_utf8())
+		}
+	"${sign}${bytes_to_str(body)}"
 }
 
 line : Value -> List(U8)
@@ -371,6 +451,14 @@ expect Encode.stream([Tag("A", []), Num("1")]) == "A,\n1,\n"
 expect Int.from_str("340282366920938463463374607431768211457").map_ok(|n| Encode.to_str(Encode.int(n))) == Ok("340282366920938463463374607431768211457")
 expect Encode.to_str(Encode.record([("a", Present(Num("1"))), ("b", Missing)])) == "{ a: 1 }"
 expect Encode.to_str(Text("\u(1B)\u(7F)\u(85)")) == "\"\\u{1B}\\u{7F}\\u{85}\""
+
+# Floats in their one spelling (spec §15).
+expect [1.0, 100.0, 123000.0, 1.5, 12.25, 0.1, 0.000001, 1e-7, 1.5e-7, 1e20, 1e21, -1.5, 0.30000000000000004, 5e-324, 1.7976931348623157e308].map(|x| Encode.to_str(Encode.f64(x))) == ["1", "100", "123000", "1.5", "12.25", "0.1", "0.000001", "1e-7", "1.5e-7", "100000000000000000000", "1e21", "-1.5", "0.30000000000000004", "5e-324", "1.7976931348623157e308"]
+expect [0.0, -0.0, 0.0 / 0.0, 1.0 / 0.0, -1.0 / 0.0].map(|x| Encode.to_str(Encode.f64(x))) == ["0", "-0", "NaN", "Infinity", "NegInfinity"]
+expect [0.1.F32, 16777216.0, 1.0000001, 3.4028235e38, 1e21, -0.0].map(|x| Encode.to_str(Encode.f32(x))) == ["0.1", "16777216", "1.0000001", "3.4028235e38", "1e21", "-0"]
+# Exactly half way between the two closest shortest candidates: the even one, like JavaScript.
+expect [1690060720831323.25, -1690060720831323.25].map(|x| Encode.to_str(Encode.f64(x))) == ["1690060720831323.2", "-1690060720831323.2"]
+expect [2097152.25.F32, 2097152.75, 1048576.125, 4498.53125].map(|x| Encode.to_str(Encode.f32(x))) == ["2097152.2", "2097152.8", "1048576.1", "4498.5312"]
 
 # The canonical form (spec §12): the same cases as the TypeScript and Rust bindings.
 canonical_of : Str -> Str

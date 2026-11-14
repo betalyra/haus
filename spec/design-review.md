@@ -11,7 +11,7 @@ The core idea holds up. haus fixes JSON's real pain points: comments, trailing c
 The weak spots were in four areas:
 1. **Resource limits** were not specified, and the Roc parser could be stalled.
 2. **A few syntax rules** could silently change meaning.
-3. **Missing pieces:** there was no serializer and no canonical form; there is still no schema language spec, CLI or JSON converter.
+3. **Missing pieces:** there was no serializer and no canonical form; there is still no CLI or JSON converter.
 4. **Some semantics were undefined:** equality, the position units in error messages, and stream termination.
 
 The security and spec issues are fixed (§1, §2), apart from a few open details marked 🟡. What's left is mostly new functionality (§3).
@@ -91,7 +91,7 @@ Ecosystem gotchas, documented in the examples:
 |---|---|---|
 | ✅ | **Serializer** | `format` / `stringify` (standard layout, spec §11), comments and blank lines kept, round-trip and idempotence tested on every conformance file; Format Document in VS Code. Schema-aware encoding: `h.stringify` / `h.encodeStream`, Effect `Haus.encode` / `Haus.encodeStream`, Rust `to_string`, Roc `Encode` (compact layout). |
 | 🟡 | **Limits API and spec defaults** | See S4. Configurable limits in Roc are still open. |
-| 🟡 | **Spec prose** | [`README.md`](README.md), draft 0.1: data model, equality, numbers, Unicode, variants, streams, limits, error positions, security, evolution, canonical form and hashing, the prelude and standard modules; the std/time profile in [`std/time.md`](std/time.md). **Open:** the schema language. |
+| ✅ | **Spec prose** | [`README.md`](README.md), draft 0.1: data model, equality, numbers, Unicode, variants, streams, limits, error positions, security, evolution, canonical form and hashing, the prelude and standard modules; schema files (§14) and decoding with a schema (§15); the std/time profile in [`std/time.md`](std/time.md). Schema conformance suite in [`../test-suite/schema`](../test-suite/schema): TypeScript, Effect, Rust and Roc pass it (Effect with two documented lossy mappings, §13.4). |
 | ✅ | **Conformance suite expansion** | Added: limits at and just past the boundary, bidi controls, control characters, line breaks, byte order marks, exponents, the D1 cases, Unicode edges (NFC and NFD keys are different keys, `\u{0}`, U+10FFFF, an escaped and a raw spelling of the same key are duplicates): now 119 files, 28 valid and 91 invalid, each valid file with its expected canonical form. Differential fuzzing of all parsers, stream readers, canonical forms and std/time checks runs in CI (`fuzz/`). |
 
 ### 3.2 Should have
@@ -135,7 +135,8 @@ Ecosystem gotchas, documented in the examples:
 
 ## 5. Remaining order
 
-1. The schema language spec.
-2. JSON interop and a CLI.
+1. JSON interop and a CLI.
+2. **Planned, not started:** a hash for a whole stream, `hashStream(values)` in §12. It is the SHA-256 of each value's canonical form followed by `,` (`1,"a",Order{id:255},`), so it can't collide with `hash` of one value or of an array. Includes conformance vectors and all bindings. Details await Jan's approval.
 3. Configurable limits in Roc; std/time checks and schema decoding in Python.
-4. Schema language parser and checker, then code generation, LSP and Tree-sitter.
+4. Temporal codecs in TypeScript (once TypeScript ships Temporal types).
+5. Schema language parser and checker, then code generation, LSP and Tree-sitter.

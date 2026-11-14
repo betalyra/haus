@@ -263,9 +263,11 @@ impl Decode for bool {
 }
 
 /// The digits of a whole number literal (`-12`, `0`), or None (`1.5`, `1e3`).
+/// `-0` is 0 (spec §15).
 fn whole(text: &str) -> Option<&str> {
     let digits = text.strip_prefix('-').unwrap_or(text);
-    (!digits.is_empty() && digits.bytes().all(|c| c.is_ascii_digit())).then_some(text)
+    let is_whole = !digits.is_empty() && digits.bytes().all(|c| c.is_ascii_digit());
+    is_whole.then_some(if digits == "0" { digits } else { text })
 }
 
 macro_rules! integers {
@@ -285,12 +287,21 @@ macro_rules! integers {
 }
 integers!(i8 => "Int8", i16 => "Int16", i32 => "Int32", i64 => "Int64", u8 => "UInt8", u16 => "UInt16", u32 => "UInt32", u64 => "UInt64");
 
+/// `Float32` and `Float64`: a number rounded to the nearest value of the type
+/// directly from its exact decimal value (ties to even; Rust's `parse` does
+/// that for both), or a tag `NaN`, `Infinity`, `NegInfinity` (spec §15). A
+/// finite number too large for the type, one that rounds to an infinity, is
+/// an error.
 macro_rules! floats {
     ($($t:ty => $name:literal),*) => {$(
         impl Decode for $t {
             fn decode(v: &Value) -> R<Self> {
                 match v {
-                    Value::Number(text) => text.parse().map_err(|_| DecodeError::new(format!("{text} is not a {}", $name))),
+                    Value::Number(text) => match text.parse::<$t>() {
+                        Ok(x) if x.is_finite() => Ok(x),
+                        Ok(_) => Err(DecodeError::new(format!("{text} is too large for {}", $name))),
+                        Err(_) => Err(DecodeError::new(format!("{text} is not a {}", $name))),
+                    },
                     Value::Variant { tag, args } if args.is_empty() && tag == "NaN" => Ok(<$t>::NAN),
                     Value::Variant { tag, args } if args.is_empty() && tag == "Infinity" => Ok(<$t>::INFINITY),
                     Value::Variant { tag, args } if args.is_empty() && tag == "NegInfinity" => Ok(<$t>::NEG_INFINITY),
@@ -361,7 +372,7 @@ impl Decode for Int {
     fn decode(v: &Value) -> R<Self> {
         match v {
             Value::Number(text) => match whole(text) {
-                Some(n) => Ok(Int(if n == "-0" { "0".into() } else { n.to_owned() })),
+                Some(n) => Ok(Int(n.to_owned())),
                 None => Err(DecodeError::new(format!("expected a whole number (Int), found {text}"))),
             },
             _ => Err(mismatch("a number (Int)", v)),

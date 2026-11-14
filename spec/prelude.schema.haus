@@ -39,9 +39,13 @@ type Result e a = closed < Err e | Ok a >
 //   Int                    arbitrary-precision integer   (BigInt)
 //   Int8 .. Int64          bounded integers, out-of-range is an error
 //   UInt8 .. UInt64
-//   Float32, Float64       binary floating point, rounding is accepted;
-//                          also accept the tags NaN, Infinity, NegInfinity
-//   Decimal                exact decimal, scale preserved (19.90 != 19.9)
+//   Float32, Float64       binary floating point, rounded to the nearest value;
+//                          too large is an error; also the tags NaN,
+//                          Infinity, NegInfinity
+//   Decimal                exact decimal, scale preserved (19.90 != 19.9),
+//                          any literal (1.5e3 stays 1.5e3)
+//
+// What each type accepts, and how encoders write floats: spec §15.
 //
 // `Int` decodes to an arbitrary-size integer in every binding; for a native
 // fixed-size integer, write `Int32`, `Int64`, ….

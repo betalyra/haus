@@ -35,9 +35,23 @@ const program = Effect.gen(function* () {
 | `Point(1, 2)` | `TaggedStruct("Point", { x, y })`, arguments fill fields in order |
 | `True` / `False` | `Boolean` |
 | `None` / `Some(x)` | `Option(X)`, or an optional key |
-| `19.90` | `BigDecimal` (exact), `Number`, `BigInt`, or a string |
+| `19.90` | `BigDecimal` (exact), `Number` (Float64), `Haus.Float32`, `BigInt`, or a string |
 | `Instant("…")`, `ZonedDateTime("…")` | `DateTimeUtc`, `DateTimeZoned` |
 | an unknown tag in `Haus.OpenUnion` | `{ _tag: "@unknown", tag, value }` |
+
+Three of these keep the value but not every spelling of it. Encoding what they
+decoded can write a different haus value, with another canonical form and
+hash (spec §13.4):
+
+- `BigDecimal` keeps the scale (`19.90` stays `19.90`), but not `-0` or
+  exponent notation: `-0` is written `0`, `15e2` as `1.5e3`, `1.5e-3` as `0.0015`.
+- `DateTime.Utc` (`Haus.Instant`) keeps the instant, not the offset or the
+  fraction as written: `10:00:00.250+01:00` is written `09:00:00.250Z`.
+  `Haus.InstantText` keeps the text.
+- `DateTime.Zoned` (`Haus.ZonedDateTime`) likewise; `Haus.ZonedDateTimeText`
+  keeps the text.
+
+Hash and sign the parsed values, not re-encoded ones.
 
 ## Streams
 

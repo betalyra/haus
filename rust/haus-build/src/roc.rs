@@ -11,11 +11,17 @@
 //! | `Maybe a`, `Result e a`    | `[None, Some(a)]`, `Try(a, e)`                |
 //! | `Array a`, `Map v`         | `List(a)`, `List((Str, v))`                   |
 //! | `Int`, `Int8`…`UInt64`     | `Int` (any size, exact digits), `I8`…`U64`    |
+//! | `Float32`, `Float64`       | `F32`, `F64`                                  |
 //! | `Decimal`, std/time        | `Str` (exact text; std/time checked)          |
+//! | `< >`                      | `[Bare(Str), Other(Str, List(Value))]`        |
+//! | `type Pair a = …`          | `Pair(a)`, with `decode_pair(v, decode_a)`    |
 //!
-//! Named variants are nominal (`:=`), so they can be recursive. A codec is a
-//! Roc module with `Target`, `decode : Base -> Try(Target, Str)` and
-//! `encode : Target -> Base`.
+//! Named variants are nominal (`:=`), so they can be recursive, and so are
+//! records and other types that refer to themselves (`Tree := { children :
+//! List(Tree) }`). A type named like a Roc builtin or an imported module
+//! (`List`, `F64`, `Box`, `Value`) gets a `_` at the end in Roc (`List_`);
+//! its functions keep their names (`decode_list`). A codec is a Roc module
+//! with `Target`, `decode : Base -> Try(Target, Str)` and `encode : Target -> Base`.
 
 use crate::codegen::STD_TIME;
 use crate::packages::{Manifest, Package, Packages};
@@ -128,16 +134,41 @@ pub fn generate(
     roc_imports.extend(codecs.iter().map(|(_, m)| m.clone()));
     roc_imports.dedup();
 
+    // Names taken in Roc: builtin types, imported modules and the module itself.
+    let taken: HashSet<String> = BUILTIN_TYPES
+        .iter()
+        .map(|t| (*t).to_owned())
+        .chain(["Int".to_owned(), module.to_owned()])
+        .chain(roc_imports.iter().map(|i| i.rsplit('.').next().unwrap_or(i).to_owned()))
+        .collect();
+    let schema_names: HashSet<&str> = file.types.iter().map(|d| d.name.as_str()).collect();
+    let roc_names = file
+        .types
+        .iter()
+        .map(|d| {
+            let mut name = d.name.clone();
+            while taken.contains(&name) || (name != d.name && schema_names.contains(name.as_str())) {
+                name.push('_');
+            }
+            (d.name.clone(), name)
+        })
+        .collect();
+    let defs: HashMap<&str, &TypeDef> = file.types.iter().map(|d| (d.name.as_str(), d)).collect();
+    let recursive = file.types.iter().filter(|d| refers_to_itself(d, &defs)).map(|d| d.name.clone()).collect();
+
     let mut g = Gen {
         text,
         id,
-        defs: file.types.iter().map(|d| (d.name.as_str(), d)).collect(),
+        defs,
         imports,
         codecs: codecs.iter().cloned().collect(),
         fresh: 0,
         helpers: Vec::new(),
         names: file.types.iter().map(|d| d.name.clone()).collect(),
         uses_int: false,
+        roc_names,
+        recursive,
+        params: Vec::new(),
     };
     let items = file.types.iter().map(|d| g.define(d)).collect::<Result<Vec<_>>>()?;
     if g.uses_int {
@@ -194,11 +225,27 @@ struct Gen<'a> {
     names: HashSet<String>,
     /// Whether the module needs `haus.Int`.
     uses_int: bool,
+    /// Each schema type's name in Roc (`List` → `List_`).
+    roc_names: HashMap<String, String>,
+    /// Types that refer to themselves, so they are nominal in Roc.
+    recursive: HashSet<String>,
+    /// The parameters of the definition being generated, and their names in Roc.
+    params: Vec<(String, String)>,
 }
 
 impl Gen<'_> {
     fn fail<T>(&self, pos: usize, reason: impl Into<String>) -> Result<T> {
         Err(error(self.text, pos, reason).into())
+    }
+
+    /// A type parameter in Roc: `a`, and its decoder `decode_a`, which must
+    /// not be the decoder of a type (`type A`, `type Box a`): then `a_`.
+    fn param_name(&self, param: &str) -> String {
+        let mut name = field_name(param);
+        while self.defs.keys().any(|d| snake(d) == name) {
+            name.push('_');
+        }
+        name
     }
 
     /// `f` as a function value.
@@ -215,9 +262,7 @@ impl Gen<'_> {
 
     /// The type, decoder and encoder of a definition.
     fn define(&mut self, def: &TypeDef) -> Result<String> {
-        if !def.params.is_empty() {
-            return self.fail(def.pos, "type parameters are not supported by the Roc generator yet");
-        }
+        self.params = def.params.iter().map(|p| (p.clone(), self.param_name(p))).collect();
         let doc: String = def
             .doc
             .lines()
@@ -237,28 +282,58 @@ impl Gen<'_> {
             return Ok(format!("{doc}\t# A stream of {item}: read it with Stream and decode_{}.\n", snake(&item)));
         }
         let snake_name = snake(&def.name);
+        // `Pair(a)`; records and other types that refer to themselves are nominal.
+        let head = match self.params.as_slice() {
+            [] => self.roc_names[&def.name].clone(),
+            ps => format!(
+                "{}({})",
+                self.roc_names[&def.name],
+                ps.iter().map(|(_, p)| p.as_str()).collect::<Vec<_>>().join(", ")
+            ),
+        };
+        let is = if self.recursive.contains(&def.name) { ":=" } else { ":" };
         let (decl, decode, encode) = match &def.ty {
             Ty::Record { closed, fields, .. } => {
                 let (ty, de, en) = self.record(&def.name, *closed, fields)?;
-                (format!("{} : {ty}", def.name), de, en)
+                (format!("{head} {is} {ty}"), de, en)
             }
             Ty::Variant { closed: false, cases, .. } if cases.is_empty() => {
                 let r = any_tag();
-                (format!("{} : {}", def.name, r.ty), self.call_body(&r.de), self.call_body(&r.en))
+                (format!("{head} : {}", r.ty), self.call_body(&r.de), self.call_body(&r.en))
             }
             Ty::Variant { closed, cases, .. } => {
                 let (ty, de, en) = self.variant(&def.name, *closed, cases)?;
-                (format!("{} := {ty}", def.name), de, en)
+                (format!("{head} := {ty}"), de, en)
+            }
+            ty if self.recursive.contains(&def.name) => {
+                // Roc allows recursion only through a tag or a record field:
+                // `type Nested = Array Nested` is `Nested := [Nested(List(Nested))]`.
+                let r = self.lower(ty, &def.name)?;
+                let tag = &def.name;
+                let en = match &r.en {
+                    F::Name(f) => format!("{f}(x)"),
+                    F::Template(t) => t.replace("{x}", "x"),
+                };
+                (
+                    format!("{head} := [{tag}({})]", r.ty),
+                    format!("Ok({tag}({}?))", self.call_body(&r.de)),
+                    format!("match v {{\n\t\t{tag}(x) => {en}\n\t}}"),
+                )
             }
             ty => {
                 let r = self.lower(ty, &def.name)?;
-                (format!("{} : {}", def.name, r.ty), self.call_body(&r.de), self.call_body(&r.en))
+                (format!("{head} : {}", r.ty), self.call_body(&r.de), self.call_body(&r.en))
             }
         };
-        let name = &def.name;
+        // A decoder and an encoder for each parameter; `_` for those the type doesn't use.
+        let used = params_in(&def.ty);
+        let p = Params::new(self.params.iter().map(|(h, p)| (p.clone(), used.contains(h))));
+        self.params.clear();
+        let v = encoded_var(&def.ty);
         Ok(format!(
-            "{doc}\t{decl}\n\n\tdecode_{snake_name} : Value -> Try({name}, Decode.Error)\n\tdecode_{snake_name} = |v| {decode}\n\n\
-             \tencode_{snake_name} : {name} -> Value\n\tencode_{snake_name} = |v| {encode}\n"
+            "{doc}\t{decl}\n\n\tdecode_{snake_name} : Value{} -> Try({head}, Decode.Error)\n\tdecode_{snake_name} = |v{}| {decode}\n\n\
+             \tencode_{snake_name} : {head}{} -> Value\n\tencode_{snake_name} = |{v}{}| {encode}\n",
+            p.de_types, p.de_args, p.en_types, p.en_args
         ))
     }
 
@@ -273,7 +348,12 @@ impl Gen<'_> {
     /// A Roc type for a type expression; `hint` names inline types.
     fn lower(&mut self, ty: &Ty, hint: &str) -> Result<R> {
         match ty {
-            Ty::Param { pos, .. } => self.fail(*pos, "type parameters are not supported by the Roc generator yet"),
+            Ty::Param { name, pos } => match self.params.iter().find(|(h, _)| h == name) {
+                Some((_, p)) => {
+                    Ok(R { ty: p.clone(), de: F::Name(format!("decode_{p}")), en: F::Name(format!("encode_{p}")) })
+                }
+                None => self.fail(*pos, format!("unknown type parameter {name}")),
+            },
             Ty::Record { .. } | Ty::Variant { .. } => self.inline(ty, hint),
             Ty::Name { name, args, pos } => self.named(name, args, *pos, hint),
         }
@@ -281,9 +361,34 @@ impl Gen<'_> {
 
     fn named(&mut self, name: &str, args: &[Ty], pos: usize, hint: &str) -> Result<R> {
         let arity = |n: usize| (args.len() != n).then(|| format!("{name} takes {n} argument(s), found {}", args.len()));
-        let (id, base) = if self.defs.contains_key(name) {
+        let (id, base) = if let Some(def) = self.defs.get(name) {
             let s = snake(name);
-            (format!("{}#{name}", self.id), R::named(name, &format!("decode_{s}"), &format!("encode_{s}")))
+            let roc = self.roc_names[name].clone();
+            let id = format!("{}#{name}", self.id);
+            if def.params.is_empty() {
+                (id, R::named(&roc, &format!("decode_{s}"), &format!("encode_{s}")))
+            } else {
+                // A generic type, applied: `Pair Int` is `Pair(Int)`, decoded with `decode_pair(v, Decode.int)`.
+                if let Some(reason) = arity(def.params.len()) {
+                    return self.fail(pos, reason);
+                }
+                if self.codecs.contains_key(&id) {
+                    return self.fail(pos, format!("a codec for the generic type {name} is not supported in Roc"));
+                }
+                let rs = args
+                    .iter()
+                    .enumerate()
+                    .map(|(i, a)| self.lower(a, &format!("{hint}{}", i + 1)))
+                    .collect::<Result<Vec<_>>>()?;
+                let ty = format!("{roc}({})", rs.iter().map(|r| r.ty.as_str()).collect::<Vec<_>>().join(", "));
+                let (mut de, mut en) = (format!("decode_{s}({{x}}"), format!("encode_{s}({{x}}"));
+                for r in &rs {
+                    let (d, e) = (self.value(&r.de), self.value(&r.en));
+                    let _ = write!(de, ", {d}");
+                    let _ = write!(en, ", {e}");
+                }
+                return Ok(R { ty, de: F::Template(de + ")"), en: F::Template(en + ")") });
+            }
         } else if let Some(source) = self.imports.get(name) {
             match source {
                 Source::Time => (
@@ -337,7 +442,8 @@ impl Gen<'_> {
             "String" => R::named("Str", "Decode.str", "Encode.str"),
             "Bytes" => R::named("List(U8)", "Decode.bytes", "Encode.bytes"),
             "Decimal" => R::named("Str", "Decode.decimal", "Encode.decimal"),
-            "Float32" | "Float64" => R::named("F64", "Decode.f64", "Encode.f64"),
+            "Float32" => R::named("F32", "Decode.f32", "Encode.f32"),
+            "Float64" => R::named("F64", "Decode.f64", "Encode.f64"),
             "Int" => {
                 self.uses_int = true;
                 R::named("Int", "Decode.int", "Encode.int")
@@ -407,11 +513,24 @@ impl Gen<'_> {
             Ty::Variant { closed, cases, .. } => self.variant(hint, *closed, cases)?,
             _ => return self.fail(ty.pos(), "expected a record or a variant here"),
         };
+        // In a generic type, the helpers take the decoders and encoders of the parameters they use.
+        let used = params_in(ty);
+        let p = Params::new(self.params.iter().filter(|(h, _)| used.contains(h)).map(|(_, p)| (p.clone(), true)));
+        let v = encoded_var(ty);
         self.helpers.push(format!(
-            "\tdecode_{s} : Value -> Try({rty}, Decode.Error)\n\tdecode_{s} = |v| {de}\n\n\
-             \tencode_{s} : {rty} -> Value\n\tencode_{s} = |v| {en}\n"
+            "\tdecode_{s} : Value{} -> Try({rty}, Decode.Error)\n\tdecode_{s} = |v{}| {de}\n\n\
+             \tencode_{s} : {rty}{} -> Value\n\tencode_{s} = |{v}{}| {en}\n",
+            p.de_types, p.de_args, p.en_types, p.en_args
         ));
-        Ok(R { ty: rty, de: F::Name(format!("decode_{s}")), en: F::Name(format!("encode_{s}")) })
+        Ok(if p.de_args.is_empty() {
+            R { ty: rty, de: F::Name(format!("decode_{s}")), en: F::Name(format!("encode_{s}")) }
+        } else {
+            R {
+                ty: rty,
+                de: F::Template(format!("decode_{s}({{x}}{})", p.de_args)),
+                en: F::Template(format!("encode_{s}({{x}}{})", p.en_args)),
+            }
+        })
     }
 
     fn fields(&mut self, owner: &str, fields: &[Field]) -> Result<Vec<(String, &'static str, Field, R)>> {
@@ -435,7 +554,8 @@ impl Gen<'_> {
         let fs = self.fields(owner, fields)?;
         let (ty, decode, encode) = self.record_parts(&fs, "v")?;
         let check = if closed { format!("\t\tDecode.closed(fs, [{}])?\n", quoted(fields)) } else { String::new() };
-        Ok((ty, format!("{{\n\t\tfs = Decode.record(v)?\n{check}\t\tOk({decode})\n\t}}"), encode))
+        let fs_name = if fields.is_empty() && !closed { "_fs" } else { "fs" };
+        Ok((ty, format!("{{\n\t\t{fs_name} = Decode.strict_record(v)?\n{check}\t\tOk({decode})\n\t}}"), encode))
     }
 
     /// A record's type, its `{ … }` built from `fs`, and `Encode.record([…])` of the record `var`.
@@ -502,10 +622,12 @@ impl Gen<'_> {
                     let check =
                         if *rc { format!("Decode.closed(fs, [{}])?\n\t\t\t", quoted(fields)) } else { String::new() };
                     tags.push(format!("{tag}({ty})"));
+                    // `Tag {}`: no fields to read or write.
+                    let (fs, r) = if fields.is_empty() { (if *rc { "fs" } else { "_fs" }, "_r") } else { ("fs", "r") };
                     de.push(format!(
-                        "Tag(\"{tag}\", [p]) => Decode.payload(\"{tag}\", p, |fs| {{\n\t\t\t{check}Ok({tag}({decoded}))\n\t\t}})"
+                        "Tag(\"{tag}\", [p]) => Decode.payload(\"{tag}\", p, |{fs}| {{\n\t\t\t{check}Ok({tag}({decoded}))\n\t\t}})"
                     ));
-                    en.push(format!("{tag}(r) => Tag(\"{tag}\", [{encoded}])"));
+                    en.push(format!("{tag}({r}) => Tag(\"{tag}\", [{encoded}])"));
                     arity.push(format!("Tag(\"{tag}\", _) => Decode.arity(\"{tag}\", 1)"));
                 }
                 items => {
@@ -563,6 +685,115 @@ impl Gen<'_> {
     }
 }
 
+/// The parameters of a generic definition or helper, as Roc code: the types
+/// and names of the decoders and encoders that come after `v`.
+struct Params {
+    de_types: String,
+    de_args: String,
+    en_types: String,
+    en_args: String,
+}
+
+impl Params {
+    /// Each parameter, and whether it is used (`_decode_a` when not).
+    fn new(params: impl Iterator<Item = (String, bool)>) -> Params {
+        params.fold(
+            Params { de_types: String::new(), de_args: String::new(), en_types: String::new(), en_args: String::new() },
+            |mut p, (name, used)| {
+                let unused = if used { "" } else { "_" };
+                let _ = write!(p.de_types, ", (Value -> Try({name}, Decode.Error))");
+                let _ = write!(p.de_args, ", {unused}decode_{name}");
+                let _ = write!(p.en_types, ", ({name} -> Value)");
+                let _ = write!(p.en_args, ", {unused}encode_{name}");
+                p
+            },
+        )
+    }
+}
+
+/// The encoder's parameter: `_v` for `{}`, whose encoder doesn't read it.
+fn encoded_var(ty: &Ty) -> &'static str {
+    match ty {
+        Ty::Record { fields, .. } if fields.is_empty() => "_v",
+        _ => "v",
+    }
+}
+
+/// The type parameters a type expression uses.
+fn params_in(ty: &Ty) -> HashSet<String> {
+    let mut out = HashSet::new();
+    walk(ty, &mut |t| {
+        if let Ty::Param { name, .. } = t {
+            out.insert(name.clone());
+        }
+    });
+    out
+}
+
+/// Every type expression in `ty`, `ty` included.
+fn walk(ty: &Ty, f: &mut impl FnMut(&Ty)) {
+    f(ty);
+    match ty {
+        Ty::Param { .. } => {}
+        Ty::Name { args, .. } => args.iter().for_each(|a| walk(a, f)),
+        Ty::Record { fields, .. } => fields.iter().for_each(|x| walk(&x.ty, f)),
+        Ty::Variant { cases, .. } => cases.iter().flat_map(|c| &c.payload).for_each(|t| walk(t, f)),
+    }
+}
+
+/// Whether a definition refers to itself, directly or through other definitions.
+fn refers_to_itself(def: &TypeDef, defs: &HashMap<&str, &TypeDef>) -> bool {
+    let names = |ty: &Ty| {
+        let mut out = Vec::new();
+        walk(ty, &mut |t| {
+            if let Ty::Name { name, .. } = t
+                && defs.contains_key(name.as_str())
+            {
+                out.push(name.clone());
+            }
+        });
+        out
+    };
+    let (mut seen, mut todo) = (HashSet::new(), names(&def.ty));
+    while let Some(name) = todo.pop() {
+        if name == def.name {
+            return true;
+        }
+        if seen.insert(name.clone()) {
+            todo.extend(names(&defs[name.as_str()].ty));
+        }
+    }
+    false
+}
+
+/// Roc's builtin types: a schema type with one of these names gets a `_` in Roc.
+const BUILTIN_TYPES: &[&str] = &[
+    "Str",
+    "Bool",
+    "List",
+    "Dict",
+    "Set",
+    "Box",
+    "Try",
+    "Dec",
+    "F32",
+    "F64",
+    "I8",
+    "I16",
+    "I32",
+    "I64",
+    "I128",
+    "U8",
+    "U16",
+    "U32",
+    "U64",
+    "U128",
+    "Stream",
+    "Iter",
+    "Utf8Problem",
+    "Num",
+];
+
 /// `< >`: any tag.
 fn any_tag() -> R {
     R::named("[Bare(Str), Other(Str, List(Value))]", "Decode.any_tag", "Encode.any_tag")
@@ -615,5 +846,48 @@ fn field_name(key: &str) -> String {
         s if s.starts_with(|c: char| c.is_ascii_digit()) => format!("f{s}"),
         s if KEYWORDS.contains(&s.as_str()) => format!("{s}_"),
         s => s,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::generate;
+    use crate::packages::Packages;
+
+    fn roc(schema: &str) -> String {
+        generate(schema, "M", "m", &[], &Packages::none()).unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    #[test]
+    fn floats_have_their_own_types() {
+        let code = roc("type A = { x: Float32, y: Float64 }");
+        assert!(code.contains("A : { x : F32, y : F64 }"), "{code}");
+        assert!(code.contains("Decode.f32") && code.contains("Encode.f32"), "{code}");
+    }
+
+    #[test]
+    fn names_of_roc_builtins_get_an_underscore() {
+        let code = roc("type F64 = Float64\ntype Box = { w: Int }\ntype Value = Box");
+        assert!(code.contains("F64_ : F64") && code.contains("Box_ : { w : Int }"), "{code}");
+        assert!(code.contains("Value_ : Box_") && code.contains("decode_value = |v| decode_box(v)"), "{code}");
+    }
+
+    #[test]
+    fn generic_types_take_decoders_and_encoders() {
+        let code = roc("type Pair a = { first: a, second: a }\ntype Ints = Pair Int");
+        assert!(
+            code.contains("decode_pair : Value, (Value -> Try(a, Decode.Error)) -> Try(Pair(a), Decode.Error)"),
+            "{code}"
+        );
+        assert!(code.contains("encode_pair : Pair(a), (a -> Value) -> Value"), "{code}");
+        assert!(code.contains("decode_ints = |v| decode_pair(v, Decode.int)"), "{code}");
+    }
+
+    #[test]
+    fn types_that_refer_to_themselves_are_nominal() {
+        let code = roc("type Tree = { kids: Array Tree }\ntype List a = < Nil | Cons a (List a) >\ntype N = Array N");
+        assert!(code.contains("Tree := { kids : List(Tree) }"), "{code}");
+        assert!(code.contains("List_(a) := [Nil, Cons(a, List_(a)), Unknown(Str, List(Value))]"), "{code}");
+        assert!(code.contains("N := [N(List(N))]"), "{code}");
     }
 }

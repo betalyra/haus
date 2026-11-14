@@ -23,7 +23,7 @@ const Currency = h.OpenVariant({ EUR: h.Unit, USD: h.Unit })
 const Money = h.Variant({ Money: h.Tuple(h.Decimal, Currency) })
 const Event = h.OpenVariant({
   UserCreated: h.Record({ id: h.Int, email: h.String }),
-  Paid: h.Record({ amount: Money, at: h.Instant }),
+  Paid: h.Record({ amount: Money, at: h.InstantAsDate }),
   Heartbeat: h.Unit,
 })
 const Shape = h.Variant({
@@ -130,7 +130,7 @@ describe("errors", () => {
     { schema: Shape, src: "Square { side: 1 }", reason: "unknown tag 'Square', expected one of Circle | Point | Label", path: "$" },
     { schema: Shape, src: "Point(1)", reason: "'Point' expects 2 argument(s)", path: "$" },
     { schema: h.Array(Event), src: "[Heartbeat, Paid { amount: Money(19.99, EUR), at: Instant(\"yesterday\") }]", reason: 'invalid Instant "yesterday"', path: "$[1].at[0]" },
-    { schema: h.Array(Event), src: "[Paid { amount: Money(1e3, EUR), at: Instant(\"2026-11-07T10:00:00Z\") }]", reason: "expected Decimal, found number 1e3", path: "$[0].amount[0]" },
+    { schema: h.Array(Event), src: "[Paid { amount: Money(19.99, EUR), at: Instant(\"2026-11-07T10:00:00Z\") }, Paid { amount: Money(\"1e3\", EUR) }]", reason: "expected Decimal, found string", path: "$[1].amount[0]" },
     { schema: h.Bool, src: "Yes", reason: "expected Bool (True | False), found variant Yes", path: "$" },
   ])("$src", ({ schema, src, reason, path }) =>
     Effect.gen(function* () {
@@ -154,7 +154,7 @@ describe("encoding", () => {
     ratio: h.Float64,
     paid: h.Bool,
     day: h.Date,
-    at: h.Instant,
+    at: h.InstantAsDate,
     note: h.Maybe(h.String),
     tags: h.Array(h.String),
     shape: Shape,
@@ -201,13 +201,13 @@ describe("encoding", () => {
   })
 
   it("NaN and infinities", () => {
-    expect(h.stringify(h.Array(h.Float64), [NaN, Infinity, -Infinity, 1e21], { style: "compact" })).toBe("[NaN, Infinity, NegInfinity, 1e+21]")
+    expect(h.stringify(h.Array(h.Float64), [NaN, Infinity, -Infinity, 1e21], { style: "compact" })).toBe("[NaN, Infinity, NegInfinity, 1e21]")
   })
 
   it.effect.each([
     { schema: h.Int, value: 1, reason: "expected a bigint, got 1" },
     { schema: h.Int32, value: 1.5, reason: "expected an integer from -2147483648 to 2147483647, got 1.5" },
-    { schema: h.Decimal, value: "1e3", reason: 'expected a decimal string like "19.90", got "1e3"' },
+    { schema: h.Decimal, value: "1,5", reason: 'expected a decimal string like "19.90", got "1,5"' },
     { schema: h.Date, value: "2026-02-30", reason: 'expected a valid Date, got "2026-02-30"' },
     { schema: Shape, value: { _tag: "Square" }, reason: 'expected one of Circle | Point | Label, got "Square"' },
   ])("rejects $value", ({ schema, value, reason }) =>

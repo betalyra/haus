@@ -45,9 +45,9 @@ describe("plain target", async () => {
 
   it("data with a schema: decoded with it", async () => {
     const { code } = moduleFor(read("thread.haus"), at("thread.haus"), plain, runtimeOf)
-    const thread = (await load(code)).default as { readonly likes: bigint; readonly at: Date }
+    const thread = (await load(code)).default as { readonly likes: bigint; readonly at: string }
     expect(typeof thread.likes).toBe("bigint")
-    expect(thread.at).toBeInstanceOf(Date)
+    expect(thread.at).toBe("2026-11-01T09:00:00Z") // std/time values keep their text
   })
 
   it("data that doesn't match its schema fails with its position", async () => {

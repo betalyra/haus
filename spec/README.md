@@ -74,7 +74,7 @@ Two values are equal when they have the same kind and:
 - **Native equality:** a language's decimal type may ignore scale when comparing (Effect `BigDecimal`, Java `BigDecimal.compareTo`, Python `Decimal` all treat `19.90` and `19.9` as equal), while haus doesn't (§2). Use haus equality, not the native one, for hashing and deduplication.
 - **Without a schema:** a decoder that turns values into native types without a schema MUST NOT lose precision, and MUST NOT reject a number for its size within the limits (§7). Every integer becomes an arbitrary-size integer type (`bigint` in JavaScript), and every other number an exact decimal or its literal text, never a rounded binary float. A decoder MUST NOT choose the type by looking at the data, such as a JavaScript `number` for a field whose integers all fit one: types must not depend on the document, and a stream reader can't look ahead at later values.
 - **`Int`:** decodes to an arbitrary-size integer in every binding. For a native fixed-size integer, the schema says `Int32`, `Int64` and so on, and a value out of range is an error.
-- **NaN and infinities:** there are no `NaN` or infinity literals. The prelude tags `NaN`, `Infinity` and `NegInfinity` are accepted where the schema says `Float32` or `Float64`.
+- **NaN and infinities:** there are no `NaN` or infinity literals. The prelude tags `NaN`, `Infinity` and `NegInfinity` are accepted where the schema says `Float32` or `Float64`. A finite literal too large for the float type is an error, not an infinity (§15).
 - **Limits:** a number literal is at most 1000 characters, and its exponent at most ±6144 (§7).
 
 ## 4. Strings and Unicode
@@ -339,8 +339,10 @@ An import names at most a major version. A minimum minor version would be redund
 A schema binding MAY let applications choose the host type of a named type without arguments: a **codec**, selected by the type's id. A codec:
 
 - runs after the type's schema: it can reject more values, never fewer;
-- encodes back to the type's values, so that encoding what it decoded gives an equal value;
-- never changes the data: the same text means the same thing with and without it.
+- encodes back to the type's values, so that decoding what it encoded gives the same result: decode, encode, decode is the same as decode;
+- never changes what a value means: the same text means the same thing with and without it, the same instant or the same amount.
+
+A host type may keep less than the haus value: `Temporal.Instant` or a JavaScript `Date` keeps the instant but not the offset it was written with, and a decimal type may forget `-0` or exponent notation. Encoding through it then writes a value that means the same but is not equal (§2), with another canonical form and hash. Such a codec, or a binding whose default host type is one, MUST say so in its documentation, and SHOULD offer a host type that keeps the value (the checked text, for example). Hash and sign parsed values, not re-encoded ones (§12).
 
 Codecs are part of the application, not of the schema. Two applications reading the same file with different codecs agree on what the file says, and may disagree only on what they accept. A codec for a standard type changes the host type only (§13.1).
 
@@ -379,3 +381,89 @@ Implementations MUST reject:
 - the import errors of §13.3.
 
 **Which schema describes a file.** A data file `x.haus` is described by the type `Root` of the schema file `x.schema.haus` next to it. A comment on the first lines of the data file names another one: `// schema: ./order.schema.haus` or `// schema: ./api.schema.haus#Order` (a type other than `Root`). The comment is for tools; parsers ignore it, and it never changes what the data means (§9.2).
+
+## 15. Decoding with a schema
+
+A schema binding (§13.1) decodes a value with a type. The result is a value of the binding's language, or an error. This section says which values each type accepts, what of them a binding must keep, and what an encoder writes. What a decoded value looks like in a language (an object, a struct, a `bigint`) is up to the binding, as long as these rules hold.
+
+**General rules.**
+
+- Decoding depends only on the type and the value: never on other values in the file, on layout or comments, or on spellings that §2 treats as the same value. `0xFF` and `255` decode alike, and so do `Tag({ … })` and `Tag { … }`.
+- A value the type doesn't accept is an error. Decoders MUST NOT convert between kinds of values: the string `"42"` is not an `Int`, a bare `32` is not `Some(32)`, and a missing field is not `None` (§1).
+- An error names the place of the failing value, for example `$.items[2].price`. Reporting the first error is enough (§9.6).
+- Decoding is linear in the input whatever the schema, within the limits of §9.8 and §9.9.
+
+**Numbers.** Decoding works on the exact decimal a literal denotes (§3).
+
+| Type | Accepts |
+|---|---|
+| `Int` | a number whose normalized literal (§2) is a whole number: digits with an optional `-`, no fraction and no exponent. `0xFF`, `1_000` and `-0` are whole numbers (`-0` is 0). `1.0` and `1e3` are not, as `1.0` is not the same value as `1` (§2). Any size (§3). |
+| `Int8`, `Int16`, `Int32`, `Int64` | as `Int`, from −2<sup>n−1</sup> to 2<sup>n−1</sup>−1 |
+| `UInt8`, `UInt16`, `UInt32`, `UInt64` | as `Int`, from 0 to 2<sup>n</sup>−1 |
+| `Float64`, `Float32` | any number, rounded to the nearest IEEE 754 binary64 or binary32 value (ties to even), directly from its exact decimal value: rounding to binary64 first and then to binary32 can be off by one unit. A number too large for the type (one that would round to an infinity) is an error. A number too small rounds to zero, keeping its sign; `-0` is negative zero. Also the tags `NaN`, `Infinity` and `NegInfinity` without a payload. |
+| `Decimal` | any number, kept exactly as its normalized literal, scale and exponent included: `19.90` stays `19.90`, `1.5e3` stays `1.5e3`. |
+
+A value outside an integer type's range is an error, never wrapped or clamped. For values a `Float32` can't hold exactly, use `Float64`, or `Decimal` for exact values.
+
+**Other built-in types.**
+
+| Type | Accepts |
+|---|---|
+| `String` | a string, kept exactly (§4: no normalization) |
+| `Bytes` | a byte string |
+| `Bool` | `True` or `False` |
+| `Maybe a` | `None`, or `Some(x)` with exactly one argument `x` that `a` accepts |
+| `Result e a` | `Err(x)` with `x` an `e`, or `Ok(x)` with `x` an `a` |
+| `Array a` | an array whose elements `a` all accept |
+| `Map v` | a record with any keys, whose values `v` all accept |
+| `Date`, `Time`, … (std/time) | the type's own tag with exactly one string argument that the [std/time profile](std/time.md) accepts: `Date("2026-11-13")`. `Instant("2026-11-13T10:00:00Z")` is not a `Date`. |
+
+**Records.** `{ … }` accepts a record in which:
+
+- every field without `?` is present, and each field the type lists that is present is accepted by its type;
+- a field with `?` may be missing. It then stays missing in the result: never `None`, never a default (§1);
+- a field the type doesn't list is ignored by an open record (it is not part of the result) and an error in a closed one.
+
+**Variants.** `< … >` accepts a variant. Its tag selects the case, by lookup (§9.8), and the case says what payload the tag takes:
+
+| Case in the schema | Payload in the data |
+|---|---|
+| `Tag` | none |
+| `Tag { … }` | one argument, a record, which the record type `{ … }` accepts (open or closed by its own `closed`). `Tag { … }` and `Tag({ … })` are the same value (§2). |
+| `Tag T1 … Tn` | exactly n arguments, the i-th accepted by `Ti`. With `type Order = { … }`, the case `Ok Order` accepts `Ok { … }`. |
+
+A listed tag with any other payload is an error, in open variants too: an unknown value is for tags the reader doesn't know, and changing a tag's payload is a major change (§13.3). A tag that isn't listed is an error in a closed variant and decodes to an *unknown value* in an open one. `< >` lists no tags, so it decodes every variant to an unknown value.
+
+**Unknown values.** An unknown value keeps the tag and its arguments as parsed values. Bindings MUST:
+
+- keep both unchanged, so that encoding an unknown value writes a value equal (§2) to the one decoded;
+- represent it so that it can't be confused with a listed case;
+- treat its content as untrusted data, subject to the limits (§9.5, §9.8).
+
+How it is represented is up to the binding. For example, a binding MAY represent an unknown value without a payload by its tag name, so that `< >` decodes `EUR` to the string `"EUR"`.
+
+**Named, generic and recursive types.** A named type decodes as its definition. A generic type decodes as its definition with the parameters replaced by the arguments: `Maybe Int`, `Envelope Event`. A recursive type decodes one level of the input at a time (§9.9).
+
+**Streams.** `Stream a` describes a file: each top-level value decodes as an `a`, on its own, as it is read. An error names the value's index in the stream.
+
+**Encoding.** A binding that encodes writes values that the type accepts, and encoding fits decoding: for every value `v` that a type accepts, decoding `encode(decode(v))` gives the same result as decoding `v`. `encode(decode(v))` is equal to `v` (§2), except where decoding drops information by design:
+
+- fields an open record ignores;
+- the spelling of a float: `0.10` decodes as `Float64` to the float 0.1, which is written `0.1`;
+- `-0` decoded as an integer, which is written `0`.
+
+Integers are written as decimal integers, and decimals as their literal, scale included (§3).
+
+**Floats** are written as `NaN`, `Infinity` and `NegInfinity`, and otherwise in one exact spelling, so that every binding writes the same float as the same text and gives it the same canonical form and hash (§12):
+
+- The digits are the fewest decimal digits that decode back to the same float of the type (binary64 for `Float64`, binary32 for `Float32`). If several digit strings of that length do, the one closest to the float is written, and of two equally close ones, the one whose last digit is even: the Float32 value 2097152.25 is written `2097152.2`, not `2097152.3`.
+- With digits d₁…d<sub>k</sub> and the value 0.d₁…d<sub>k</sub> × 10<sup>n</sup>, the layout is that of JavaScript's `Number.prototype.toString`, except that the exponent has no `+`. The first row that applies is used:
+
+  | When | Written as | Examples |
+  |---|---|---|
+  | k ≤ n ≤ 21 | the digits, then n − k zeros | `1`, `100`, `123000` |
+  | 0 < n ≤ 21 | the digits, with a `.` after the first n | `1.5`, `12.25` |
+  | −6 < n ≤ 0 | `0.`, then −n zeros, then the digits | `0.1`, `0.000001` |
+  | otherwise | d₁, then `.` and d₂…d<sub>k</sub> if k > 1, then `e` and n − 1 | `1e21`, `1.5e-7` |
+
+- A negative float starts with `-`. Negative zero is `-0`.

@@ -25,7 +25,7 @@
 import { parseSchemaFile, type Builtin, type Case, type Definition, type Field, type Instance, type ParseSchemaOptions, type SchemaFile, type StdType, type Type } from "@haus-fmt/haus"
 import { Schema } from "effect"
 import { entries, idOf, setId, type AnyCodec, type CodecEntry } from "./codec.js"
-import { BARE_TAG, CLOSED, VALUES } from "./convert.js"
+import { BARE_TAG, CLOSED, NUMBER, STRICT, VALUES } from "./convert.js"
 // Circular import: only used when a schema file is compiled, after both modules have loaded.
 import * as Haus from "./index.js"
 
@@ -61,12 +61,19 @@ const INTS: Partial<Record<Builtin, readonly [number, number]>> = {
   UInt32: [0, 4294967295],
 }
 
+/** A whole number in range, as a JS number: `1e2` and `1.0` are not whole numbers (spec §15). */
+const smallInt = ([minimum, maximum]: readonly [number, number]) =>
+  Schema.Number.annotate({ [NUMBER]: "Int" } as never).check(Schema.isInt(), Schema.isBetween({ minimum, maximum }))
+
+/** A schema file's `String`: only a haus string. */
+const strictString = Schema.String.annotate({ [STRICT]: true } as never)
+
 const builtin = (name: Builtin): Schema.Top => {
   const range = INTS[name]
-  if (range) return Schema.Int.check(Schema.isBetween({ minimum: range[0], maximum: range[1] }))
+  if (range) return smallInt(range)
   switch (name) {
     case "String":
-      return Schema.String
+      return strictString
     case "Bytes":
       return Schema.Uint8Array
     case "Bool":
@@ -79,8 +86,10 @@ const builtin = (name: Builtin): Schema.Top => {
       return Schema.BigInt.check(Schema.isBetweenBigInt({ minimum: -(2n ** 63n), maximum: 2n ** 63n - 1n }))
     case "UInt64":
       return Schema.BigInt.check(Schema.isBetweenBigInt({ minimum: 0n, maximum: 2n ** 64n - 1n }))
+    case "Float32":
+      return Haus.Float32
     default:
-      return Schema.Number // Float32, Float64
+      return Schema.Number // Float64
   }
 }
 

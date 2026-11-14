@@ -57,7 +57,7 @@ Order := [].{
 
 	decode_root : Value -> Try(Root, Decode.Error)
 	decode_root = |v| {
-		fs = Decode.record(v)?
+		fs = Decode.strict_record(v)?
 		Ok({ id: Decode.field(fs, "id", Decode.int)?, customer: Decode.field(fs, "customer", decode_user_id)?, placed: Decode.field(fs, "placed", Decode.time("Date"))?, total: Decode.field(fs, "total", HausMoney.decode_money)?, deliver_to: Decode.field(fs, "deliverTo", HausGeo.decode_lat_lng)?, status: Decode.field(fs, "status", decode_status)? })
 	}
 

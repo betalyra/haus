@@ -1,0 +1,29 @@
+// See numbers.cases.haus for the format.
+
+Ok { type: "User", input: { id: 1, name: "Ada" } },
+Ok { type: "User", input: { name: "Ada", id: 1, nick: "ada" } },
+// a missing optional field stays missing; None is a value
+Ok { type: "User", input: { id: 1, name: "Ada", note: None } },
+Ok { type: "User", input: { id: 1, name: "Ada", note: Some("x") } },
+Err { type: "User", input: { id: 1, name: "Ada", nick: None } },
+Err { type: "User", input: { id: 1, name: "Ada", note: "x" } },
+// an open record ignores fields it doesn't list
+Ok { type: "User", input: { id: 1, name: "Ada", extra: [1, 2], "x-y": Tag }, output: { id: 1, name: "Ada" } },
+Err { type: "User", input: { id: 1 } },
+Err { type: "User", input: { name: "Ada" } },
+Err { type: "User", input: { id: "1", name: "Ada" } },
+Err { type: "User", input: User { id: 1, name: "Ada" } },
+Err { type: "User", input: [1, "Ada"] },
+
+Ok { type: "Strict", input: { id: 1 } },
+Ok { type: "Strict", input: { id: 1, tags: ["a"] } },
+Err { type: "Strict", input: { id: 1, extra: 2 } },
+Err { type: "Strict", input: { id: 1, tags: None } },
+
+// a closed record around an open one
+Ok { type: "Outer", input: { user: { id: 1, name: "Ada", x: 1 } }, output: { user: { id: 1, name: "Ada" } } },
+Err { type: "Outer", input: { user: { id: 1, name: "Ada" }, x: 1 } },
+
+Ok { type: "Empty", input: {} },
+Ok { type: "Empty", input: { a: 1 }, output: {} },
+Err { type: "Empty", input: [] },

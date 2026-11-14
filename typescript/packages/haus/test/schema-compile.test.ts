@@ -12,10 +12,10 @@ const compile = (name: string) => compileSchemaFile(read(name), schemaOptions(jo
 describe("schemas from schema files", () => {
   it("decode data the way the declarations say", () => {
     const { schemas } = compile("thread.schema.haus")
-    const thread = h.parse(schemas.Root!, read("thread.haus")) as { author: string; likes: bigint; at: Date; replies: unknown[] }
+    const thread = h.parse(schemas.Root!, read("thread.haus")) as { author: string; likes: bigint; at: string; replies: unknown[] }
     expect(typeof thread.author).toBe("string")
     expect(typeof thread.likes).toBe("bigint")
-    expect(thread.at).toBeInstanceOf(Date)
+    expect(thread.at).toBe("2026-11-01T09:00:00Z") // std/time values keep their text
     expect(Array.isArray(thread.replies)).toBe(true)
   })
 
@@ -113,7 +113,7 @@ describe("declarations", () => {
     `))
     expect(decl).toContain(`export type Level = "Debug" | "Info";`)
     expect(decl).toContain(`export type List<A> = { readonly _tag: "Nil" } | { readonly _tag: "Cons"; readonly values: readonly [A, List<A>] } | h$.Unknown;`)
-    expect(decl).toContain(`export type Root = { readonly level: Level; readonly n: List<bigint>; readonly at: Date; readonly when?: string | null };`)
+    expect(decl).toContain(`export type Root = { readonly level: Level; readonly n: List<bigint>; readonly at: string; readonly when?: string | null };`)
     expect(decl).toContain(`export declare const Root: h$.Schema<Root>;`)
     expect(decl).not.toContain("export declare const List")
   })

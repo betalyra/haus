@@ -6,6 +6,7 @@ Built against the Roc nightly compiler (2026-11-03) and basic-cli 0.26.0.
 |---|---|
 | [`package/`](package) | The haus package: `Value` (data model and parser), `Decode`, `Encode` (compact writer), `Int` (integers of any size), `Stream` (reads a stream chunk by chunk), `Time` (the std/time profile) |
 | [`examples/`](examples) | The same examples as in TypeScript and Rust, on the same files in [`../examples`](../examples), plus `shop`, a Roc showcase |
+| [`schema-test/`](schema-test) | Generated: the schema conformance suite ([`../test-suite/schema`](../test-suite/schema)) as Roc tests |
 
 ## Examples
 
@@ -50,8 +51,20 @@ examples/gen.sh
 | `< A \| B T \| C { … } >` | `[A, B(T), C({ … }), Unknown(Str, List(Value))]`, without `Unknown` when closed |
 | `Maybe a`, `Result e a` | `[None, Some(a)]`, `Try(a, e)` |
 | `Array a`, `Map v` | `List(a)`, `List((Str, v))` |
-| `Int`, `Int8`…`UInt64`, `Float64` | `Int`, `I8`…`U64`, `F64` |
+| `Int`, `Int8`…`UInt64`, `Float32`, `Float64` | `Int`, `I8`…`U64`, `F32`, `F64` |
 | `Decimal`, `Date`, `Instant`, … | `Str`: exact text, std/time checked by its profile |
+| `< >` | `[Bare(Str), Other(Str, List(Value))]`: any variant, kept as it was |
+| `type Pair a = …` | `Pair(a)`, decoded with `decode_pair(v, decode_a)` |
+
+Named variants are nominal (`:=`), and so are records that refer to
+themselves (`Tree := { name : Str, children : List(Tree) }`). A type named
+like a Roc builtin or an imported module gets a `_` in Roc (`type List a`
+is `List_(a)`, `type F64 = Float64` is `F64_`); its functions keep their
+names (`decode_list`).
+
+A float is written in one spelling (spec §15): the fewest digits that read
+back as the same `F64` or `F32`, laid out like JavaScript (`0.1`, `1e21`,
+`1.5e-7`, `-0`). A number too large for the type is a decode error.
 
 `Int` (the package's `Int` module) is an integer of any size, kept as its digits
 and written back unchanged, like `haus::Int` in Rust. `to_i64` / `to_i128` convert
@@ -68,8 +81,19 @@ with `--codec ID=MODULE` when generating.
 cd package && roc test ConformanceTest.roc && roc test TimeTest.roc
 cd package && roc test Decode.roc && roc test Encode.roc && roc test Int.roc && roc test Stream.roc
 cd examples/shop && roc test main.roc
+cd schema-test && roc test main.roc
 ```
 
 `ConformanceTest.roc` is generated from `../test-suite` by
 `scripts/gen_conformance.py`, and `TimeTest.roc` holds the same std/time
 cases as the TypeScript and Rust bindings.
+
+[`schema-test/`](schema-test) runs the schema conformance suite
+(`../test-suite/schema`, spec §15): `scripts/gen_schema_conformance.py`
+generates a module per schema with `haus-gen` (so it needs Rust) and
+`SchemaTest.roc` with one `expect` per case. Re-run it after changing the
+suite or the generator:
+
+```sh
+python3 scripts/gen_schema_conformance.py
+```

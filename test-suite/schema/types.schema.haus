@@ -1,0 +1,7 @@
+// Named, generic and recursive types (spec §15).
+type Pair a = { first: a, second: a }
+type IntPair = Pair Int
+type List a = < Nil | Cons a (List a) >
+type Ints = List Int
+type Tree = { name: String, children: Array Tree }
+type Expr = closed < Num Int | Add Expr Expr | Neg { of: Expr } >

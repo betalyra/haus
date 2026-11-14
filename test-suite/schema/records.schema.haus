@@ -1,0 +1,5 @@
+// Records (spec §15): required and optional fields, open and closed.
+type User = { id: Int, name: String, nick?: String, note?: Maybe String }
+type Strict = closed { id: Int, tags?: Array String }
+type Outer = closed { user: User }
+type Empty = {}

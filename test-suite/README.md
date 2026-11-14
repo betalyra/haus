@@ -11,6 +11,22 @@ Language-independent tests that every haus parser must pass.
 Files are raw bytes. Some use CRLF line endings, a BOM or literal tab
 characters, so keep them byte-exact. Don't let editors or git rewrite them.
 
+## Schema suite
+
+`schema/NAME.schema.haus` is a schema file, and `schema/NAME.cases.haus` holds
+cases for it (spec §15), written in haus:
+
+```haus
+Ok { type: "F64", input: 0.10, output: 0.1 },   // decodes; encoding gives output
+Ok { type: "I", input: 42 },                     // no output: encoding gives input back
+Err { type: "I", input: 1.0 },                   // decoding fails
+```
+
+`type` names a definition without parameters. For `Ok`, decode `input` with
+the type, encode the result with the same type, and compare its canonical form
+(§12) with that of `output`, or of `input` when there is no `output`. For
+`Err`, decoding must fail. Error messages are not compared.
+
 ## Expected output encoding
 
 `NAME.json` is a JSON array holding the file's top-level values in order (an

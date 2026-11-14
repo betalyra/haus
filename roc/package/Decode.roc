@@ -92,17 +92,32 @@ Decode := [].{
 	u64 : Value -> Try(U64, Error)
 	u64 = |v| whole(v, "UInt64", "0", "18446744073709551615", U64.from_str)
 
-	## `Float64`: rounding is accepted; also the tags `NaN`, `Infinity`, `NegInfinity`.
+	## `Float64`: any number, rounded to the nearest binary64 value (spec §15),
+	## and the tags `NaN`, `Infinity`, `NegInfinity`. A number too large for
+	## a Float64 is an error, not an infinity.
 	f64 : Value -> Try(F64, Error)
 	f64 = |v| match v {
-		Num(text) => F64.from_str(text).map_err(|_| { reason: "${text} is not a Float64", path: "" })
+		Num(text) => F64.from_str(text).map_err(|_| { reason: "${text} is too large for Float64", path: "" })
 		Tag("NaN", []) => Ok(0.0 / 0.0)
 		Tag("Infinity", []) => Ok(1.0 / 0.0)
 		Tag("NegInfinity", []) => Ok(-1.0 / 0.0)
 		_ => expected("a number (Float64)", v)
 	}
 
-	## An exact decimal, kept as its literal text (`19.90` stays "19.90").
+	## `Float32`: any number, rounded directly from its exact decimal value to
+	## the nearest binary32 value (never through a binary64), and the tags
+	## `NaN`, `Infinity`, `NegInfinity`. Too large for a Float32 is an error.
+	f32 : Value -> Try(F32, Error)
+	f32 = |v| match v {
+		Num(text) => F32.from_str(text).map_err(|_| { reason: "${text} is too large for Float32", path: "" })
+		Tag("NaN", []) => Ok(0.0 / 0.0)
+		Tag("Infinity", []) => Ok(1.0 / 0.0)
+		Tag("NegInfinity", []) => Ok(-1.0 / 0.0)
+		_ => expected("a number (Float32)", v)
+	}
+
+	## An exact decimal: any number, kept as its normalized literal, scale and
+	## exponent included (`19.90` stays "19.90", `1.5e3` stays "1.5e3").
 	decimal : Value -> Try(Str, Error)
 	decimal = |v| match v {
 		Num(text) => Ok(text)
@@ -156,6 +171,14 @@ Decode := [].{
 	record = |v| match v {
 		Rec(fields) => Ok(fields)
 		Tag(_, [Rec(fields)]) => Ok(fields)
+		_ => expected("a record", v)
+	}
+
+	## The fields of a record, and only of a record: `User { … }` is a variant,
+	## not a record (spec §15). Generated decoders use this one.
+	strict_record : Value -> Try(List((Str, Value)), Error)
+	strict_record = |v| match v {
+		Rec(fs) => Ok(fs)
 		_ => expected("a record", v)
 	}
 
@@ -219,7 +242,7 @@ Decode := [].{
 	## The record payload of `Tag { … }`, with errors inside it under `(Tag)`.
 	payload : Str, Value, (List((Str, Value)) -> Try(a, Error)) -> Try(a, Error)
 	payload = |tag, v, decoder| at(
-		match record(v) {
+		match strict_record(v) {
 			Ok(fields) => decoder(fields)
 			Err(e) => Err(e)
 		},
@@ -279,7 +302,8 @@ whole = |v, name, min, max, from_str| match v {
 		if digits.is_empty() or !digits.to_utf8().all(|b| b >= '0' and b <= '9') {
 			return Decode.fail("expected a whole number (${name}), found ${text}")
 		}
-		from_str(text).map_err(|_| { reason: "${text} is out of range for ${name} (${min} to ${max})", path: "" })
+		# `-0` is 0, also for the unsigned types.
+		from_str(if (text == "-0") "0" else text).map_err(|_| { reason: "${text} is out of range for ${name} (${min} to ${max})", path: "" })
 	}
 	_ => Decode.expected("a number (${name})", v)
 }
@@ -362,3 +386,15 @@ user_update = |v| {
 expect Decode.one("{}", user_update) == Ok({ name: Missing, nickname: Missing })
 expect Decode.one("{ name: \"Jan\", nickname: None }", user_update) == Ok({ name: Present("Jan"), nickname: Present(None) })
 expect Decode.one("{ nickname: Some(\"J\") }", user_update) == Ok({ name: Missing, nickname: Present(Some("J")) })
+
+# Floats are rounded to their type, and too large for it is an error (spec §15).
+expect Decode.one("1.000000059604644775390625", Decode.f32) == Ok(1.0)
+expect Decode.one("1e-400", Decode.f64) == Ok(0.0)
+expect Decode.one("1e400", Decode.f64) == Err(Decode({ reason: "1e400 is too large for Float64", path: "" }))
+expect Decode.one("3.4028236e38", Decode.f32) == Err(Decode({ reason: "3.4028236e38 is too large for Float32", path: "" }))
+# `-0` is 0, also for the unsigned types.
+expect Decode.one("-0", Decode.u8) == Ok(0)
+expect Decode.one("-1", Decode.u8) == Err(Decode({ reason: "-1 is out of range for UInt8 (0 to 255)", path: "" }))
+# A variant with a record payload is not a record.
+expect Decode.one("User { id: 1 }", |v| Decode.strict_record(v).map_ok(|fs| fs.len())) == Err(Decode({ reason: "expected a record, found variant User", path: "" }))
+expect Decode.one("{ id: 1 }", |v| Decode.strict_record(v).map_ok(|fs| fs.len())) == Ok(1)

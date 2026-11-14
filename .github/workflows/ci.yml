@@ -101,6 +101,7 @@ jobs:
       - name: Generated code is up to date
         run: |
           python3 roc/scripts/gen_conformance.py
+          python3 roc/scripts/gen_schema_conformance.py
           sh roc/examples/gen.sh
           git diff --exit-code
       - name: Test
@@ -109,6 +110,7 @@ jobs:
           (cd package && roc test ConformanceTest.roc && roc test TimeTest.roc)
           (cd package && roc test Decode.roc && roc test Encode.roc && roc test Int.roc && roc test Stream.roc)
           (cd examples/shop && roc test main.roc)
+          (cd schema-test && roc test main.roc)
 
   python:
     name: Python

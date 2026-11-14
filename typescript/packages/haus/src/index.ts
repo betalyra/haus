@@ -8,6 +8,7 @@ export { parseStream, StreamReader, type ChunkSource, type StreamOptions } from 
 export * from "./value.js"
 export { format, quote, stringify, type FormatOptions } from "./format.js"
 export { canonical, compare, compareCodePoints, equals, hash } from "./canonical.js"
+export { floatText, toFloat32, toFloat64 } from "./float.js"
 export { infer, inferSchema, printShape, recursiveNames, RecordShape, resolve, Shape, VariantShape, type Inference, type PrintOptions } from "./infer.js"
 
 /** Parse a complete text into its sequence of top-level values. */

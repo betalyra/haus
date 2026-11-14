@@ -17,7 +17,7 @@
  *   EUR                      → Literal "EUR"  or  TaggedStruct("EUR", {})
  *   True / False             → Boolean
  *   None / Some(x)           → Option(X), or an optional key
- *   19.90                    → BigDecimal (exact), Number, BigInt, or a string (e.g. BigDecimalFromString)
+ *   19.90                    → BigDecimal (exact), Number (Float64), Haus.Float32, BigInt, or a string (e.g. BigDecimalFromString)
  *   Instant("…")             → DateTimeUtc, or any schema encoded as a string
  *   ZonedDateTime("…")       → DateTimeZoned
  *   unknown tag in OpenUnion → { _tag: "@unknown", tag, value }
@@ -27,7 +27,7 @@ import { checkStdTime, type StdTimeType } from "@haus-fmt/haus"
 import { Effect, Schema, SchemaAST, Stream } from "effect"
 import { entries, isCodec, setId, type AnyCodec, type Checked, type Decoded, type Named } from "./codec.js"
 import { withCodecs } from "./schema-file.js"
-import { checkSchema, compile, compileEncoder, ConversionError, decodeBudget, DEFAULT_ENCODE_STEPS, guarded, POSITIONAL, PRELUDE_TAG, UNKNOWN_TAG } from "./convert.js"
+import { checkSchema, compile, compileEncoder, ConversionError, decodeBudget, DEFAULT_ENCODE_STEPS, guarded, NUMBER, POSITIONAL, PRELUDE_TAG, UNKNOWN_TAG } from "./convert.js"
 
 // ── errors ───────────────────────────────────────────────────
 
@@ -114,6 +114,16 @@ export const OpenUnion = <const Members extends ReadonlyArray<Schema.Top>>(membe
 export const Positional = <S extends Schema.Top>(schema: S): S["Rebuild"] =>
   schema.annotate({ [POSITIONAL]: true } as never)
 
+// ── numbers ──────────────────────────────────────────────────
+
+/**
+ * haus `Float32` as a JS number: a number decodes to the nearest binary32
+ * value, rounded directly from its exact decimal (spec §15), and is written
+ * in the fewest digits that read back as that binary32 value. `Schema.Number`
+ * is a `Float64`.
+ */
+export const Float32 = Schema.Number.annotate({ [NUMBER]: "Float32" } as never)
+
 // ── std/time ─────────────────────────────────────────────────
 
 const stdTime = <S extends Schema.Top>(name: StdTimeType, schema: S) => setId(schema, `std/time#${name}`)
@@ -137,10 +147,23 @@ export const Duration = timeString("Duration")
 export const YearMonth = timeString("YearMonth")
 /** `TimeZone("Europe/Lisbon")` as the IANA name (not looked up). */
 export const TimeZone = timeString("TimeZone")
-/** `Instant("2026-11-07T10:00:00Z")` as an Effect `DateTime.Utc`. */
+/**
+ * `Instant("2026-11-07T10:00:00Z")` as an Effect `DateTime.Utc`. Lossy (spec
+ * §13.4): it keeps the instant, not the offset or the fraction as written, so
+ * `…10:00:00.250+01:00` is written back as `…09:00:00.250Z`, a different haus
+ * value with another hash. `Haus.InstantText` keeps the text.
+ */
 export const Instant = stdTime("Instant", Schema.DateTimeUtc.annotate({})) as Named<Schema.DateTimeUtc, "std/time#Instant">
-/** `ZonedDateTime("2026-11-07T10:00:00+01:00[Europe/Lisbon]")` as an Effect `DateTime.Zoned`. */
+/**
+ * `ZonedDateTime("2026-11-07T10:00:00+01:00[Europe/Lisbon]")` as an Effect
+ * `DateTime.Zoned`. Lossy like `Haus.Instant`; `Haus.ZonedDateTimeText` keeps the text.
+ */
 export const ZonedDateTime = stdTime("ZonedDateTime", Schema.DateTimeZoned.annotate({})) as Named<Schema.DateTimeZoned, "std/time#ZonedDateTime">
+
+/** `Instant("…")` as its validated string, exactly as written (offset and fraction included). */
+export const InstantText = timeString("Instant")
+/** `ZonedDateTime("…")` as its validated string, exactly as written. */
+export const ZonedDateTimeText = timeString("ZonedDateTime")
 
 // ── decoding ─────────────────────────────────────────────────
 
@@ -152,6 +175,11 @@ const target = <S extends Schema.Top>(schema: S, codecs: ReadonlyArray<AnyCodec>
   entries(codecs) // two codecs for one type fail here, before anything is built
   return withCodecs(schema, codecs) as S
 }
+
+/** A conversion error, with its path written as Effect writes it (`at ["items"][2]`). */
+const conversionError = ({ message, path }: ConversionError): HausSchemaError =>
+  path.length === 0 ? new HausSchemaError({ message })
+  : new HausSchemaError({ message: `${message}\n  at ${path.map((k) => `[${JSON.stringify(k)}]`).join("")}`, path: [...path] })
 
 /**
  * Decode an already-parsed haus value. With codecs, their types replace the
@@ -168,7 +196,7 @@ export const decodeValue = <S extends Schema.Top, const C extends ReadonlyArray<
       // Conversion work is bounded by the size of the input (see convert.ts).
       try: () => guarded(decodeBudget(value), () => convert(value)),
       catch: (e) => {
-        if (e instanceof ConversionError) return new HausSchemaError({ message: e.message })
+        if (e instanceof ConversionError) return conversionError(e)
         throw e
       },
     }).pipe(

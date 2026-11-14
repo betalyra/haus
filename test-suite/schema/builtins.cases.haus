@@ -1,0 +1,72 @@
+// See numbers.cases.haus for the format.
+
+// ── String, Bytes ──
+Ok { type: "S", input: "" },
+Ok { type: "S", input: "café" },
+Ok { type: "S", input: "cafe\u{301}" },
+Ok { type: "S", input: "a\u{0}b" },
+Err { type: "S", input: x"61" },
+Err { type: "S", input: 1 },
+Err { type: "S", input: Text("a") },
+Ok { type: "B", input: x"0b34ff" },
+Ok { type: "B", input: x"" },
+Err { type: "B", input: "0b34ff" },
+Err { type: "B", input: [11, 52, 255] },
+
+// ── Bool ──
+Ok { type: "Flag", input: True },
+Ok { type: "Flag", input: False },
+Err { type: "Flag", input: Yes },
+Err { type: "Flag", input: True(1) },
+Err { type: "Flag", input: "True" },
+Err { type: "Flag", input: 1 },
+
+// ── Maybe: always written; a bare value is not Some ──
+Ok { type: "MaybeInt", input: None },
+Ok { type: "MaybeInt", input: Some(1) },
+Ok { type: "MaybeInt", input: Some(0xFF), output: Some(255) },
+Err { type: "MaybeInt", input: 1 },
+Err { type: "MaybeInt", input: Some },
+Err { type: "MaybeInt", input: Some(1, 2) },
+Err { type: "MaybeInt", input: None(1) },
+Err { type: "MaybeInt", input: Some("1") },
+Err { type: "MaybeInt", input: Just(1) },
+
+// ── Result ──
+Ok { type: "Outcome", input: Ok(1) },
+Ok { type: "Outcome", input: Err("failed") },
+Err { type: "Outcome", input: Ok("1") },
+Err { type: "Outcome", input: Err(1) },
+Err { type: "Outcome", input: Ok },
+
+// ── Array ──
+Ok { type: "Ints", input: [] },
+Ok { type: "Ints", input: [1, 2, 3] },
+Ok { type: "Ints", input: [0x10], output: [16] },
+Err { type: "Ints", input: [1, "2"] },
+Err { type: "Ints", input: { a: 1 } },
+Err { type: "Ints", input: 1 },
+
+// ── Map: any keys, kept exactly ──
+Ok { type: "Counts", input: {} },
+Ok { type: "Counts", input: { en: 1, "pt-BR": 2, "": 3 } },
+Ok { type: "Counts", input: { "café": 1, "cafe\u{301}": 2 } },
+Ok { type: "Counts", input: { "__proto__": 1, constructor: 2 } },
+Err { type: "Counts", input: { a: "1" } },
+Err { type: "Counts", input: [1] },
+
+// ── std/time: the type's own tag around a string the profile accepts ──
+Ok { type: "Day", input: Date("2026-11-13") },
+Ok { type: "Day", input: Date("2024-02-29") },
+Err { type: "Day", input: Date("2026-02-30") },
+Err { type: "Day", input: Date("2026-11-13T10:00:00Z") },
+Err { type: "Day", input: Instant("2026-11-13T10:00:00Z") },
+Err { type: "Day", input: "2026-11-13" },
+Err { type: "Day", input: Date("2026-11-13", "x") },
+Ok { type: "At", input: Instant("2026-11-13T10:00:00Z") },
+Ok { type: "At", input: Instant("2026-11-13T10:00:00.250+01:00") },
+Err { type: "At", input: Instant("2026-11-13T10:00:00") },
+Ok { type: "Span", input: Duration("PT0S") },
+Ok { type: "Span", input: Duration("-P1DT12H") },
+Err { type: "Span", input: Duration("P01D") },
+Err { type: "Span", input: Duration("P0D") },

@@ -1,0 +1,13 @@
+// See numbers.cases.haus for the format.
+
+Ok { type: "IntPair", input: { first: 1, second: 2 } },
+Err { type: "IntPair", input: { first: 1, second: "2" } },
+Ok { type: "Ints", input: Nil },
+Ok { type: "Ints", input: Cons(1, Cons(2, Nil)) },
+Err { type: "Ints", input: Cons(1, Cons("2", Nil)) },
+Err { type: "Ints", input: Cons(1) },
+Ok { type: "Ints", input: Cons(1, Snoc), output: Cons(1, Snoc) },
+Ok { type: "Tree", input: { name: "a", children: [{ name: "b", children: [] }] } },
+Err { type: "Tree", input: { name: "a", children: [{ name: "b" }] } },
+Ok { type: "Expr", input: Add(Num(1), Neg { of: Num(2) }) },
+Err { type: "Expr", input: Add(Num(1), Sub(Num(2))) },

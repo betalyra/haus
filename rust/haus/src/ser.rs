@@ -118,8 +118,7 @@ macro_rules! floats {
                 } else if self.is_infinite() {
                     variant(if *self > 0.0 { "Infinity" } else { "NegInfinity" }, vec![])
                 } else {
-                    // Debug is the shortest text that reads back as the same float.
-                    Value::Number(format!("{self:?}"))
+                    Value::Number(crate::float::text(*self))
                 }
             }
         }

@@ -21,6 +21,7 @@ import { format, stringify as stringifyValue, type FormatOptions } from "./forma
 import { Parser } from "./parser.js"
 import { parseStream, type ChunkSource } from "./stream.js"
 import { checkStdTime, type StdTimeType } from "./std-time.js"
+import { floatText, toFloat32, toFloat64 } from "./float.js"
 import { arr, bytes as bytesValue, num, rec, str, variant, type HRecord, type HVariant, type Value } from "./value.js"
 import { issuesOf, type StandardSchemaV1 } from "./standard.js"
 
@@ -318,7 +319,7 @@ const int = make(
 const smallInt = (name: string, min: number, max: number) =>
   make(name, (v, p) => {
     if (v.kind !== "number" || !INTEGER.test(v.text)) return mismatch(name, v, p)
-    const n = Number(v.text) // exact within these ranges; a longer literal is out of range anyway
+    const n = Number(v.text) + 0 // exact within these ranges (a longer literal is out of range anyway); + 0 turns -0 into 0
     return n >= min && n <= max ? n : p.fail(`${short(v.text)} is out of range for ${name} (${min} to ${max})`)
   }, (n, p) => (typeof n === "number" && Number.isInteger(n) && n >= min && n <= max ? num(String(n)) : invalid(`an integer from ${min} to ${max}`, n, p)))
 
@@ -342,30 +343,56 @@ const uint64 = bigInt("UInt64", 0n, 2n ** 64n - 1n)
 /** @deprecated Use `Int`, which is a bigint of any size. */
 const bigint_ = int
 
-/** Binary floating point. Rounding is accepted. Also `NaN`, `Infinity`, `NegInfinity` (prelude). */
-const float64 = make("Float64", (v, p) => {
-  if (v.kind === "number") return Number(v.text)
+/**
+ * Binary floating point (spec §15): the nearest value, too large is an error.
+ * Also `NaN`, `Infinity`, `NegInfinity` (prelude). Written in one spelling:
+ * the fewest digits that read back as the same value.
+ */
+const float = (name: "Float64" | "Float32", convert: (text: string) => number | undefined) => make(name, (v, p) => {
+  if (v.kind === "number") return convert(v.text) ?? p.fail(`${short(v.text)} is too large for ${name}`)
   if (v.kind === "variant" && v.args.length === 0) {
     if (v.tag === "NaN") return NaN
     if (v.tag === "Infinity") return Infinity
     if (v.tag === "NegInfinity") return -Infinity
   }
-  return mismatch("Float64", v, p)
+  return mismatch(name, v, p)
 }, (n, p) => {
   if (typeof n !== "number") return invalid("a number", n, p)
   if (Number.isNaN(n)) return variant("NaN")
   if (n === Infinity) return variant("Infinity")
   if (n === -Infinity) return variant("NegInfinity")
-  return num(String(n)) // shortest round-trip form, e.g. 0.1 or 1e+21
+  // A Float32 is written as the nearest binary32 value of the number given.
+  const x = name === "Float32" ? Math.fround(n) : n
+  if (!Number.isFinite(x)) return invalid(`a number within the range of ${name}`, n, p)
+  return num(floatText(x, name))
 })
 
-/** Exact decimal, returned as its literal text (e.g. "19.90"). Pass it to a decimal library. */
-const DECIMAL = /^-?\d+(\.\d+)?$/
+const float64 = float("Float64", toFloat64)
+/** A binary32 value, as a JS number (an exact `Math.fround` value). */
+const float32 = float("Float32", toFloat32)
+
+/**
+ * Exact decimal, returned as its normalized literal text (e.g. "19.90",
+ * "1.5e3"): any number, scale and exponent kept. Pass it to a decimal library.
+ */
 const decimal = make(
   "Decimal",
-  (v, p) => (v.kind === "number" && DECIMAL.test(v.text) ? v.text : mismatch("Decimal", v, p)),
-  (d, p) => (typeof d === "string" && DECIMAL.test(d) ? num(d) : invalid('a decimal string like "19.90"', d, p)),
+  (v, p) => (v.kind === "number" ? v.text : mismatch("Decimal", v, p)),
+  (d, p) => {
+    const literal = typeof d === "string" ? numberLiteral(d) : undefined
+    return literal ?? invalid('a decimal string like "19.90"', d, p)
+  },
 )
+
+/** A haus number literal as a Value with its normalized text, or undefined. */
+const numberLiteral = (text: string): Value | undefined => {
+  try {
+    const values = new Parser(text).parseSequence()
+    return values.length === 1 && values[0]!.kind === "number" ? values[0] : undefined
+  } catch {
+    return undefined
+  }
+}
 
 const bool = make(
   "Bool",
@@ -401,8 +428,14 @@ const taggedString = <A>(tag: string, format: RegExp, convert: (s: string) => A 
 /** `Date("2026-11-07")`, returned as the validated ISO string. */
 const date = taggedString("Date", /^\d{4}-\d{2}-\d{2}$/, (s) => (checkStdTime("Date", s) === undefined ? s : undefined), (s) => s)
 
-/** `Instant("2026-11-07T10:00:00Z")`, returned as a JS Date. */
-const instant = taggedString(
+/**
+ * `Instant("2026-11-07T10:00:00Z")` as a JS Date, for applications that want
+ * one. Lossy (spec §13.4): a Date keeps the instant in milliseconds, not the
+ * offset or the fraction as written, so `Instant("…10:00:00.250+01:00")` is
+ * written back as `Instant("…09:00:00.250Z")`, a different haus value with
+ * another hash. `h.Instant` keeps the text.
+ */
+export const InstantAsDate: Schema<globalThis.Date> = taggedString(
   "Instant",
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/,
   (s) => (checkStdTime("Instant", s) === undefined ? new globalThis.Date(s) : undefined),
@@ -410,11 +443,15 @@ const instant = taggedString(
 )
 
 /**
- * Any std/time type as its validated ISO text: `Time("09:30:00")` → "09:30:00",
- * `Duration("PT48H")` → "PT48H". (`h.Instant` gives a JS Date instead.)
+ * Any std/time type as its validated text, exactly as written:
+ * `Time("09:30:00")` → "09:30:00", `Duration("PT48H")` → "PT48H". Encoding
+ * writes it back unchanged, offsets and fractions included.
  */
 export const StdTime = (type: StdTimeType): Schema<string> =>
   taggedString(type, /^/, (s) => (checkStdTime(type, s) === undefined ? s : undefined), (s) => s)
+
+/** `Instant("2026-11-07T10:00:00.250+01:00")` → "2026-11-07T10:00:00.250+01:00", as written. For a JS Date, `h.InstantAsDate`. */
+const instant = StdTime("Instant")
 
 export {
   bigint_ as BigInt,
@@ -422,6 +459,7 @@ export {
   bytes_ as Bytes,
   date as Date,
   decimal as Decimal,
+  float32 as Float32,
   float64 as Float64,
   instant as Instant,
   int as Int,
@@ -724,6 +762,27 @@ export const Enum = <const T extends readonly string[]>(...tags: T): Schema<T[nu
     (t, at) => (typeof t === "string" && known.has(t) ? variant(t) : invalid(`one of ${tagList(tags)}`, t, at)),
   )
 }
+
+/**
+ * `< >`, a variant with any tags (spec §15): every value is an unknown one. A
+ * tag without payload decodes to its name (`EUR` → "EUR"); any other value
+ * to an `Unknown` that keeps it exactly.
+ */
+export const AnyTag: Schema<string | Unknown> = make(
+  "< >",
+  (v, at) => {
+    if (v.kind !== "variant") return mismatch("a variant", v, at)
+    return v.args.length === 0 ? v.tag : { _tag: "@unknown", tag: v.tag, value: v }
+  },
+  (a, at) => {
+    if (typeof a === "string") return TAG.test(a) ? variant(a) : invalid("a tag name", a, at)
+    const obj = a as { _tag?: unknown; value?: unknown }
+    if (typeof obj === "object" && obj !== null && obj._tag === "@unknown") return checkedValue(obj.value, at)
+    return invalid("a tag name or an Unknown", a, at)
+  },
+)
+
+const TAG = /^[A-Z][A-Za-z0-9_]*$/
 
 // ── recursion ────────────────────────────────────────────────
 

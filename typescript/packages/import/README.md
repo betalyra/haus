@@ -29,11 +29,11 @@ Plain, without a schema: strings, `bigint` for whole numbers, `string` for decim
 tags without payload, `{ _tag, … }` for other variants, `key?:` for fields only some
 records have.
 
-Plain, with a schema: the same, plus `Int8` … `UInt32` and floats → `number`, `Instant` → `Date`,
+Plain, with a schema: the same, plus `Int8` … `UInt32` and floats → `number`, std/time values → their text as written,
 `Map` → `ReadonlyMap`, and open variants add `Unknown`
 (see [`@haus-fmt/haus`](../haus)).
 With Effect: `Int` → `bigint`, `Decimal` → `BigDecimal`, `Maybe` → `Option`,
-`Instant` → `DateTime.Utc` (see [`@haus-fmt/effect`](../effect)).
+`Instant` → `DateTime.Utc`, which don't keep every spelling (see [`@haus-fmt/effect`](../effect)).
 
 Use the same target everywhere.
 

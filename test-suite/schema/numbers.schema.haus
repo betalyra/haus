@@ -1,0 +1,10 @@
+// Numbers (spec §15): integers by spelling, floats rounded and written in one
+// spelling, decimals kept exactly.
+type I = Int
+type I8 = Int8
+type U8 = UInt8
+type I64 = Int64
+type U64 = UInt64
+type F64 = Float64
+type F32 = Float32
+type Dec = Decimal

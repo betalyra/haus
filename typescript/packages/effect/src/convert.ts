@@ -8,7 +8,10 @@
  * mismatch it falls back to a schema-less conversion and lets Effect report
  * the error with its path.
  */
-import { arr as vArr, bytes as vBytes, checkStdTime, num as vNum, rec as vRec, str as vStr, variant as vVariant, type HVariant, type StdTimeType, type Value } from "@haus-fmt/haus"
+import {
+  arr as vArr, bytes as vBytes, checkStdTime, equals, floatText, num as vNum, rec as vRec, str as vStr, toFloat32, toFloat64, variant as vVariant,
+  type HVariant, type StdTimeType, type Value,
+} from "@haus-fmt/haus"
 import { Array as Arr, BigDecimal, DateTime, Match, Option, Predicate, SchemaAST } from "effect"
 
 export type Converter = (value: Value) => unknown
@@ -33,10 +36,61 @@ export const VALUES = "hausValues"
 /** Annotation on a struct: a closed record `{| … |}`, other fields are an error. */
 export const CLOSED = "hausClosed"
 
-/** Thrown during conversion; `decodeValue` turns it into a HausSchemaError. */
+/** Annotation on a string schema: only a haus string, never a number or `Tag("…")` (a schema file's `String`). */
+export const STRICT = "hausStrict"
+
+/**
+ * Annotation on a number schema: which haus number type it is. "Int" takes
+ * whole numbers only (Int8 … UInt32), "Float32" rounds to binary32; without
+ * it, a number schema is a Float64.
+ */
+export const NUMBER = "hausNumber"
+
+export type NumberType = "Int" | "Float32" | "Float64"
+
+/** Thrown during conversion; `decodeValue` turns it into a HausSchemaError. `path` is where, as in Effect's issues. */
 export class ConversionError {
-  constructor(readonly message: string) {}
+  constructor(readonly message: string, readonly path: ReadonlyArray<string | number> = []) {}
 }
+
+/** Convert the value at `key`: an error inside names its place. */
+const at = <A>(key: string | number, f: () => A): A => {
+  try {
+    return f()
+  } catch (e) {
+    if (e instanceof ConversionError) throw new ConversionError(e.message, [key, ...e.path])
+    throw e
+  }
+}
+
+/** A short description of a value, for errors. */
+const describe = (v: Value): string => {
+  switch (v.kind) {
+    case "string":
+      return v.value.length > 40 ? `a string ${JSON.stringify(v.value.slice(0, 40))}…` : `a string ${JSON.stringify(v.value)}`
+    case "number":
+      return `the number ${v.text.length > 40 ? v.text.slice(0, 40) + "…" : v.text}`
+    case "bytes":
+      return "a byte string"
+    case "array":
+      return "an array"
+    case "record":
+      return "a record"
+    case "variant":
+      return v.args.length === 0 ? `the tag ${v.tag}` : `${v.tag} with ${v.args.length === 1 && v.args[0]!.kind === "record" ? "a record" : `${v.args.length} argument(s)`}`
+  }
+}
+
+/**
+ * A value the schema doesn't take (spec §15: no conversion between kinds).
+ * An error here, rather than a schema-less conversion that a lenient Effect
+ * schema might accept (a struct takes any object, a string literal any equal string).
+ */
+const mismatch = (expected: string, v: Value): never => {
+  throw new ConversionError(`expected ${expected}, got ${describe(v)}`)
+}
+
+const INTEGER = /^-?\d+$/
 
 // ── value helpers ────────────────────────────────────────────
 
@@ -198,32 +252,64 @@ export const compile = (ast: AST): Converter => {
 }
 
 const compileNode: (ast: AST) => Converter = Match.type<AST>().pipe(
-  Match.tag("String", "TemplateLiteral", (ast): Converter => (v) =>
-    v.kind === "string" ? v.value
-    : ast.annotations?.[BARE_TAG] === true && v.kind === "variant" && v.args.length === 0 ? v.tag
-    : v.kind === "number" ? v.text // exact, for BigDecimalFromString, NumberFromString, …
-    : Option.getOrElse(scalarString(v), () => generic(v))),
-  Match.tag("Number", (): Converter => (v) =>
-    v.kind === "number" ? Number(v.text)
-    : Option.isSome(variant(v, "NaN", 0)) ? NaN
-    : Option.isSome(variant(v, "Infinity", 0)) ? Infinity
-    : Option.isSome(variant(v, "NegInfinity", 0)) ? -Infinity
-    : generic(v)),
-  Match.tag("BigInt", (): Converter => (v) => (v.kind === "number" && /^-?\d+$/.test(v.text) ? BigInt(v.text) : generic(v))),
+  Match.tag("String", "TemplateLiteral", compileString),
+  Match.tag("Number", compileNumber),
+  Match.tag("BigInt", (): Converter => (v) => (v.kind === "number" && INTEGER.test(v.text) ? BigInt(v.text) : generic(v))),
   Match.tag("Boolean", (): Converter => (v) =>
     Option.isSome(variant(v, "True", 0)) ? true : Option.isSome(variant(v, "False", 0)) ? false : generic(v)),
-  Match.tag("Literal", "Enum", (): Converter => (v) =>
+  // A literal takes exactly the value it is written as: `EUR` for "EUR", `"a b"` for "a b".
+  Match.tag("Literal", (ast): Converter => {
+    const written = literalValue(ast.literal)
+    return (v) => (equals(v, written) ? ast.literal : mismatch(describe(written), v))
+  }),
+  Match.tag("Enum", (): Converter => (v) =>
     Option.match(variant(v, undefined, 0), { onSome: (x) => x.tag, onNone: () => generic(v) })),
   Match.tag("Arrays", (ast): Converter => {
     const elements = ast.elements.map(compile)
     const rest = Arr.head(ast.rest).pipe(Option.map(compile), Option.getOrElse(() => generic))
-    return (v) => (v.kind === "array" ? v.items.map((item, i) => (elements[i] ?? rest)(item)) : generic(v))
+    return (v) => (v.kind === "array" ? v.items.map((item, i) => at(i, () => (elements[i] ?? rest)(item))) : generic(v))
   }),
   Match.tag("Objects", compileObject),
   Match.tag("Union", compileUnion),
   Match.tag("Declaration", compileDeclaration),
   Match.orElse((): Converter => generic),
 )
+
+function compileString(ast: SchemaAST.String | SchemaAST.TemplateLiteral): Converter {
+  const tag = ast.annotations?.[PRELUDE_TAG]
+  // `Haus.Date` & co.: the type's own tag around a string, `Date("…")`.
+  if (typeof tag === "string") return (v) => Option.getOrElse(scalarString(v, tag), () => mismatch(`${tag}("…")`, v))
+  // `< >` (only ever a member of a union, which hands it bare tags).
+  if (ast.annotations?.[BARE_TAG] === true) return (v) => (v.kind === "variant" && v.args.length === 0 ? v.tag : mismatch("a tag", v))
+  if (ast.annotations?.[STRICT] === true) return (v) => (v.kind === "string" ? v.value : mismatch("a string", v))
+  return (v) =>
+    v.kind === "string" ? v.value
+    : v.kind === "number" ? v.text // exact, for BigDecimalFromString, NumberFromString, …
+    : Option.getOrElse(scalarString(v), () => generic(v))
+}
+
+/** The haus number type of a number schema (Float64 unless annotated). */
+const numberType = (ast: AST): NumberType => {
+  const t = ast.annotations?.[NUMBER]
+  return t === "Int" || t === "Float32" ? t : "Float64"
+}
+
+/** Spec §15: Int* take whole numbers only (`-0` is 0); floats round to the nearest value, and a number too large is an error. */
+function compileNumber(ast: SchemaAST.Number): Converter {
+  const type = numberType(ast)
+  if (type === "Int") return (v) => (v.kind === "number" && INTEGER.test(v.text) ? Number(v.text) + 0 : mismatch("a whole number", v))
+  const toFloat = type === "Float32" ? toFloat32 : toFloat64
+  return (v) =>
+    v.kind === "number" ? (toFloat(v.text) ?? fail(`${describe(v)} is too large for ${type}`))
+    : Option.isSome(variant(v, "NaN", 0)) ? NaN
+    : Option.isSome(variant(v, "Infinity", 0)) ? Infinity
+    : Option.isSome(variant(v, "NegInfinity", 0)) ? -Infinity
+    : generic(v)
+}
+
+const fail = (message: string): never => {
+  throw new ConversionError(message)
+}
 
 function compileObject(ast: SchemaAST.Objects): Converter {
   const tag = tagOf(ast)
@@ -238,40 +324,37 @@ function compileObject(ast: SchemaAST.Objects): Converter {
   // `Map v`: a record with an index signature converts every field with its value schema.
   const rest = Arr.head(ast.indexSignatures).pipe(Option.map((i) => compile(i.type)), Option.getOrElse(() => generic))
 
-  /** Fields of the value: a record, or a variant payload for tagged structs. */
-  const fieldsOf = (v: Value): Option.Option<ReadonlyArray<readonly [string, Value]>> => {
-    if (v.kind === "record") return Option.some([...v.fields])
-    if (Option.isNone(tag) || v.kind !== "variant") return Option.none()
-    if (values) return Option.some([["values", vArr(v.args)]]) // Point(1, 2) → { values: [1, 2] }
+  /**
+   * Fields of the value: a record for a struct; for a tagged struct, the
+   * payload its variant takes (spec §15): none without fields, else one record.
+   */
+  const fieldsOf = (v: Value): ReadonlyArray<readonly [string, Value]> => {
+    if (Option.isNone(tag)) return v.kind === "record" ? [...v.fields] : mismatch("a record", v)
+    const name = tag.value
+    if (v.kind !== "variant" || v.tag !== name) return mismatch(`the variant ${name}`, v)
+    if (values) return [["values", vArr(v.args)]] // Point(1, 2) → { values: [1, 2] }
     const [first] = v.args
-    if (v.args.length === 0 || (v.args.length === 1 && first?.kind === "record")) {
-      return Option.some(first?.kind === "record" ? [...first.fields] : []) // Heartbeat, Circle { radius: 5 }
-    }
+    if (positional.length === 0) return v.args.length === 0 ? [] : mismatch(`${name} without a payload`, v) // Heartbeat
+    if (v.args.length === 1 && first?.kind === "record") return [...first.fields] // Circle { radius: 5 }
+    const record = `${name} { ${positional.map((n) => `${n}: …`).join(", ")} }`
+    if (v.args.length === 0) return mismatch(record, v)
     // Point(1, 2) fills fields in declaration order, but only when the schema
     // opts in: otherwise reordering fields would silently swap values.
-    if (!allowPositional) {
-      throw new ConversionError(
-        `'${v.tag}' has positional arguments; write ${v.tag} { ${positional.map((n) => `${n}: …`).join(", ")} } or wrap its schema in Haus.Positional`,
-      )
-    }
-    return Option.some(v.args.map((arg, i) => [positional[i] ?? `#${i}`, arg] as const))
+    if (!allowPositional) throw new ConversionError(`'${name}' has positional arguments; write ${record} or wrap its schema in Haus.Positional`)
+    return v.args.map((arg, i) => [positional[i] ?? `#${i}`, arg] as const)
   }
 
-  return (v) =>
-    Option.match(fieldsOf(v), {
-      onNone: () => generic(v),
-      onSome: (fields) => {
-        const out: Record<string, unknown> = Option.match(tag, { onNone: () => ({}), onSome: (t) => ({ _tag: t }) })
-        for (const [key, field] of fields) {
-          if (key === "_tag" && Option.isSome(tag)) throw new ConversionError(`'${tag.value}' has a field named _tag, which would replace its tag`)
-          const prop = props.get(key)
-          if (prop !== undefined) setOwn(out, key, prop.convert(field))
-          else if (closed) throw new ConversionError(`unexpected field ${JSON.stringify(key)} in a closed record`)
-          else setOwn(out, key, rest(field)) // excess property: ignored by the decoder (records are open), or a Map entry
-        }
-        return out
-      },
-    })
+  return (v) => {
+    const out: Record<string, unknown> = Option.match(tag, { onNone: () => ({}), onSome: (t) => ({ _tag: t }) })
+    for (const [key, field] of fieldsOf(v)) {
+      if (key === "_tag" && Option.isSome(tag)) throw new ConversionError(`'${tag.value}' has a field named _tag, which would replace its tag`)
+      const prop = props.get(key)
+      if (prop !== undefined) setOwn(out, key, at(key, () => prop.convert(field)))
+      else if (closed) throw new ConversionError(`unexpected field ${JSON.stringify(key)} in a closed record`, [key])
+      else setOwn(out, key, at(key, () => rest(field))) // excess property: ignored by the decoder (records are open), or a Map entry
+    }
+    return out
+  }
 }
 
 /** Members of nested unions, flattened: Union([Literals([…]), Unknown]). */
@@ -283,13 +366,18 @@ const members = (ast: SchemaAST.Union): ReadonlyArray<AST> =>
 
 function compileUnion(ast: SchemaAST.Union): Converter {
   const types = members(ast)
-  // Variants are routed by tag: tagged-struct members and string literals.
+  // Variants are routed by tag: tagged-struct members and literals written as tags (`EUR`, `True`).
   const byTag = new Map<string, Converter>()
+  // Literals written as other values (`"a b"`, `1`), with that value.
+  const literals: Array<readonly [Value, unknown]> = []
   for (const m of types) {
     Option.match(tagOf(m), {
       onSome: (t) => byTag.set(t, compile(m)),
       onNone: () => {
-        if (m._tag === "Literal" && Predicate.isString(m.literal)) byTag.set(m.literal, () => m.literal)
+        if (m._tag !== "Literal") return
+        const written = literalValue(m.literal)
+        if (written.kind === "variant") byTag.set(written.tag, compile(m))
+        else literals.push([written, m.literal])
       },
     })
   }
@@ -308,15 +396,25 @@ function compileUnion(ast: SchemaAST.Union): Converter {
     record: forKind(["Objects"]),
     variant: Arr.head(others).pipe(Option.map(compile)),
   }
+  // A value no member takes: Effect's Any / Unknown take anything, otherwise it is an error.
+  const tags = [...byTag.keys()].filter((t) => t !== UNKNOWN_TAG)
+  const expected = [
+    ...(open || anyTag ? ["a variant"] : tags.length > 0 ? [`one of the tags ${tags.join(", ")}`] : []),
+    ...literals.map(([written]) => describe(written)),
+    ...others.map((m) => `a value of ${resolve(m)._tag}`),
+  ].join(" or ")
+  const otherwise: Converter = others.some((m) => m._tag === "Any" || m._tag === "Unknown") ? generic : (v) => mismatch(expected, v)
   return (v) => {
     if (v.kind === "variant") {
       const exact = byTag.get(v.tag)
       if (exact) return exact(v)
       if (anyTag && v.args.length === 0) return v.tag
       if (Option.isSome(byKind.variant)) return byKind.variant.value(v)
+      // Closed: no member takes this tag, so Effect rejects its schema-less form (and says which tags it takes).
       return open ? { _tag: UNKNOWN_TAG, tag: v.tag, value: v } : generic(v)
     }
-    return Option.match(byKind[v.kind], { onSome: (convert) => convert(v), onNone: () => generic(v) })
+    for (const [written, literal] of literals) if (equals(v, written)) return literal
+    return Option.match(byKind[v.kind], { onSome: (convert) => convert(v), onNone: () => otherwise(v) })
   }
 }
 
@@ -364,11 +462,20 @@ export type Encoder = (js: unknown) => Value
 
 const TAG_NAME = /^[A-Z][A-Za-z0-9_]*$/
 
-const numberValue = (n: number): Value =>
-  Number.isNaN(n) ? vVariant("NaN")
-  : n === Infinity ? vVariant("Infinity")
-  : n === -Infinity ? vVariant("NegInfinity")
-  : vNum(String(n))
+/** A float in its one spelling (spec §15); a Float32 as the nearest binary32 value. */
+const floatValue = (n: number, type: "Float64" | "Float32" = "Float64"): Value => {
+  if (Number.isNaN(n)) return vVariant("NaN")
+  if (n === Infinity) return vVariant("Infinity")
+  if (n === -Infinity) return vVariant("NegInfinity")
+  const x = type === "Float32" ? Math.fround(n) : n
+  if (!Number.isFinite(x)) throw new ConversionError(`${n} is too large for ${type}`)
+  return vNum(floatText(x, type))
+}
+
+const numberValue = (n: number): Value => floatValue(n)
+
+/** A number schema's writer: integers as decimal integers (`-0` as 0), floats in their one spelling. */
+const numberWriter = (type: NumberType) => (n: number): Value => (type === "Int" ? vNum(String(n + 0)) : floatValue(n, type))
 
 /** A literal: tag-like strings become tags (`"EUR"` → `EUR`), others stay strings. */
 const literalValue = (js: unknown): Value =>
@@ -377,11 +484,21 @@ const literalValue = (js: unknown): Value =>
   : typeof js === "boolean" ? vVariant(js ? "True" : "False")
   : encodeGeneric(js)
 
-/** Exact text of a BigDecimal, keeping its scale (7.90 stays "7.90"). */
+/**
+ * Exact text of a BigDecimal, keeping its scale (7.90 stays "7.90"). A
+ * negative scale is written with an exponent and one digit before the point,
+ * as `1.5e3` decodes (value 15, scale -2): not as `1500`, a different haus value (§2).
+ */
 const decimalText = ({ value, scale }: BigDecimal.BigDecimal): string => {
-  if (scale <= 0) return (value * 10n ** BigInt(-scale)).toString()
-  const digits = (value < 0n ? -value : value).toString().padStart(scale + 1, "0")
-  return `${value < 0n ? "-" : ""}${digits.slice(0, -scale)}.${digits.slice(-scale)}`
+  const sign = value < 0n ? "-" : ""
+  const digits = (value < 0n ? -value : value).toString()
+  if (scale === 0) return sign + digits
+  if (scale < 0) {
+    const exponent = digits.length - 1 - scale
+    return `${sign}${digits[0]}${digits.length > 1 ? `.${digits.slice(1)}` : ""}e${exponent}`
+  }
+  const padded = digits.padStart(scale + 1, "0")
+  return `${sign}${padded.slice(0, -scale)}.${padded.slice(-scale)}`
 }
 
 /** Schema-less conversion of plain JS data. */
@@ -451,7 +568,10 @@ const encodeNode: (ast: AST) => Encoder = Match.type<AST>().pipe(
       : typeof tag === "string" ? vVariant(tag, [vStr(js)])
       : vStr(js)
   }),
-  Match.tag("Number", (): Encoder => (js) => (typeof js === "number" ? numberValue(js) : encodeGeneric(js))),
+  Match.tag("Number", (ast): Encoder => {
+    const write = numberWriter(numberType(ast))
+    return (js) => (typeof js === "number" ? write(js) : encodeGeneric(js))
+  }),
   Match.tag("BigInt", (): Encoder => (js) => (typeof js === "bigint" ? vNum(js.toString()) : encodeGeneric(js))),
   Match.tag("Boolean", (): Encoder => (js) => (typeof js === "boolean" ? vVariant(js ? "True" : "False") : encodeGeneric(js))),
   Match.tag("Literal", "Enum", (): Encoder => literalValue),
@@ -491,7 +611,8 @@ function encodeObject(ast: SchemaAST.Objects): Encoder {
       }
     }
     if (tag === undefined) return vRec(new Map(present.map((p) => [p.name, p.encode(obj[p.name])])))
-    if (present.length === 0) return vVariant(tag)
+    // A tag without fields takes no payload; one with fields always a record, `Tag {}` included (spec §15).
+    if (props.length === 0 && Option.isNone(rest)) return vVariant(tag)
     if (positional) return vVariant(tag, present.map((p) => p.encode(obj[p.name])))
     return vVariant(tag, [vRec(new Map(present.map((p) => [p.name, p.encode(obj[p.name])])))])
   }

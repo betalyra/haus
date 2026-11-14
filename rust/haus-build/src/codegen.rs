@@ -567,12 +567,11 @@ impl<'a> Gen<'a> {
             let n = &f.name;
             f.en(quote!(self.#n), false)
         });
-        let check = closed_check(closed, fields);
+        let bind = bind_record(quote!(::haus::de::Record::new(v, #label)), closed, fields);
         Ok(item.implement(
             quote!(pub struct #name #g { #(#decls),* }),
             quote! {
-                let r = ::haus::de::Record::new(v, #label)?;
-                #check
+                #bind
                 ::std::result::Result::Ok(Self { #(#decoded),* })
             },
             quote!(::haus::ser::record([#(#entries),*])),
@@ -612,12 +611,11 @@ impl<'a> Gen<'a> {
                     let n = &f.name;
                     f.en(quote!(self.#n), false)
                 });
-                let check = closed_check(closed, fields);
+                let bind = bind_record(quote!(::haus::de::payload(tag, args)), closed, fields);
                 (
                     quote!(pub struct #name #g { #(#decls),* }),
                     quote! {
-                        let r = ::haus::de::payload(tag, args)?;
-                        #check
+                        #bind
                         ::std::result::Result::Ok(Self { #(#decoded),* })
                     },
                     quote!(::haus::ser::variant(#tag, ::std::vec![::haus::ser::record([#(#entries),*])])),
@@ -675,12 +673,11 @@ impl<'a> Gen<'a> {
                             let n = &f.name;
                             f.en(quote!(#n), true)
                         });
-                        let check = closed_check(closed, fields);
+                        let bind = bind_record(quote!(::haus::de::payload(tag, args)), closed, fields);
                         (
                             quote!(#v { #(#decls),* }),
                             quote!(#tag => {
-                                let r = ::haus::de::payload(tag, args)?;
-                                #check
+                                #bind
                                 ::std::result::Result::Ok(Self::#v { #(#decoded),* })
                             }),
                             quote!(Self::#v { #(#names),* } => ::haus::ser::variant(#tag, ::std::vec![::haus::ser::record([#(#entries),*])])),
@@ -751,10 +748,15 @@ fn tuple_en(items: &[Rs]) -> Vec<TokenStream> {
     items.iter().zip(vars(items.len())).map(|(r, var)| r.en.call(quote!(#var))).collect()
 }
 
-/// `r.closed(&["a", "b"])?;` for a closed record.
-fn closed_check(closed: bool, fields: &[Field]) -> TokenStream {
+/// `let r = <record>?;`, then `r.closed(&["a", "b"])?;` for a closed record.
+/// An open record without fields only has to be a record: `<record>?;`.
+fn bind_record(record: TokenStream, closed: bool, fields: &[Field]) -> TokenStream {
     let keys = fields.iter().map(|f| &f.key);
-    if closed { quote!(r.closed(&[#(#keys),*])?;) } else { quote!() }
+    match (closed, fields.is_empty()) {
+        (true, _) => quote! { let r = #record?; r.closed(&[#(#keys),*])?; },
+        (false, true) => quote! { #record?; },
+        (false, false) => quote! { let r = #record?; },
+    }
 }
 
 /// `///` lines.

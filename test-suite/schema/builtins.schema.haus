@@ -1,0 +1,13 @@
+// Strings, bytes and the prelude's containers and variants (spec §15).
+import std/time (Date, Instant, Duration)
+
+type S = String
+type B = Bytes
+type Flag = Bool
+type MaybeInt = Maybe Int
+type Outcome = Result String Int
+type Ints = Array Int
+type Counts = Map Int
+type Day = Date
+type At = Instant
+type Span = Duration
