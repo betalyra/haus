@@ -7,7 +7,7 @@
 export const sitePages = {
   index: {
     title: "A data format that feels like home.",
-    description: "Clean to write, with real types built in: variants, dates and times, exact numbers.",
+    description: "Readable like a note, strict like a type system.",
   },
   play: {
     title: "Try haus in the playground",

@@ -1,47 +1,68 @@
 ---
-import Code from "./Code.astro";
-import Wash from "./Wash.astro";
-import { heroHaus } from "@/content/samples";
-import type { Pigment } from "@/lib/pigments";
-
-const notes: { term: string; rest: string; color: Pigment }[] = [
-  { term: "Shipped", rest: "is a variant. The status names its case and carries the data that goes with it.", color: "rose" },
-  { term: "Date", rest: "is a real date, checked by every parser. No guessing what a string means.", color: "cerulean" },
-  { term: "30.30", rest: "stays 30.30. Your code gets exactly what you wrote.", color: "gold" },
-  { term: "None", rest: "means no value. Like True, it's a plain tag, so there's no null.", color: "sap" },
-];
+/**
+ * "This is haus.": a home described device by device. The code morphs as the
+ * text scrolls (the docs' Story component), and the card under it shows the
+ * type haus works out on its own.
+ */
+import Story from "./docs/story/Story.astro";
+import Step from "./docs/story/Step.astro";
+import { homeSteps } from "@/content/samples";
 ---
 
 <section class="relative mx-auto w-full max-w-6xl px-6 py-20 lg:py-32" aria-labelledby="showcase-heading">
-  <div class="max-w-[38rem]">
+  <div class="max-w-[40rem]">
     <h2 id="showcase-heading" class="text-[2.2rem] leading-[1.08] sm:text-[2.8rem]">This is haus.</h2>
     <p class="mt-5 text-[1.12rem] text-ink-2">
-      An order, written the way you'd describe it. If you can read JSON, <strong>you can read this</strong>.
+      Describe your home, device by device. haus <strong>works out the types</strong> as you go. Hover any value to see
+      what it sees.
     </p>
   </div>
 
-  <div class="mt-14 grid grid-cols-1 items-center gap-14 lg:grid-cols-12 lg:gap-16">
-    <div class="relative isolate lg:col-span-7">
-      <Wash
-        seed={8}
-        class="-top-14 -left-16 -z-10 h-[calc(100%+7rem)] w-[calc(100%+8rem)]"
-        strokes={[
-          { x: 0.1, y: 0.22, rx: 0.12, ry: 0.22, color: "sap", strength: 0.9 },
-          { x: 0.18, y: 0.1, rx: 0.13, ry: 0.11, color: "cerulean", strength: 0.75 },
-          { x: 0.22, y: 0.9, rx: 0.14, ry: 0.09, color: "gold", strength: 0.9 },
-          { x: 0.32, y: 0.93, rx: 0.07, ry: 0.06, color: "rose", strength: 0.7 },
-        ]}
-      />
-      <Code code={heroHaus} lang="haus" label="order.haus" />
-    </div>
-
-    <ul class="space-y-7 lg:col-span-5">
-      {notes.map((n, i) => (
-        <li class="relative isolate pl-11">
-          <Wash seed={40 + i} color={n.color} strength={1.4} class="top-[-0.2rem] left-[-0.4rem] -z-10 h-9 w-9" delay={i * 140} />
-          <code class="inline-code">{n.term}</code> <span class="text-ink-2">{n.rest}</span>
-        </li>
-      ))}
-    </ul>
+  <div class="showcase-story">
+    <Story types>
+      <Step label="home.haus" code={homeSteps[0]!}>
+        <h3>A light in the kitchen</h3>
+        <p><code class="inline-code">Light</code> says what the device is, and carries its own settings.</p>
+      </Step>
+      <Step label="home.haus" code={homeSteps[1]!}>
+        <h3>Add a thermostat</h3>
+        <p>Another device, other settings. haus merges them: a device is <strong>a Light or a Thermostat</strong>.</p>
+      </Step>
+      <Step label="home.haus" code={homeSteps[2]!}>
+        <h3>And the front door</h3>
+        <p>A third case. No <code class="inline-code">type</code> field, no settings that only some devices fill in.</p>
+      </Step>
+      <Step label="home.haus" code={homeSteps[3]!}>
+        <h3>Wake up at seven</h3>
+        <p>
+          <code class="inline-code">Time</code> is a real time of day. Only the kitchen has one, so it's
+          <strong>optional</strong>: <code class="inline-code">wakeUp?</code>.
+        </p>
+      </Step>
+    </Story>
   </div>
 </section>
+
+<style>
+  .showcase-story :global(.story) {
+    margin-top: 3.5rem;
+  }
+  .showcase-story :global(.story-step h3) {
+    font-size: 1.35rem;
+    letter-spacing: -0.02em;
+  }
+  .showcase-story :global(.story-step p) {
+    color: var(--ink-2);
+    max-width: 26rem;
+  }
+  @media (min-width: 72rem) {
+    /* Short steps: a scroll of about a third of a screen moves to the next one. */
+    .showcase-story :global(.story-step) {
+      min-height: 30vh;
+    }
+    .showcase-story :global(.story__steps) {
+      padding-top: 2vh;
+      padding-bottom: 12vh;
+    }
+  }
+</style>

@@ -239,7 +239,7 @@ const data = { code, types: typed, labels: steps.map((s) => s.label) };
   }
 
   /* Step titles carry their number: a tour is a sequence. */
-  .sl-markdown-content .story-step h3 {
+  .story .story-step h3 {
     display: flex;
     align-items: baseline;
     gap: 0.65rem;
@@ -259,11 +259,11 @@ const data = { code, types: typed, labels: steps.map((s) => s.label) };
     font: 600 0.78rem/1 var(--font-mono);
     transform: translateY(-0.12rem);
   }
-  .sl-markdown-content .story-step p {
+  .story .story-step p {
     margin-top: 0.6rem;
   }
   /* The one line to remember: a small note on a light wash. */
-  .sl-markdown-content .story-step blockquote {
+  .story .story-step blockquote {
     margin: 1rem 0 0;
     padding: 0.55rem 0.85rem;
     border: 0;
@@ -272,7 +272,7 @@ const data = { code, types: typed, labels: steps.map((s) => s.label) };
     color: var(--ink);
     font-style: normal;
   }
-  .sl-markdown-content .story-step blockquote p {
+  .story .story-step blockquote p {
     margin: 0;
   }
 
@@ -292,7 +292,7 @@ const data = { code, types: typed, labels: steps.map((s) => s.label) };
       flex-direction: column;
       gap: 0.75rem;
       position: sticky;
-      top: calc(var(--sl-nav-height) + 1.5rem);
+      top: calc(var(--sl-nav-height, 0px) + 1.5rem);
       align-self: start;
     }
     .story__steps {

@@ -2,7 +2,7 @@
 import Code from "./Code.astro";
 import CodeTabs from "./CodeTabs";
 import Wash from "./Wash.astro";
-import { codeRoc, codeRust, codeTs, schemaHaus, threadHaus } from "@/content/samples";
+import { codePython, codeRoc, codeRust, codeTs, codeTsPlain, schemaHaus, threadHaus } from "@/content/samples";
 import type { Tab } from "./CodeTabs";
 import { links } from "@/lib/links";
 import type { Pigment } from "@/lib/pigments";
@@ -13,9 +13,11 @@ const fileTabs: Tab[] = [
 ];
 
 const languageTabs: Tab[] = [
-  { value: "ts", label: "TypeScript", caption: "Using the Effect binding. Zod, Valibot and ArkType work too, through Standard Schema." },
-  { value: "rust", label: "Rust", caption: "haus-build generates the types at compile time." },
-  { value: "roc", label: "Roc", caption: "haus-gen generates the types. The Roc parser is still in progress." },
+  { value: "ts", icon: "typescript", label: "TypeScript", caption: "haus schemas are Standard Schemas, so Zod, Valibot and ArkType work too." },
+  { value: "effect", icon: "effect", label: "Effect", caption: "The Effect binding: Int becomes bigint, Instant a DateTime.Utc." },
+  { value: "rust", icon: "rust", label: "Rust", caption: "haus-build generates the types at compile time." },
+  { value: "python", icon: "python", label: "Python", caption: "The parser and streams today, with pattern matching. Typed decoding is on its way." },
+  { value: "roc", icon: "roc", label: "Roc", caption: "haus-gen generates the types. The Roc parser is still in progress." },
 ];
 
 const notes: { term: string; rest: string; color: Pigment }[] = [
@@ -32,8 +34,8 @@ const notes: { term: string; rest: string; color: Pigment }[] = [
       Any haus file parses on its own, just like JSON. When you want types, put a
       <code class="inline-code">.schema.haus</code> file next to your data: your build reads it and gives you
       <strong>real types</strong>. Today in <a href={links.typescript} class="prose-link">TypeScript</a>,
-      <a href={links.rust} class="prose-link">Rust</a> and <a href={links.roc} class="prose-link">Roc</a>, with
-      more languages to come.
+      <a href={links.effect} class="prose-link">Effect</a>, <a href={links.rust} class="prose-link">Rust</a>,
+      <a href={links.python} class="prose-link">Python</a> and <a href={links.roc} class="prose-link">Roc</a>.
     </p>
   </div>
 
@@ -56,8 +58,10 @@ const notes: { term: string; rest: string; color: Pigment }[] = [
     </div>
     <div class="relative min-w-0 lg:col-span-7">
       <CodeTabs client:idle tabs={languageTabs}>
-        <Fragment slot="ts"><Code code={codeTs} lang="ts" label="main.ts" size="sm" /></Fragment>
+        <Fragment slot="ts"><Code code={codeTsPlain} lang="ts" label="main.ts" size="sm" /></Fragment>
+        <Fragment slot="effect"><Code code={codeTs} lang="ts" label="main.ts" size="sm" /></Fragment>
         <Fragment slot="rust"><Code code={codeRust} lang="rust" label="main.rs" size="sm" /></Fragment>
+        <Fragment slot="python"><Code code={codePython} lang="python" label="main.py" size="sm" /></Fragment>
         <Fragment slot="roc"><Code code={codeRoc} lang="python" label="main.roc" size="sm" /></Fragment>
       </CodeTabs>
     </div>

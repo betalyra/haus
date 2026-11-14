@@ -1,5 +1,35 @@
 /** Code shown on the landing page. Keep in step with the README and examples. */
 
+/** "This is haus.": a home, device by device (Showcase.astro). */
+export const homeSteps = [
+  `
+[
+  { room: "Kitchen", device: Light { brightness: 80 } },
+]
+`,
+  `
+[
+  { room: "Kitchen", device: Light { brightness: 80 } },
+  { room: "Living room", device: Thermostat { target: 21.5 } },
+]
+`,
+  `
+[
+  { room: "Kitchen", device: Light { brightness: 80 } },
+  { room: "Living room", device: Thermostat { target: 21.5 } },
+  { room: "Hall", device: Lock { locked: True } },
+]
+`,
+  `
+[
+  { room: "Kitchen", device: Light { brightness: 80 }, wakeUp: Time("07:00:00") },
+  { room: "Living room", device: Thermostat { target: 21.5 } },
+  { room: "Hall", device: Lock { locked: True } },
+]
+`,
+];
+
+/** An order, for the playground's presets. */
 export const heroHaus = `
 // Comments are welcome, keys don't need quotes.
 {
@@ -13,41 +43,6 @@ export const heroHaus = `
   gift: True,
   note: None,
 }
-`;
-
-export const compareHaus = `
-{
-  order: 1042,
-  placed: Date("2026-11-08"),
-  total: 30.30,
-  status: Shipped {
-    tracking: "DE-4711",
-    at: Instant("2026-11-09T09:12:00Z"),
-  },
-  gift: True,
-  note: None,
-}
-`;
-
-export const compareJson = `
-{
-  "order": 1042,
-  "placed": "2026-11-08",
-  "total": "30.30",
-  "status": {
-    "type": "shipped",
-    "tracking": "DE-4711",
-    "at": "2026-11-09T09:12:00Z"
-  },
-  "gift": true,
-  "note": null
-}
-`;
-
-export const streamHaus = `
-UserCreated { id: 42, email: "jan@example.com" },
-PaymentReceived { id: 42, amount: Money(19.99, EUR) },
-Heartbeat,
 `;
 
 export const schemaHaus = `
@@ -99,6 +94,33 @@ const program = Effect.gen(function* () {
 })
 `;
 
+export const codeTsPlain = `
+import * as h from "@haus-fmt/haus/schema"
+import thread from "./thread.haus"     // checked against its schema
+import { Comment } from "./thread.schema.haus"
+
+thread.author      // String        → string
+thread.at          // Instant       → Date
+thread.likes       // Int           → bigint, no size limit
+thread.replies     // Array Comment → Comment[]
+
+const liked = { ...thread, likes: thread.likes + 1n }
+console.log(h.stringify(Comment, liked))
+`;
+
+export const codePython = `
+import haus
+from haus import Record, Variant
+
+thread = haus.parse(open("thread.haus").read())
+
+match thread:
+    case Variant("Comment", (Record(c),)):
+        c["author"]    # String(value='ada')
+        c["likes"]     # Number(text='0'), exact
+        c["replies"]   # Array of Comment variants
+`;
+
 export const codeRust = `
 mod thread {
     haus::include_schema!("thread"); // from thread.schema.haus
@@ -140,8 +162,8 @@ export const features = [
     key: "write",
     file: "note.haus",
     wash: ["violet", "rose"],
-    title: "Pleasant to write",
-    text: "No quotes around keys, comments where you need them, trailing commas, and multi-line text that keeps its shape. Easy to write by hand, easy to read in a diff.",
+    title: "Write it like a note",
+    text: "Comments, keys without quotes, trailing commas, text blocks that keep their shape.",
     code: `{
   // keys without quotes, comments, trailing commas
   note: """
@@ -151,84 +173,61 @@ export const features = [
 }`,
   },
   {
-    key: "variants",
-    file: "order.schema.haus",
+    key: "cases",
+    file: "payments.haus",
     wash: ["rose", "gold"],
-    title: "Variants",
-    text: "A value says which case it is and carries the data for that case. In your code it becomes a type **the compiler checks**. Close a variant when the list is final, or leave it open so you can add cases later.",
-    code: `// closed: exactly these cases, nothing else
-type Status = closed <
-  | Pending
-  | Shipped { tracking: String }
-  | Cancelled
->
-
-// open: new cases can be added later
-type Event = < Login { user: String } | Logout >`,
+    title: "Each case has its own data",
+    text: "`Card { last4 }` or `PayPal { email }`: one value, never a pile of maybe-set fields.",
+    code: `[
+  Card { last4: "4242" },
+  PayPal { email: "ada@example.com" },
+  Invoice { dueIn: Duration("P30D") },
+]`,
   },
   {
-    key: "open",
-    file: "logs.haus",
+    key: "nonull",
+    file: "people.haus",
     wash: ["sap", "yellow"],
-    title: "Grows without breaking",
-    text: "Readers skip fields they don't know and keep cases they don't know yet, so you can **add to your data at any time**. When a type must be exact, mark it closed.",
-    code: `// a reader that doesn't know Deploy yet
-// keeps it as an unknown value
-Deploy { version: "1.4.2" },`,
+    title: "No null",
+    text: "A field is there or it isn't. `None` when \"nothing\" is a real answer.",
+    code: `[
+  { name: "Ada", nickname: Some("Countess") },
+  { name: "Alan", nickname: None },   // has none
+  { name: "Grace" },                  // not given
+]`,
   },
   {
-    key: "extend",
-    file: "events.schema.haus",
-    wash: ["ultramarine", "violet"],
-    title: "Types built from types",
-    text: "Build a type from other types instead of copying them: ...UserEvent brings in every case of UserEvent. Each module defines its own events, and the app's event type combines them, still fully checked.",
-    code: `// the user module's events
-type UserEvent = <
-  | UserCreated { id: Int }
-  | UserRenamed { id: Int, to: String }
->
-
-// all user events plus Heartbeat, nothing else
-type AppEvent = closed < ...UserEvent | Heartbeat >`,
-  },
-  {
-    key: "time",
-    file: "order.haus",
-    wash: ["cerulean", "sap"],
-    title: "Dates and times, built in",
-    text: "Date, Instant, Duration and time zones work in **every parser**, in one strict ISO 8601 format. No more guessing what a date string means.",
+    key: "exact",
+    file: "invoice.haus",
+    wash: ["gold", "sienna"],
+    title: "Exact by default",
+    text: "`19.90` stays `19.90`. Dates, times and money are types, not strings.",
     code: `{
-  placed: Date("2026-11-07"),
-  at: Instant("2026-11-07T09:12:00Z"),
-  within: Duration("PT48H"),
+  total: Money(19.90, EUR),
+  due: Date("2027-03-15"),
+  views: 123_456_789_012_345_678_901,
 }`,
   },
   {
-    key: "packages",
-    file: "order.schema.haus",
-    wash: ["sienna", "gold"],
-    title: "Make it yours",
-    text: "Everything beyond time comes as an extension: a schema package you install like any other dependency. Codecs map its types onto your own. We maintain official extensions for common needs, and anyone can publish their own.",
-    code: `import std/time (Date)       // built in
-import @haus/geo (LatLng)    // an extension
-import ./common (Address)    // your own`,
-  },
-  {
-    key: "typed",
-    file: "order.haus",
+    key: "grow",
+    file: "team.schema.haus",
     wash: ["cerulean", "ultramarine"],
-    title: "Checked as you type",
-    text: "A schema is optional: every haus file can be read without one. Add a schema next to your data, and your editor checks the data as you write it while your build turns the schema into real types.",
-    code: `// schema: ./order.schema.haus
-{ order: 1042, placed: Date("2026-11-08") }`,
+    title: "Add without breaking",
+    text: "New fields and cases reach old readers safely. `closed` when every case must be handled.",
+    code: `// open: new ways to reach people can come later
+type Contact = < Email String | Slack { user: String } >
+
+// closed: exactly these, nothing else
+type Status = closed < Available | Away >`,
   },
   {
     key: "streams",
-    file: "logs.haus",
-    wash: ["gold", "rose"],
-    title: "Streams built in",
-    text: "A file can hold many values in a row. Append a line, tail -f it, or handle each entry as soon as it arrives.",
-    code: `Log { level: Info, message: "started" },
-Request { path: "/orders/7", status: 200 },`,
+    file: "pages.haus",
+    wash: ["cerulean", "sap"],
+    title: "Every file is a stream",
+    text: "Append, `tail -f`, read entries as they arrive.",
+    code: `Paged { to: "Ada", at: Instant("2026-11-12T03:14:00Z") },
+Acknowledged { by: "Ada" },
+Escalated { to: "Grace" },`,
   },
 ] as const;

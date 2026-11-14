@@ -1,0 +1,71 @@
+---
+/** "Built to be trusted.": why haus means the same thing everywhere. */
+import { PiShieldCheckLight, PiSigmaLight, PiTranslateLight } from "react-icons/pi";
+import Wash from "./Wash.astro";
+import { links } from "@/lib/links";
+import type { Pigment } from "@/lib/pigments";
+
+const points: { icon: typeof PiShieldCheckLight; wash: [Pigment, Pigment]; title: string; text: string; href: string; more: string }[] = [
+  {
+    icon: PiSigmaLight,
+    wash: ["ultramarine", "violet"],
+    title: "Proven",
+    text: "The grammar is formalized in Lean, with proofs that the reference parser accepts exactly the valid files and reads each one only one way.",
+    href: links.lean,
+    more: "The proofs",
+  },
+  {
+    icon: PiTranslateLight,
+    wash: ["sap", "cerulean"],
+    title: "The same everywhere",
+    text: "TypeScript, Rust, Roc and Python share one conformance suite and are fuzzed against the reference on every change.",
+    href: links.fuzz,
+    more: "How it's tested",
+  },
+  {
+    icon: PiShieldCheckLight,
+    wash: ["rose", "gold"],
+    title: "Safe to accept",
+    text: "Limits on depth and size, linear-time parsing, no hidden bidi characters. Take haus from anyone.",
+    href: links.security,
+    more: "Security",
+  },
+];
+---
+
+<section class="relative mx-auto w-full max-w-6xl px-6 py-20 lg:py-32" aria-labelledby="trust-heading">
+  <div class="max-w-[40rem]">
+    <h2 id="trust-heading" class="text-[2.2rem] leading-[1.08] sm:text-[2.8rem]">Built to be trusted.</h2>
+    <p class="mt-5 text-[1.12rem] text-ink-2">A data format is a contract. haus's is <strong>checked by machine</strong>.</p>
+  </div>
+
+  <ul class="mt-16 grid grid-cols-1 gap-12 md:grid-cols-3 md:gap-10">
+    {
+      points.map((p, i) => {
+        const Icon = p.icon;
+        const [main, bleed] = p.wash;
+        return (
+          <li>
+            <div class="relative isolate grid size-14 place-items-center">
+              <Wash
+                seed={200 + i * 9}
+                delay={i * 120}
+                class="-inset-5 -z-10 h-[calc(100%+2.5rem)] w-[calc(100%+2.5rem)]"
+                strokes={[
+                  { x: 0.52, y: 0.54, rx: 0.3, ry: 0.28, color: main, strength: 1.15 },
+                  { x: 0.76, y: 0.77, rx: 0.15, ry: 0.13, color: bleed, strength: 1.05 },
+                ]}
+              />
+              <Icon size={38} aria-hidden="true" className="text-ink" />
+            </div>
+            <h3 class="mt-6 text-[1.3rem] leading-tight tracking-[-0.02em]">{p.title}</h3>
+            <p class="mt-2 text-ink-2">{p.text}</p>
+            <a href={p.href} class="mt-3 inline-block text-[0.95rem] font-medium text-ink">
+              <span class="brush-hover">{p.more}</span> →
+            </a>
+          </li>
+        );
+      })
+    }
+  </ul>
+</section>

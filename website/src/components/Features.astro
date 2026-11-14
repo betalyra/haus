@@ -1,29 +1,19 @@
 ---
-import {
-  PiCalendarDotsLight,
-  PiDoorOpenLight,
-  PiFeatherLight,
-  PiPackageLight,
-  PiPuzzlePieceLight,
-  PiSealCheckLight,
-  PiShapesLight,
-  PiWavesLight,
-} from "react-icons/pi";
+import { PiCircleDashedLight, PiCoinsLight, PiDoorOpenLight, PiFeatherLight, PiShapesLight, PiWavesLight } from "react-icons/pi";
 import Code from "./Code.astro";
 import Wash from "./Wash.astro";
 import { features } from "@/content/samples";
 
-/** `**phrase**` in feature text becomes <strong>. The text is our own copy, not user input. */
-const emphasise = (text: string) => text.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+/** `**phrase**` and `code` in feature text. The text is our own copy, not user input. */
+const emphasise = (text: string) =>
+  text.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
 
 const icons = {
   write: PiFeatherLight,
-  variants: PiShapesLight,
-  open: PiDoorOpenLight,
-  extend: PiPuzzlePieceLight,
-  time: PiCalendarDotsLight,
-  packages: PiPackageLight,
-  typed: PiSealCheckLight,
+  cases: PiShapesLight,
+  nonull: PiCircleDashedLight,
+  exact: PiCoinsLight,
+  grow: PiDoorOpenLight,
   streams: PiWavesLight,
 } as const;
 ---
