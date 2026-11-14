@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { canonical, compare, compareCodePoints, equals, hash, parse, parseAll } from "../src/index.js"
+import { canonical, compare, compareCodePoints, equals, hash, hashAll, Hasher, parse, parseAll } from "../src/index.js"
 
 const c = (src: string) => canonical(parse(src))
 
@@ -67,5 +67,39 @@ describe("hash (spec §12)", () => {
   it("is the same for equal values", async () => {
     const [a, b] = parseAll("{ x: 1, y: [2] }, { y: [ 2, ], x: 1 }")
     expect(await hash(a!)).toBe(await hash(b!))
+  })
+})
+
+describe("hashAll (spec §12)", () => {
+  it("hashes the canonical forms joined by commas", async () => {
+    const { createHash } = await import("node:crypto")
+    const values = parseAll('1, "a", Order { id: 0xFF },')
+    expect(await hashAll(values)).toBe(createHash("sha256").update('1,"a",Order{id:255}').digest("hex"))
+    expect(await hashAll([])).toBe(createHash("sha256").update("").digest("hex"))
+  })
+
+  it("hashes one value like hash, and tells order apart", async () => {
+    expect(await hashAll(parseAll("{ a: 1 },"))).toBe(await hash(parse("{ a: 1 }")))
+    expect(await hashAll(parseAll("1, 2"))).not.toBe(await hashAll(parseAll("2, 1")))
+    expect(await hashAll(parseAll("1, 2"))).not.toBe(await hash(parse("[1, 2]")))
+  })
+
+  it("gives the hash of the values so far at any time", async () => {
+    const values = parseAll("1, 2, 3")
+    const hasher = new Hasher()
+    const prefixes: string[] = []
+    for (const v of values) prefixes.push(hasher.add(v).digest())
+    expect(prefixes).toEqual(await Promise.all([1, 2, 3].map((n) => hashAll(values.slice(0, n)))))
+  })
+
+  it("agrees with node:crypto on texts of every length around a block", async () => {
+    const { createHash } = await import("node:crypto")
+    const { Sha256 } = await import("../src/sha256.js")
+    for (let n = 0; n < 300; n++) {
+      const data = new Uint8Array(n).map((_, i) => (i * 31 + n) & 0xff)
+      const ours = new Sha256()
+      ours.update(data.subarray(0, n >> 1)).update(data.subarray(n >> 1))
+      expect(Buffer.from(ours.digest()).toString("hex")).toBe(createHash("sha256").update(data).digest("hex"))
+    }
   })
 })

@@ -8,6 +8,7 @@
  *   // 'Order{id:255,total:19.90,"x-y":1e5}'
  */
 import { numberText, quote, toHex } from "./format.js"
+import { Sha256 } from "./sha256.js"
 import type { Value } from "./value.js"
 
 const BARE_KEY = /^[a-z_][A-Za-z0-9_]*$/
@@ -81,4 +82,44 @@ export function compare(a: Value, b: Value): -1 | 0 | 1 {
 export async function hash(value: Value): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical(value)))
   return toHex(new Uint8Array(digest))
+}
+
+const encoder = new TextEncoder()
+const COMMA = encoder.encode(",")
+
+/**
+ * Hashes a list of values as it grows, e.g. a stream while it is read (spec
+ * §12): `add` each value, `digest` at any time gives `hashAll` of the values
+ * added so far. Memory stays bounded by the largest value.
+ *
+ *   const hasher = new Hasher()
+ *   for await (const v of parseStream(body)) hasher.add(v)
+ *   hasher.digest() // the same as await hashAll(values)
+ */
+export class Hasher {
+  private readonly sha = new Sha256()
+  private count = 0
+
+  /** Add the next value. */
+  add(value: Value): this {
+    if (this.count++ > 0) this.sha.update(COMMA)
+    this.sha.update(encoder.encode(canonical(value)))
+    return this
+  }
+
+  /** `hashAll` of the values added so far, as 64 lowercase hex digits. */
+  digest(): string {
+    return toHex(this.sha.digest())
+  }
+}
+
+/**
+ * The hash of a list of values, such as a whole file or stream (spec §12):
+ * the SHA-256 digest of their canonical forms joined by `,`. A list of one
+ * value hashes like the value: `hashAll([v])` is `hash(v)`.
+ */
+export async function hashAll(values: Iterable<Value>): Promise<string> {
+  const hasher = new Hasher()
+  for (const v of values) hasher.add(v)
+  return hasher.digest()
 }

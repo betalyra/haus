@@ -42,7 +42,63 @@ pub fn compare(a: &Value, b: &Value) -> std::cmp::Ordering {
 #[cfg(feature = "hash")]
 pub fn hash(value: &Value) -> String {
     use sha2::{Digest, Sha256};
-    Sha256::digest(canonical(value).as_bytes()).iter().fold(String::with_capacity(64), |mut out, b| {
+    hex(&Sha256::digest(canonical(value).as_bytes()))
+}
+
+/// The hash of a list of values, such as a whole file or stream (spec §12):
+/// the SHA-256 digest of their canonical forms joined by `,`. A list of one
+/// value hashes like the value. Needs the `hash` feature.
+///
+/// ```
+/// let vs = haus::parse("1, \"a\",").unwrap();
+/// assert_eq!(haus::hash_all(&vs[..1]), haus::hash(&vs[0]));
+/// ```
+#[cfg(feature = "hash")]
+pub fn hash_all<'a>(values: impl IntoIterator<Item = &'a Value>) -> String {
+    let mut hasher = Hasher::new();
+    for v in values {
+        hasher.add(v);
+    }
+    hasher.digest()
+}
+
+/// Hashes a list of values as it grows, e.g. a stream while it is read (spec
+/// §12): [`Hasher::digest`] gives [`hash_all`] of the values added so far, at
+/// any time. Memory stays bounded by the largest value. Needs the `hash` feature.
+#[cfg(feature = "hash")]
+#[derive(Clone, Default)]
+pub struct Hasher {
+    sha: sha2::Sha256,
+    count: usize,
+}
+
+#[cfg(feature = "hash")]
+impl Hasher {
+    pub fn new() -> Hasher {
+        Hasher::default()
+    }
+
+    /// Add the next value.
+    pub fn add(&mut self, value: &Value) -> &mut Hasher {
+        use sha2::Digest;
+        if self.count > 0 {
+            self.sha.update(b",");
+        }
+        self.count += 1;
+        self.sha.update(canonical(value).as_bytes());
+        self
+    }
+
+    /// [`hash_all`] of the values added so far, as 64 lowercase hex digits.
+    pub fn digest(&self) -> String {
+        use sha2::Digest;
+        hex(&self.sha.clone().finalize())
+    }
+}
+
+#[cfg(feature = "hash")]
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().fold(String::with_capacity(64), |mut out, b| {
         let _ = write!(out, "{b:02x}");
         out
     })

@@ -16,7 +16,7 @@ homepage.workspace = true
 name = "haus"
 
 [features]
-# `haus::hash` (spec §12): SHA-256 of the canonical form.
+# `haus::hash`, `haus::hash_all` and `haus::Hasher` (spec §12): SHA-256 of canonical forms.
 hash = ["dep:sha2"]
 # Conversions between `haus::Int` and `num_bigint::BigInt`.
 bigint = ["dep:num-bigint"]

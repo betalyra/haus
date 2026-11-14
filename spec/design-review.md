@@ -98,7 +98,7 @@ Ecosystem gotchas, documented in the examples:
 
 | | Item |
 |---|---|
-| ✅ | **Canonical form** for hashing, signing and deduplication: spec §12, in every binding, proven in Lean (S9). Features built on it are planned in [`plans/canonical-form.md`](../plans/canonical-form.md). |
+| ✅ | **Canonical form** for hashing, signing and deduplication: spec §12, in every binding, proven in Lean (S9). `hashAll` hashes a whole file or stream, also while it is read (TypeScript, Rust, Python; proven in `HashAll.lean`). Features built on it are planned in [`plans/canonical-form.md`](../plans/canonical-form.md). |
 | ⬜ | **Schema language** spec, parser and checker: spreads (`...Name`, replacing row parameters), open vs closed, `Stream`, generics. Rules for recursion and expressiveness are settled (spec §9.9–10): explicit, guarded, regular recursion and no computation in schemas. |
 | ⬜ | **JSON interop:** a mapping both ways, `from-json` / `to-json`, and the `application/haus` MIME type. |
 | ⬜ | **CLI:** `check`, `fmt`, `convert`, `canonical`, `hash`, and a jq-like `query` using the path syntax from error messages. |
@@ -136,7 +136,7 @@ Ecosystem gotchas, documented in the examples:
 ## 5. Remaining order
 
 1. JSON interop and a CLI.
-2. **Planned, not started:** a hash for a whole stream, `hashStream(values)` in §12. It is the SHA-256 of each value's canonical form followed by `,` (`1,"a",Order{id:255},`), so it can't collide with `hash` of one value or of an array. Includes conformance vectors and all bindings. Details await Jan's approval.
+2. `hash` in Roc (no SHA-256 there yet); `hashAll` and the streaming hasher follow with it.
 3. Configurable limits in Roc; std/time checks and schema decoding in Python.
 4. Temporal codecs in TypeScript (once TypeScript ships Temporal types).
 5. Schema language parser and checker, then code generation, LSP and Tree-sitter.

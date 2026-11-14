@@ -90,6 +90,16 @@ end
 /-- **The canonical form** of a value (spec §12). -/
 def canonical (v : Value) : Text := write v.canon
 
+/--
+**The canonical form of a list of values** (spec §12, `hashAll`): their
+canonical forms joined by `,`, with no trailing comma. A file or stream is
+hashed as this text.
+-/
+def canonicalAll (vs : List Value) : Text := writeList (vs.map Value.canon)
+
+/-- A list of one value is written like the value: `hashAll [v] = hash v`. -/
+theorem canonicalAll_single (v : Value) : canonicalAll [v] = canonical v := rfl
+
 /-! ## Examples -/
 
 private def canonicalOf (src : String) : Option String :=
@@ -117,5 +127,15 @@ private def canonicalOf (src : String) : Option String :=
 -- Variants: bare, a single record payload as Tag{…}, otherwise Tag(…).
 #guard canonicalOf "[None, Some(1), Circle({ r: 1 }), Pair({ a: 1 }, 2)]" ==
   some "[None,Some(1),Circle{r:1},Pair({a:1},2)]"
+
+private def canonicalAllOf (src : String) : Option String :=
+  match Parser.parse {} src.toList with
+  | .ok vs => some (String.ofList (canonicalAll vs))
+  | _ => none
+
+-- A file or stream: canonical forms joined by `,`. `v` and `v,` are the same file.
+#guard canonicalAllOf "1, \"a\", Order { id: 0xFF }," == some "1,\"a\",Order{id:255}"
+#guard canonicalAllOf "{ b: 1, a: 2 }," == canonicalOf "{ b: 1, a: 2 }"
+#guard canonicalAllOf "  // nothing\n" == some ""
 
 end Haus.Canonical

@@ -120,7 +120,7 @@ class StreamReader:
         self._decoder = codecs.getincrementaldecoder("utf-8")()
         self._done: list[str] = []
         """The current value's text already scanned, in pieces (joined once, when it is complete)."""
-        self._done_length = 0
+        self._done_length: int = 0
         self._buf = ""
         """Text not scanned yet: at most a few characters of lookahead between chunks."""
         self._mode = _Mode.NORMAL

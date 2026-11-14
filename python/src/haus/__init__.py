@@ -12,7 +12,7 @@ types. `Date("2026-02-30")` is just a tag with a string.
 
 from __future__ import annotations
 
-from ._canonical import canonical, compare, equals, hash
+from ._canonical import Hasher, canonical, compare, equals, hash, hash_all
 from ._errors import HausSyntaxError
 from ._parser import DEFAULT_LIMITS, Limits, Parser
 from ._stream import DEFAULT_MAX_VALUE_LENGTH, Readable, StreamReader, parse_stream
@@ -25,6 +25,7 @@ __all__ = [
     "DEFAULT_MAX_VALUE_LENGTH",
     "Array",
     "Bytes",
+    "Hasher",
     "HausSyntaxError",
     "Limits",
     "Number",
@@ -39,6 +40,7 @@ __all__ = [
     "compare",
     "equals",
     "hash",
+    "hash_all",
     "parse",
     "parse_all",
     "parse_bytes",

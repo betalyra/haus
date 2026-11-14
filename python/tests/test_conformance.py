@@ -55,3 +55,18 @@ def test_canonical(path: Path) -> None:
     """`NAME.canonical`: the canonical form (spec §12) of each value, one per line."""
     expected = path.with_suffix(".canonical").read_bytes().decode("utf-8")
     assert "".join(haus.canonical(v) + "\n" for v in haus.parse_bytes(path.read_bytes())) == expected
+
+
+@pytest.mark.parametrize("path", cases("valid"), ids=lambda p: p.stem)
+def test_hash_all(path: Path) -> None:
+    """`NAME.hash`: `hash_all` of the file's values (spec §12), also while a stream is read."""
+    expected = path.with_suffix(".hash").read_text(encoding="utf-8").strip()
+    data = path.read_bytes()
+    values = haus.parse_bytes(data)
+    assert haus.hash_all(values) == expected
+    hasher = haus.Hasher()
+    for v in haus.parse_stream(data[i : i + 3] for i in range(0, len(data), 3)):
+        hasher.add(v)
+    assert hasher.digest() == expected
+    if len(values) == 1:
+        assert haus.hash(values[0]) == expected

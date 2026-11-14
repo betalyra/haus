@@ -6,6 +6,9 @@ Language-independent tests that every haus parser must pass.
 - `valid/NAME.canonical` is the canonical form (spec §12) of each of its
   top-level values, one per line. Bindings that provide `canonical` must
   produce it byte for byte.
+- `valid/NAME.hash` is `hashAll` (spec §12) of the file's values: the SHA-256
+  of their canonical forms joined by `,`, as 64 lowercase hex digits and a
+  line break. A file with one value has the same hash as the value.
 - `invalid/NAME.haus` must be rejected: a syntax error, or invalid UTF-8.
 
 Files are raw bytes. Some use CRLF line endings, a BOM or literal tab

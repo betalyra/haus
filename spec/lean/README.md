@@ -94,6 +94,9 @@ offset); `Date` and `YearMonth` have exactly one spelling.
 |---|---|
 | `parse_canonical` | The canonical form of a parsed value parses back to that value: nothing can break out of its quotes (E) |
 | `canonical_eq_iff` | Two parsed values have the same canonical form exactly when they are equal (§2), so hashes are well defined (H) |
+| `canonicalAll_eq_iff` | Two parsed files have the same `hashAll` text exactly when they hold equal values in the same order (H) |
+| `canonical_eq_canonicalAll_iff` | A value's canonical form is the text of a list only for one equal value: `hash v = hashAll [v]`, and nothing else collides (H) |
+| `hashText_eq`, `canonicalAll_prefix`, `read_canonicalAll` | Hashing value by value as a stream is read gives `hashAll` of the file; the values read so far give a prefix of the text (H) |
 
 Both assume a number limit of at least the default: the canonical form
 writes integers longer than 1000 digits in hex, so under a stricter limit a

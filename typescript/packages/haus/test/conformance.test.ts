@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 import { suiteJson } from "./suite-json.js"
-import { canonical, HausSyntaxError } from "../src/index.js"
+import { canonical, hash, hashAll, Hasher, HausSyntaxError } from "../src/index.js"
 import { fixtures, parseBytes, repoFile, streamBytes } from "./haus.js"
 
 const chunkSizes = (bytes: Uint8Array) => [1, 2, 3, 7, 64, Math.max(bytes.length, 1)]
@@ -19,6 +19,22 @@ describe("valid", () => {
     Effect.gen(function* () {
       const values = yield* parseBytes(bytes)
       expect(values.map((v) => canonical(v) + "\n").join("")).toBe(expected)
+    }))
+
+  it.effect.each(valid)("$name: hashAll", ({ bytes, hash: expected }) =>
+    Effect.gen(function* () {
+      const values = yield* parseBytes(bytes)
+      expect(yield* Effect.promise(() => hashAll(values))).toBe(expected)
+      // A file of one value hashes like the value.
+      if (values.length === 1) expect(yield* Effect.promise(() => hash(values[0]!))).toBe(expected)
+    }))
+
+  it.effect.each(valid)("$name: hashing while reading", ({ bytes, hash: expected }) =>
+    Effect.gen(function* () {
+      const values = yield* streamBytes(bytes, 3)
+      const hasher = new Hasher()
+      for (const v of values) hasher.add(v)
+      expect(hasher.digest()).toBe(expected)
     }))
 
   it.effect.each(valid)("$name: stream, any chunking", ({ bytes, expected }) =>

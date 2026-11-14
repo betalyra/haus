@@ -30,6 +30,7 @@ import Haus.RoundTrip.Strings
 import Haus.RoundTrip.Numbers
 import Haus.RoundTrip.Values
 import Haus.RoundTrip.File
+import Haus.RoundTrip.HashAll
 import Haus.Stream
 import Haus.Stream.Chunks
 import Haus.Stream.Scan
