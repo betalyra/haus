@@ -207,9 +207,10 @@ pub fn parse(text: &str) -> Result<File, Error> {
     })?;
     let at = |(pos, reason): Fail| error(text, pos, reason);
     let mut warnings = check(&file).map_err(at)?;
+    // Before spreads are copied in, so each use is reported once, where it is written.
+    warnings.extend(deprecated_uses(&file));
     let file = expand(file).map_err(at)?;
     guarded(&file).map_err(at)?;
-    warnings.extend(deprecated_uses(&file));
     warnings.sort_by_key(|(pos, _)| *pos);
     let types = file
         .types
@@ -438,57 +439,80 @@ fn attributed<'a, O>(
 
 /// Where the `)` matching the `(` that `s` starts with is, skipping strings,
 /// comments and nested brackets.
+///
+/// Everything it looks for is ASCII, and in UTF-8 an ASCII byte is never part
+/// of another character, so it scans bytes and never slices the text.
 fn closing_paren(s: &str) -> Option<usize> {
     let b = s.as_bytes();
-    let (mut i, mut depth) = (0, 0usize);
-    while i < b.len() {
-        match b[i] {
-            b'(' | b'[' | b'{' => depth += 1,
+    let mut depth = 0usize;
+    let mut i = 0;
+    while let Some(&c) = b.get(i) {
+        i = match c {
+            b'(' | b'[' | b'{' => {
+                depth += 1;
+                i + 1
+            }
             b')' | b']' | b'}' => {
                 depth = depth.checked_sub(1)?;
                 if depth == 0 {
-                    return (b[i] == b')').then_some(i);
+                    return (c == b')').then_some(i);
                 }
+                i + 1
             }
-            b'"' if s[i..].starts_with("\"\"\"") => {
-                i += 3;
-                while i < b.len() && !s[i..].starts_with("\"\"\"") {
-                    i += if b[i] == b'\\' { 2 } else { 1 };
-                }
-                i += 2;
-            }
-            b'"' => {
-                i += 1;
-                while i < b.len() && b[i] != b'"' && b[i] != b'\n' {
-                    i += if b[i] == b'\\' { 2 } else { 1 };
-                }
-            }
-            b'/' if s[i..].starts_with("//") => i += s[i..].find('\n')?,
-            b'/' if s[i..].starts_with("/*") => {
-                let mut nested = 0usize;
-                loop {
-                    if s[i..].starts_with("/*") {
-                        nested += 1;
-                        i += 2;
-                    } else if s[i..].starts_with("*/") {
-                        nested -= 1;
-                        i += 2;
-                        if nested == 0 {
-                            break;
-                        }
-                    } else if i < b.len() {
-                        i += 1;
-                    } else {
-                        return None;
-                    }
-                }
-                continue;
-            }
-            _ => {}
-        }
-        i += 1;
+            b'"' if b[i..].starts_with(b"\"\"\"") => after_block_string(b, i + 3)?,
+            b'"' => after_string(b, i + 1),
+            b'/' if b[i..].starts_with(b"//") => i + b[i..].iter().position(|&c| c == b'\n')?,
+            b'/' if b[i..].starts_with(b"/*") => after_block_comment(b, i)?,
+            _ => i + 1,
+        };
     }
     None
+}
+
+/// After the `"` that ends the string whose text starts at `i` (or the line
+/// break or end where it stops, unterminated: the data parser reports that).
+fn after_string(b: &[u8], mut i: usize) -> usize {
+    while let Some(&c) = b.get(i) {
+        match c {
+            b'\\' => i += 2,
+            b'"' | b'\n' => return i + 1,
+            _ => i += 1,
+        }
+    }
+    i
+}
+
+/// After the `"""` that ends the block string whose text starts at `i`.
+fn after_block_string(b: &[u8], mut i: usize) -> Option<usize> {
+    loop {
+        match b.get(i)? {
+            b'\\' => i += 2,
+            b'"' if b[i..].starts_with(b"\"\"\"") => return Some(i + 3),
+            _ => i += 1,
+        }
+    }
+}
+
+/// After the `*/` that ends the (nested) block comment starting at `i`.
+fn after_block_comment(b: &[u8], mut i: usize) -> Option<usize> {
+    let mut nested = 0usize;
+    loop {
+        let rest = b.get(i..)?;
+        if rest.starts_with(b"/*") {
+            nested += 1;
+            i += 2;
+        } else if rest.starts_with(b"*/") {
+            nested -= 1;
+            i += 2;
+            if nested == 0 {
+                return Some(i);
+            }
+        } else if rest.is_empty() {
+            return None;
+        } else {
+            i += 1;
+        }
+    }
 }
 
 /// `Name atom+ | atom`.
@@ -586,9 +610,9 @@ fn doc_comment(text: &str, pos: usize) -> String {
 /// row parameters (`...r`), and attributes with arguments they don't take,
 /// twice on one thing, or on a spread. Returns the warnings: unknown attributes.
 fn check(file: &File) -> Result<Vec<Fail>, Fail> {
-    fn first_duplicate<'a>(names: impl Iterator<Item = (&'a str, usize)>) -> Option<(&'a str, usize)> {
-        let mut seen = std::collections::HashSet::new();
-        names.into_iter().find(|(n, _)| !seen.insert(*n))
+    fn first_duplicate<'a>(mut names: impl Iterator<Item = (&'a str, usize)>) -> Option<(&'a str, usize)> {
+        let mut seen = HashSet::new();
+        names.find(|(n, _)| !seen.insert(*n))
     }
     if let Some((name, pos)) = first_duplicate(file.types.iter().map(|d| (d.name.as_str(), d.pos))) {
         return Err((pos, format!("{name} is defined twice")));
@@ -630,11 +654,8 @@ fn check(file: &File) -> Result<Vec<Fail>, Fail> {
         }
     }
     file.types.iter().try_for_each(|d| ty(&d.ty))?;
-    let mut warnings = vec![];
-    for attrs in attribute_lists(file) {
-        attributes(attrs, &mut warnings)?;
-    }
-    Ok(warnings)
+    let warnings = attribute_lists(file).into_iter().map(attributes).collect::<Result<Vec<_>, _>>()?;
+    Ok(warnings.concat())
 }
 
 /// Every list of attributes in a file: of its types, fields and tags.
@@ -662,9 +683,10 @@ fn attribute_lists(file: &File) -> Vec<&[Attribute]> {
 }
 
 /// The attributes of one type, field or tag: defined ones with the right
-/// arguments, once each. Unknown ones are accepted with a warning: they may
-/// come from a later version of haus (spec §14).
-fn attributes(attrs: &[Attribute], warnings: &mut Vec<Fail>) -> Result<(), Fail> {
+/// arguments, once each. Unknown ones are accepted with a warning, which this
+/// returns: they may come from a later version of haus (spec §14).
+fn attributes(attrs: &[Attribute]) -> Result<Vec<Fail>, Fail> {
+    let mut warnings = vec![];
     for (i, a) in attrs.iter().enumerate() {
         let args = a.args.as_ref().map_err(Clone::clone)?;
         if !DEFINED_ATTRIBUTES.contains(&a.name.as_str()) {
@@ -678,7 +700,7 @@ fn attributes(attrs: &[Attribute], warnings: &mut Vec<Fail>) -> Result<(), Fail>
             return Err((a.pos, "@deprecated takes at most one argument, a string: @deprecated(\"use email\")".into()));
         }
     }
-    Ok(())
+    Ok(warnings)
 }
 
 /// Every cycle of definitions consumes input (spec §9.9): `type A = B`,
@@ -757,7 +779,9 @@ fn guarded(file: &File) -> Result<(), Fail> {
     Ok(())
 }
 
-/// Warnings for uses of deprecated types, outside deprecated types (spec §14).
+/// Warnings for uses of deprecated types, outside deprecated types (spec §14),
+/// in the file as written: a field or tag that is spread elsewhere is still
+/// one use.
 fn deprecated_uses(file: &File) -> Vec<Fail> {
     fn walk(t: &Ty, f: &mut impl FnMut(&str, usize)) {
         match t {
@@ -936,7 +960,7 @@ impl Expander {
 }
 
 /// The first name that appears twice, at the later entry (or the spread that brought it).
-fn duplicate<'a>(names: impl Iterator<Item = (&'a str, usize, Option<usize>)>) -> Option<(&'a str, usize)> {
+fn duplicate<'a>(mut names: impl Iterator<Item = (&'a str, usize, Option<usize>)>) -> Option<(&'a str, usize)> {
     let mut seen = HashSet::new();
-    names.into_iter().find(|(n, _, _)| !seen.insert(*n)).map(|(n, pos, from)| (n, from.unwrap_or(pos)))
+    names.find(|(n, _, _)| !seen.insert(*n)).map(|(n, pos, from)| (n, from.unwrap_or(pos)))
 }

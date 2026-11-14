@@ -49,6 +49,8 @@ pub(crate) struct Position {
 
 impl Position {
     pub const START: Position = Position { offset: 0, line: 1, column: 1 };
+    /// After a byte order mark, which is column 1, as in the whole-text parser.
+    pub const AFTER_BOM: Position = Position { offset: 3, line: 1, column: 2 };
 
     /// Where the input is after `text`, starting here.
     pub fn after(self, text: &str) -> Position {

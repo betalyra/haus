@@ -13,7 +13,7 @@
  * Values of a `Secret` type are never shown (spec §15): a problem inside one
  * is reported as one error at the secret, with its type and not its value.
  */
-import { deprecation, type Case, type Field, type Instance, type RecordType, type SchemaFile, type StdType, type Type, type VariantType } from "./schema-file.js"
+import { deprecationNote, type Case, type Field, type Instance, type RecordType, type SchemaFile, type StdType, type Type, type VariantType } from "./schema-file.js"
 import { checkStdTime } from "./std-time.js"
 import type { HRecord, HVariant, Value } from "./value.js"
 
@@ -293,8 +293,8 @@ export function checkData(file: SchemaFile, typeName: string, values: readonly V
     for (const [key, x] of v.fields) {
       const f = known.get(key)
       if (f) {
-        const message = deprecation(f.attributes)
-        if (message !== undefined) report("hint", `${quoteKey(key)} is deprecated${message ? `: ${message}` : ""}`, ...(v.keySpans?.get(key) ?? at(x)))
+        const note = deprecationNote(quoteKey(key), f.attributes)
+        if (note !== undefined) report("hint", note, ...(v.keySpans?.get(key) ?? at(x)))
         check(x, f.type)
         continue
       }
@@ -314,8 +314,8 @@ export function checkData(file: SchemaFile, typeName: string, values: readonly V
       else report("error", `${v.tag} is not allowed here: expected ${tags(t)}.${hint}`, ...tagSpan(v))
       return
     }
-    const message = deprecation(c.attributes)
-    if (message !== undefined) report("hint", `${v.tag} is deprecated${message ? `: ${message}` : ""}`, ...tagSpan(v))
+    const note = deprecationNote(v.tag, c.attributes)
+    if (note !== undefined) report("hint", note, ...tagSpan(v))
     const [first] = v.args
     switch (c.payload.kind) {
       case "none":

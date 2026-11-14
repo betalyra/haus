@@ -91,7 +91,13 @@ value. Encode one with `h.Secret.make(value)`. `@deprecated` and other
 attributes don't change decoding; the declarations (`schemaDeclarations`) mark
 deprecated types, fields and tags with JSDoc `@deprecated`, `checkData` hints
 where data uses them, and `parseSchemaFile(…).warnings` lists attributes this
-version doesn't know.
+version doesn't know and each place the schema uses a deprecated type.
+
+An `Any` (or an unknown tag's raw value) is written back after the same checks
+as parsing: pass the parser's limits to both if you raise them,
+`h.parse(h.Any, text, { maxNumberLength: 5000 })` and
+`h.encode(h.Any, value, { maxNumberLength: 5000 })`. Number literals built in
+code are normalized as the parser would (`"1E5"` is written `1e5`).
 
 ## Write haus
 

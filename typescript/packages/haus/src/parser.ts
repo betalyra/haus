@@ -1,5 +1,5 @@
 import { HausSyntaxError, locate, START, type Origin } from "./errors.js"
-import { arr, bytes, num, rec, str, variant, type HBytes, type HRecord, type Value } from "./value.js"
+import { arr, bytes, num, rec, str, variant, type HBytes, type HNumber, type HRecord, type Value } from "./value.js"
 
 export const MAX_DEPTH = 256
 
@@ -21,6 +21,17 @@ export const DEFAULT_LIMITS: Limits = {
   maxExponent: 6144,
   maxStringLength: 16 * 1024 * 1024,
 }
+
+/** `limits` with DEFAULT_LIMITS for the ones not given (an `undefined` field counts as not given). */
+export const withDefaults = (limits: Partial<Limits>): Limits => ({
+  maxDepth: limits.maxDepth ?? DEFAULT_LIMITS.maxDepth,
+  maxNumberLength: limits.maxNumberLength ?? DEFAULT_LIMITS.maxNumberLength,
+  maxExponent: limits.maxExponent ?? DEFAULT_LIMITS.maxExponent,
+  maxStringLength: limits.maxStringLength ?? DEFAULT_LIMITS.maxStringLength,
+})
+
+/** Whether `s` has more than `max` characters (code points: an emoji is one character, but two UTF-16 units). */
+export const longerThan = (s: string, max: number): boolean => s.length > max && codePoints(s) > max
 
 /** Raw bidirectional controls (U+202A–U+202E, U+2066–U+2069) are not allowed outside escapes. */
 const isBidiControl = (c: number) => (c >= 0x202a && c <= 0x202e) || (c >= 0x2066 && c <= 0x2069)
@@ -98,6 +109,14 @@ export class Parser {
     this.pos = start
     const value = this.parseValue()
     return { value, end: this.pos }
+  }
+
+  /** The whole text as one number literal, without trivia around it: its normalized text (spec §2). */
+  parseNumberLiteral(): string {
+    if (!/[-0-9]/.test(this.src[0] ?? "")) this.fail("expected a number")
+    const { text } = this.parseNumber()
+    if (!this.eof()) this.fail(`expected the end of the number, found ${describe(this.peek())}`)
+    return text
   }
 
   /**
@@ -248,7 +267,7 @@ export class Parser {
     return variant(tag)
   }
 
-  private parseNumber(): Value {
+  private parseNumber(): HNumber {
     const start = this.pos
     this.checkNumberLimits(start)
     let text: string | undefined
@@ -432,7 +451,7 @@ export class Parser {
 
   /** The limit counts characters (code points), not UTF-16 units: an emoji is one character, but two units. */
   private checkStringLength(s: string, open: number): string {
-    if (s.length > this.limits.maxStringLength && codePoints(s) > this.limits.maxStringLength) {
+    if (longerThan(s, this.limits.maxStringLength)) {
       this.fail(`string longer than ${this.limits.maxStringLength} characters`, open)
     }
     return s

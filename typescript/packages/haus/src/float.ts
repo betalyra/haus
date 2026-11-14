@@ -2,6 +2,9 @@
  * Floats with a schema (spec §15): decoding a number literal to the nearest
  * binary64 or binary32 value, and writing a float in its one spelling.
  */
+import { num, variant, type Value } from "./value.js"
+
+export type FloatType = "Float64" | "Float32"
 
 const view = new DataView(new ArrayBuffer(8))
 
@@ -67,6 +70,29 @@ export const toFloat32 = (text: string): number | undefined => {
   return Number.isFinite(f) ? f : undefined
 }
 
+/** The nearest value of `type` of a normalized number literal; undefined if it is too large. */
+export const toFloat = (text: string, type: FloatType): number | undefined => (type === "Float32" ? toFloat32(text) : toFloat64(text))
+
+/** The prelude tags of the floats that aren't numbers (spec §15). */
+const SPECIAL_FLOATS: ReadonlyMap<string, number> = new Map([["NaN", NaN], ["Infinity", Infinity], ["NegInfinity", -Infinity]])
+
+/** The float `NaN`, `Infinity` or `NegInfinity` (without a payload) stands for; undefined for any other value. */
+export const specialFloat = (v: Value): number | undefined =>
+  v.kind === "variant" && v.args.length === 0 ? SPECIAL_FLOATS.get(v.tag) : undefined
+
+/**
+ * A float as the haus value an encoder writes (spec §15): `NaN`, `Infinity`,
+ * `NegInfinity`, or the number in its one spelling; a Float32 as the nearest
+ * binary32 value of `x`. Undefined when `x` is out of the type's range.
+ */
+export const floatValue = (x: number, type: FloatType): Value | undefined => {
+  if (Number.isNaN(x)) return variant("NaN")
+  if (x === Infinity) return variant("Infinity")
+  if (x === -Infinity) return variant("NegInfinity")
+  const rounded = type === "Float32" ? Math.fround(x) : x
+  return Number.isFinite(rounded) ? num(floatText(rounded, type)) : undefined
+}
+
 /** JavaScript's layout without the exponent's `+`: 1e+21 → 1e21. */
 const layout = (shortest: string) => shortest.replace("e+", "e")
 
@@ -75,7 +101,7 @@ const layout = (shortest: string) => shortest.replace("e+", "e")
  * back as the same value of the type (of two equally close, the even one), in
  * JavaScript's layout without `+` in the exponent, and `-0` for negative zero.
  */
-export const floatText = (x: number, type: "Float64" | "Float32"): string => {
+export const floatText = (x: number, type: FloatType): string => {
   if (x === 0) return Object.is(x, -0) ? "-0" : "0"
   const sign = x < 0 ? "-" : ""
   const a = Math.abs(x)

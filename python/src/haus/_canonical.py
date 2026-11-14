@@ -3,7 +3,8 @@ value, the same in every binding. Equal values (§2) have identical canonical
 forms, so `hash` is the same whatever the layout, comments, key order or
 spelling of the document the value came from.
 
-    >>> canonical(parse('Order { total: 19.90, id: 0xFF, "x-y": 1e+5 }'))
+    >>> import haus
+    >>> haus.canonical(haus.parse('Order { total: 19.90, id: 0xFF, "x-y": 1e+5 }'))
     'Order{id:255,total:19.90,"x-y":1e5}'
 """
 
@@ -13,6 +14,7 @@ import hashlib
 import re
 from collections.abc import Iterable, Mapping
 from decimal import Decimal
+from typing import Self
 
 from ._parser import DEFAULT_LIMITS
 from ._value import Array, Bytes, Number, Record, String, Value, Variant
@@ -104,22 +106,25 @@ class Hasher:
     `digest()` gives `hash_all` of the values added so far, at any time.
     Memory stays bounded by the largest value.
 
-        >>> h = Hasher()
-        >>> for v in parse_all("1, 2,"):
+        >>> import haus
+        >>> h = haus.Hasher()
+        >>> for v in haus.parse_all("1, 2,"):
         ...     _ = h.add(v)
-        >>> h.digest() == hash_all(parse_all("1, 2"))
+        >>> h.digest() == haus.hash_all(haus.parse_all("1, 2"))
         True
     """
 
+    __slots__ = ("_empty", "_sha")
+
     def __init__(self) -> None:
         self._sha = hashlib.sha256()
-        self._count = 0
+        self._empty = True
 
-    def add(self, value: Value) -> Hasher:
+    def add(self, value: Value) -> Self:
         """Add the next value."""
-        if self._count:
+        if not self._empty:
             self._sha.update(b",")
-        self._count += 1
+        self._empty = False
         self._sha.update(canonical(value).encode("utf-8"))
         return self
 

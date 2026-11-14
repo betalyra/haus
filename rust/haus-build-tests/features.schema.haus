@@ -47,3 +47,8 @@ type Login = closed {
   @deprecated("use user") name?: String,
   extra?: Any,
 }
+
+// A deprecated `closed < Tag … >` whose only tag is deprecated too: one
+// struct, so one #[deprecated] (Rust allows no more) with both messages.
+@deprecated("use Login")
+type Legacy = closed < @deprecated("removed in 2.0") Only Int >

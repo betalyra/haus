@@ -103,9 +103,7 @@ impl Reader {
             self.started = true;
             if self.buf.starts_with(b"\xEF\xBB\xBF") {
                 self.buf.drain(..3);
-                // The byte order mark is column 1, as in the whole-text parser.
-                self.origin.offset = 3;
-                self.origin.column = 2;
+                self.origin = Position::AFTER_BOM;
             }
         }
         self.scan(false)
@@ -244,7 +242,7 @@ impl Reader {
 
     /// Whether the current value starts the file (after a byte order mark).
     fn at_file_start(&self) -> bool {
-        self.origin.offset == 0 || self.origin == (Position { offset: 3, line: 1, column: 2 })
+        matches!(self.origin, Position::START | Position::AFTER_BOM)
     }
 
     /// The current value's text, up to `end`.

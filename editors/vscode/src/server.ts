@@ -18,6 +18,7 @@ import {
   parseSchemaFile,
   schemaReference,
   type SchemaFile,
+  type SchemaWarning,
   type HRecord,
   type HoverContext,
   type Inference,
@@ -29,6 +30,7 @@ import {
   createConnection,
   InsertTextFormat,
   DiagnosticSeverity,
+  DiagnosticTag,
   ProposedFeatures,
   SymbolKind,
   TextDocuments,
@@ -159,12 +161,23 @@ connection.onCompletion(({ textDocument, position }): CompletionItem[] => {
   }))
 })
 
+/** A schema file's warning: an attribute this version doesn't define, or a use of a deprecated type (struck through). */
+const warningDiagnostic = (document: TextDocument) => (w: SchemaWarning): Diagnostic => ({
+  range: { start: document.positionAt(w.offset), end: document.positionAt(w.end) },
+  severity: w.kind === "deprecated" ? DiagnosticSeverity.Hint : DiagnosticSeverity.Warning,
+  source: "haus",
+  message: w.message,
+  ...(w.kind === "deprecated" ? { tags: [DiagnosticTag.Deprecated] } : {}),
+})
+
 function validate(document: TextDocument): void {
   const diagnostics: Diagnostic[] = []
   try {
     if (document.languageId === "haus-schema") {
       const options = document.uri.startsWith("file:") ? schemaOptions(fileURLToPath(document.uri)) : {}
-      schemas.set(document.uri, parseSchemaFile(document.getText(), options))
+      const file = parseSchemaFile(document.getText(), options)
+      schemas.set(document.uri, file)
+      diagnostics.push(...file.warnings.map(warningDiagnostic(document)))
     }
     else {
       const { values, comments } = parseDocument(document.getText())

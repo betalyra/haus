@@ -7,6 +7,7 @@ import Secret
 import Value
 
 Encode := [].{
+
 	## One value on one line.
 	to_str : Value -> Str
 	to_str = |value| bytes_to_str(line(value))
@@ -145,64 +146,48 @@ Encode := [].{
 }
 
 ## Roc's float text (`1e20`, `1e-6`, `-0`, `0.30000000000000004`) laid out as
-## spec §15 says: with the digits d₁…dₖ and the value 0.d₁…dₖ × 10ⁿ, like
-## JavaScript's `Number.prototype.toString` without `+` in the exponent.
+## spec §15 says, like JavaScript's `Number.prototype.toString` without `+`
+## in the exponent. Roc's `to_str` already has the right digits.
 float_text : Str -> Str
 float_text = |shortest| {
-	b = shortest.to_utf8()
-	sign = if (byte_at(b, 0) == '-') "-" else ""
-	# The digits, how many come before the point, and the exponent.
-	var $digits = []
-	var $before = 0.I64
-	var $point = False
-	var $in_exp = False
-	var $exp = 0.I64
-	var $exp_sign = 1.I64
-	for c in b {
-		if $in_exp {
-			if c == '-' {
-				$exp_sign = -1
-			} else if c >= '0' and c <= '9' {
-				$exp = $exp * 10 + (c - '0').to_i64()
-			}
-		} else if c == 'e' or c == 'E' {
-			$in_exp = True
-		} else if c == '.' {
-			$point = True
-		} else if c >= '0' and c <= '9' {
-			$digits = $digits.append(c)
-			if !$point {
-				$before = $before + 1
-			}
+	(sign, magnitude) = if (shortest.starts_with("-")) ("-", shortest.drop_prefix("-")) else ("", shortest)
+	(mantissa, exp) = match magnitude.split_on("e") {
+		[m, e] => (m, I64.from_str(e.drop_prefix("+")) ?? 0)
+		_ => (magnitude, 0)
+	}
+	(whole, fraction) = match mantissa.split_on(".") {
+		[w, f] => (w, f)
+		_ => (mantissa, "")
+	}
+	# The digits without the zeros around them, d₁…dₖ, and n with the value 0.d₁…dₖ × 10ⁿ.
+	digits = whole.to_utf8().concat(fraction.to_utf8())
+	match (digits.find_first_index(|c| c != '0'), digits.find_last_index(|c| c != '0')) {
+		(Ok(first), Ok(last)) => {
+			d = digits.sublist({ start: first, len: last + 1 - first })
+			n = whole.count_utf8_bytes().to_i64_wrap() + exp - first.to_i64_wrap()
+			"${sign}${bytes_to_str(layout(d, n))}"
 		}
+		_ => "${sign}0"
 	}
-	var $lead = 0
-	while $lead < $digits.len() and byte_at($digits, $lead) == '0' {
-		$lead = $lead + 1
-	}
-	var $end = $digits.len()
-	while $end > $lead and byte_at($digits, $end - 1) == '0' {
-		$end = $end - 1
-	}
-	if $end == $lead {
-		return "${sign}0"
-	}
-	d = $digits.sublist({ start: $lead, len: $end - $lead })
+}
+
+## The digits d₁…dₖ of the value 0.d₁…dₖ × 10ⁿ, laid out like JavaScript's
+## `Number.prototype.toString`: `123000`, `1.5`, `0.000001`, `1.5e-7`.
+layout : List(U8), I64 -> List(U8)
+layout = |d, n| {
 	k = d.len().to_i64_wrap()
-	n = $before + $exp_sign * $exp - $lead.to_i64_wrap()
 	zeros = |count| List.repeat('0', count.to_u64_wrap())
-	body =
-		if k <= n and n <= 21 {
-			d.concat(zeros(n - k))
-		} else if 0 < n and n <= 21 {
-			d.sublist({ start: 0, len: n.to_u64_wrap() }).append('.').concat(d.sublist({ start: n.to_u64_wrap(), len: (k - n).to_u64_wrap() }))
-		} else if -6 < n and n <= 0 {
-			['0', '.'].concat(zeros(-n)).concat(d)
-		} else {
-			rest = if (k > 1) ['.'].concat(d.sublist({ start: 1, len: (k - 1).to_u64_wrap() })) else []
-			d.sublist({ start: 0, len: 1 }).concat(rest).append('e').concat((n - 1).to_str().to_utf8())
-		}
-	"${sign}${bytes_to_str(body)}"
+	digits = |start, len| d.sublist({ start: start.to_u64_wrap(), len: len.to_u64_wrap() })
+	if k <= n and n <= 21 {
+		d.concat(zeros(n - k))
+	} else if 0 < n and n <= 21 {
+		digits(0, n).append('.').concat(digits(n, k - n))
+	} else if -6 < n and n <= 0 {
+		['0', '.'].concat(zeros(-n)).concat(d)
+	} else {
+		fraction = if (k > 1) ['.'].concat(digits(1, k - 1)) else []
+		digits(0, 1).concat(fraction).append('e').concat((n - 1).to_str().to_utf8())
+	}
 }
 
 line : Value -> List(U8)
@@ -261,7 +246,7 @@ compare_bytes = |a, b| {
 		}
 		$i = $i + 1
 	}
-	if a.len() < b.len() Before else if a.len() > b.len() After else Same
+	if (a.len() < b.len()) Before else if (a.len() > b.len()) After else Same
 }
 
 byte_at : List(U8), U64 -> U8

@@ -10,7 +10,8 @@
     "noImplicitOverride": true,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
-    "types": ["node"]
+    "types": ["node"],
+    "plugins": [{ "name": "@effect/language-service", "allowedUnstableApis": ["@effect/vitest"] }]
   },
   "include": ["src", "test"]
 }

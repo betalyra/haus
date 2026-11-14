@@ -13,6 +13,7 @@
 import Value
 
 Stream := [].{
+
 	## A reader's state.
 	Reader : {
 		buf : List(U8),

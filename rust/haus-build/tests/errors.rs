@@ -152,6 +152,43 @@ fn unknown_attributes_are_warnings() {
 }
 
 #[test]
+fn a_deprecated_type_used_in_a_spread_type_is_reported_once() {
+    let warnings = haus_build::check(
+        "@deprecated\ntype Old = Int
+type Base = { old: Old }
+type A = { ...Base }
+type B = { ...Base, b: Int }
+\
+         type E = < X Old >\ntype F = < ...E | Y >",
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    let warnings: Vec<String> = warnings.iter().map(ToString::to_string).collect();
+    assert_eq!(warnings, ["3:20: Old is deprecated", "6:14: Old is deprecated"]);
+}
+
+#[test]
+fn attribute_arguments_may_hold_any_text() {
+    // Non-ASCII text in comments and strings inside the parentheses.
+    for schema in [
+        "@deprecated(/* ä */ \"x\")\ntype A = Int",
+        "@deprecated(\"größer\" // ü\n)\ntype A = Int",
+        "@deprecated(\"\"\"\n  für ü\\\"\n  \"\"\")\ntype A = Int",
+    ] {
+        haus_build::check(schema).unwrap_or_else(|e| panic!("{schema:?}: {e}"));
+    }
+    // Wrong or unterminated, with non-ASCII text: an error, not a panic.
+    for schema in [
+        "@deprecated(\"\\ü\")\ntype A = Int",
+        "@deprecated(/* ä",
+        "@deprecated(\"\"\"\nü",
+        "@deprecated(\"ü",
+        "@deprecated(\"\\ü",
+    ] {
+        assert!(haus_build::check(schema).is_err(), "{schema:?}");
+    }
+}
+
+#[test]
 fn deprecated_items_get_rust_attributes() {
     let code = generate(
         "@deprecated(\"use Customer\")\ntype Client = { id: Int, @deprecated(\"use email\") mail?: String }\n\

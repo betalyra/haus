@@ -19,7 +19,7 @@ Value := [
 		start = if (src.starts_with([0xEF, 0xBB, 0xBF])) 3 else 0
 		# Reserved for a version directive (spec §10): `#haus 2`.
 		if starts_at(src, start, "#haus") {
-			return Err(locate(src, { reason: newer_version, pos: start }))
+			return Err(locate(src, { reason: newer_version_reason, pos: start }))
 		}
 		match parse_sequence(src, start) {
 			Ok(values) => Ok(values)
@@ -46,7 +46,7 @@ Value := [
 	starts_with_directive = |text| text.starts_with("#haus")
 
 	newer_version_reason : Str
-	newer_version_reason = newer_version
+	newer_version_reason = "the file starts with a version directive (#haus): it needs a newer version of haus"
 
 	## Parse raw bytes, which must be valid UTF-8.
 	parse_bytes : List(U8) -> Try(List(Value), ParseError)
@@ -82,10 +82,6 @@ Value := [
 }
 
 ParseError : { reason : Str, line : U64, column : U64 }
-
-newer_version : Str
-newer_version = "the file starts with a version directive (#haus): it needs a newer version of haus"
-
 
 Fail : { reason : Str, pos : U64 }
 
@@ -905,7 +901,7 @@ json_str = |s| {
 }
 
 hex_digit : U8 -> U8
-hex_digit = |n| if n < 10 '0' + n else 'a' + n - 10
+hex_digit = |n| if (n < 10) '0' + n else 'a' + n - 10
 
 # A version directive (spec §10) needs a newer version of haus; anywhere else `#` is a syntax error.
 expect Value.parse_all("#haus 2\n{ a: 1 }").map_ok(|vs| vs.len()) == Err({ reason: "the file starts with a version directive (#haus): it needs a newer version of haus", line: 1, column: 1 })

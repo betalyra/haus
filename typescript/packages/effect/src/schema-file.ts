@@ -71,10 +71,10 @@ const INTS: Partial<Record<Builtin, readonly [number, number]>> = {
 
 /** A whole number in range, as a JS number: `1e2` and `1.0` are not whole numbers (spec §15). */
 const smallInt = ([minimum, maximum]: readonly [number, number]) =>
-  Schema.Number.annotate({ [NUMBER]: "Int" } as never).check(Schema.isInt(), Schema.isBetween({ minimum, maximum }))
+  Schema.Number.annotate({ [NUMBER]: "Int" }).check(Schema.isInt(), Schema.isBetween({ minimum, maximum }))
 
 /** A schema file's `String`: only a haus string. */
-const strictString = Schema.String.annotate({ [STRICT]: true } as never)
+const strictString = Schema.String.annotate({ [STRICT]: true })
 
 const builtin = (name: Builtin): Schema.Top => {
   const range = INTS[name]
@@ -99,12 +99,13 @@ const builtin = (name: Builtin): Schema.Top => {
     case "Any":
       return Haus.Any
     default:
-      return Schema.Number // Float64
+      // @effect-diagnostics-next-line schemaNumber:off -- Float64 includes NaN and the infinities (spec §15)
+      return Schema.Number
   }
 }
 
 /** `< >`, any tag: a bare tag decodes to its name, other tags to Unknown. */
-const AnyTag = Schema.String.annotate({ [BARE_TAG]: true } as never)
+const AnyTag = Schema.String.annotate({ [BARE_TAG]: true })
 
 /** Where a schema came from: so that `withCodecs` can build it again with codecs. */
 const sources = new WeakMap<object, { readonly file: SchemaFile; readonly name: string }>()
@@ -186,10 +187,10 @@ export const fromSchemaFile = (file: SchemaFile, options: FromSchemaFileOptions 
         return Schema.Option(build(t.item))
       case "secret":
         // The haus type, for errors that name it without showing the value.
-        return Schema.Redacted(build(t.item)).annotate({ [SECRET]: describeType(t.item) } as never)
+        return Schema.Redacted(build(t.item)).annotate({ [SECRET]: describeType(t.item) })
       case "record": {
         const s = Schema.Struct(fields(t.fields))
-        return t.closed ? s.annotate({ [CLOSED]: true } as never) : s
+        return t.closed ? s.annotate({ [CLOSED]: true }) : s
       }
       case "variant": {
         if (isEnum(t.cases)) {
@@ -203,10 +204,10 @@ export const fromSchemaFile = (file: SchemaFile, options: FromSchemaFileOptions 
             case "record": {
               if (c.payload.record.fields.some((f) => f.key === "_tag")) throw new Error(`${c.tag}: a field named _tag can't be used in a variant payload`)
               const s = Schema.TaggedStruct(c.tag, fields(c.payload.record.fields))
-              return c.payload.record.closed ? s.annotate({ [CLOSED]: true } as never) : s
+              return c.payload.record.closed ? s.annotate({ [CLOSED]: true }) : s
             }
             case "positional":
-              return Schema.TaggedStruct(c.tag, { values: Schema.Tuple(c.payload.items.map(build)) }).annotate({ [VALUES]: true } as never)
+              return Schema.TaggedStruct(c.tag, { values: Schema.Tuple(c.payload.items.map(build)) }).annotate({ [VALUES]: true })
           }
         })
         if (t.open) return Haus.OpenUnion(members.length === 0 ? [AnyTag] : members)

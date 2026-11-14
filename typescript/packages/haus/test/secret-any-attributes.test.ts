@@ -131,7 +131,9 @@ describe("Any", () => {
   it("checks a value before writing it", () => {
     const bad: unknown[] = [
       { kind: "number", text: "1; 2" },
-      { kind: "number", text: "0xFF" },
+      { kind: "number", text: "1 " },
+      { kind: "number", text: "+1" },
+      { kind: "number", text: 1 },
       { kind: "number", text: "1e99999" },
       { kind: "variant", tag: "lower", args: [] },
       { kind: "record", fields: { a: 1 } },
@@ -141,6 +143,57 @@ describe("Any", () => {
     for (const value of bad) expect(() => h.encode(h.Any, value as Value)).toThrow(h.HausEncodeError)
     const deep: Value = Array.from({ length: 300 }).reduce<Value>((v) => ({ kind: "array", items: [v] }), { kind: "number", text: "1" })
     expect(() => h.encode(h.Any, deep)).toThrow(/nesting deeper/)
+  })
+
+  it("normalizes number literals built in code, as the parser would", () => {
+    const n = (text: string) => h.encode(h.Any, { kind: "number", text })
+    expect(n("1E5")).toEqual({ kind: "number", text: "1e5" })
+    expect(n("1e+05")).toEqual({ kind: "number", text: "1e5" })
+    expect(n("0xFF")).toEqual({ kind: "number", text: "255" })
+    expect(n("1_000.50")).toEqual({ kind: "number", text: "1000.50" })
+    expect(n("-0")).toEqual({ kind: "number", text: "-0" })
+    // Unchanged parts are kept as they are; changed ones are copied.
+    const inner: Value = { kind: "array", items: [{ kind: "string", value: "a" }] }
+    const value: Value = { kind: "record", fields: new Map<string, Value>([["a", inner], ["b", { kind: "number", text: "1E2" }]]) }
+    const encoded = h.encode(h.Any, value) as Extract<Value, { kind: "record" }>
+    expect(encoded).not.toBe(value)
+    expect(encoded.fields.get("a")).toBe(inner)
+    expect(encoded.fields.get("b")).toEqual({ kind: "number", text: "1e2" })
+  })
+
+  it("encodes every value the parser produced again, under the same limits", () => {
+    // 900 hex digits: more than 1000 decimal digits, written in hex again.
+    const hex = "0x" + "f".repeat(900)
+    const big = parse(hex)
+    expect(big.kind === "number" && big.text.length > 1000).toBe(true)
+    expect(h.encode(h.Any, big)).toBe(big)
+    expect(h.stringify(h.Any, big)).toBe(hex)
+    expect(h.encode(h.Any, parse("-0x" + "f".repeat(900)))).toEqual(parse("-0x" + "F".repeat(900)))
+    // Raised limits: parsed with them, encoded with them.
+    const limits = { maxNumberLength: 3000, maxExponent: 9000, maxStringLength: 10 }
+    for (const text of ["1".repeat(2500), "0x" + "f".repeat(2500), "1e9000", '"0123456789"']) {
+      const value = parse(text, limits)
+      expect(h.encode(h.Any, value, limits)).toBe(value)
+      expect(h.parse(h.Any, text, limits)).toEqual(value)
+    }
+    expect(() => h.encode(h.Any, parse("1e9000", limits))).toThrow(/exponent larger than 6144/)
+    expect(() => h.encode(h.Any, parse("1".repeat(2500), limits))).toThrow(/number literal longer than 1000/)
+    expect(() => h.encode(h.Any, parse('"0123456789"'), { maxStringLength: 9 })).toThrow(/string longer than 9/)
+    expect(() => h.parse(h.Any, "1e9000")).toThrow(/exponent larger/)
+    // Lowered limits: a hex literal that fits fits again, though its decimal form is longer.
+    const small = { maxNumberLength: 20 }
+    const fits = parse("0xFFFFFFFFFFFFFFFFFF", small)
+    expect(h.encode(h.Any, fits, small)).toBe(fits)
+    // Decimal takes the same literals and limits.
+    expect(h.encode(h.Decimal, "1E5")).toEqual({ kind: "number", text: "1e5" })
+    expect(h.encode(h.Decimal, "1".repeat(2500), limits)).toEqual({ kind: "number", text: "1".repeat(2500) })
+    expect(() => h.encode(h.Decimal, "1".repeat(2500))).toThrow(/longer than 1000/)
+  })
+
+  it("bounds the work for values that share parts", () => {
+    let v: Value = { kind: "number", text: "1" }
+    for (let i = 0; i < 64; i++) v = { kind: "array", items: [v, v] }
+    expect(() => h.encode(h.Any, v)).toThrow(/budget/)
   })
 })
 
@@ -181,12 +234,57 @@ describe("attributes", () => {
     expect(parseSchemaFile(`@deprecated type A = Int`).warnings).toEqual([])
   })
 
+  it("accept an attribute this version doesn't define as it is, even twice", () => {
+    const text = `type A = { @since("1.2") @since("1.3") x: Int }`
+    const file = parseSchemaFile(text)
+    const [field] = (file.definition("A")!.template.body as RecordType).fields
+    expect(field!.attributes).toEqual([
+      { name: "since", args: [{ kind: "string", value: "1.2" }] },
+      { name: "since", args: [{ kind: "string", value: "1.3" }] },
+    ])
+    expect(file.warnings.map((w) => [w.kind, text.slice(w.offset, w.end)])).toEqual([
+      ["unknown-attribute", '@since("1.2")'],
+      ["unknown-attribute", '@since("1.3")'],
+    ])
+    // Also when the arguments differ from anything this version would take.
+    expect(() => parseSchemaFile(`@since(1) @since(True, [2]) type B = < @x @x X >`)).not.toThrow()
+  })
+
+  it("warn at each use of a deprecated type, once per place", () => {
+    const text = [
+      `import ./old (Legacy)`,
+      `@deprecated("use Customer") type Client = { id: Int }`,
+      `type Order = { client: Client, others: Array (Maybe Client), legacy: Legacy }`,
+      `type Big = { ...Order, n: Int }`,
+      `type Bigger = { ...Big, more: Client }`,
+      `type Event = < Placed { by: Client } | Gone >`,
+      `type All = < ...Event | Other >`,
+      `@deprecated type Older = { client: Client }`,
+      `type Pair a = { a: a }`,
+      `type Uses = Pair Client`,
+      `type Spread = { ...Client }`,
+    ].join("\n")
+    const resolver = { resolve: () => ({ key: "old", id: "old", text: `@deprecated type Legacy = Int` }) }
+    const file = parseSchemaFile(text, { resolver })
+    expect(file.warnings.map((w) => [w.kind, w.line, text.slice(w.offset, w.end), w.message])).toEqual([
+      ["deprecated", 3, "Client", "Client is deprecated: use Customer"],
+      ["deprecated", 3, "Client", "Client is deprecated: use Customer"],
+      ["deprecated", 3, "Legacy", "Legacy is deprecated"],
+      ["deprecated", 5, "Client", "Client is deprecated: use Customer"],
+      ["deprecated", 6, "Client", "Client is deprecated: use Customer"],
+      ["deprecated", 10, "Client", "Client is deprecated: use Customer"],
+      ["deprecated", 11, "Client", "Client is deprecated: use Customer"],
+    ])
+    // Warnings are in source order, unknown attributes among them.
+    const mixed = parseSchemaFile(`@deprecated type A = Int\ntype B = { @since("2") b: A }`).warnings
+    expect(mixed.map((w) => w.kind)).toEqual(["unknown-attribute", "deprecated"])
+  })
+
   it("are rejected where they are malformed", () => {
     const rejected: [string, RegExp][] = [
       [`type A = { @deprecated(1) x: Int }`, /@deprecated takes no argument or one string/],
       [`@deprecated("a", "b") type A = Int`, /@deprecated takes no argument or one string/],
       [`type A = { @deprecated @deprecated("x") x: Int }`, /@deprecated appears twice/],
-      [`type A = < @since(1) @since(2) X >`, /@since appears twice/],
       [`type A = { @deprecated ("x") x: Int }`, /no space is allowed between @deprecated and '\('/],
       [`type A = { @deprecated/* */("x") x: Int }`, /no space is allowed/],
       [`type B = { x: Int }\ntype A = { @deprecated ...B }`, /can't be put on a spread/],

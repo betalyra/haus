@@ -26,7 +26,7 @@
  */
 import { HausSyntaxError, parseAll, parseStream, stringify, type ChunkSource, type FormatOptions, type Value } from "@haus-fmt/haus"
 import { checkStdTime, type StdTimeType } from "@haus-fmt/haus"
-import { Effect, Schema, SchemaAST, Stream } from "effect"
+import { Effect, Option, Schema, SchemaAST, Stream } from "effect"
 import { entries, isCodec, setId, type AnyCodec, type Checked, type Decoded, type Named } from "./codec.js"
 import { withCodecs } from "./schema-file.js"
 import {
@@ -39,52 +39,64 @@ export type { Value }
 // ── errors ───────────────────────────────────────────────────
 
 /** The text is not valid haus. */
-export class HausParseError extends Schema.TaggedError<HausParseError>()("HausParseError", {
+export class HausParseError extends Schema.TaggedError<HausParseError, { readonly brand: unique symbol }>()("HausParseError", {
   message: Schema.String,
-  line: Schema.Number,
-  column: Schema.Number,
+  line: Schema.Int,
+  column: Schema.Int,
 }) {}
 
 /** Valid haus, but it doesn't match the schema. `index` is set for stream elements. */
-export class HausSchemaError extends Schema.TaggedError<HausSchemaError>()("HausSchemaError", {
+export class HausSchemaError extends Schema.TaggedError<HausSchemaError, { readonly brand: unique symbol }>()("HausSchemaError", {
   message: Schema.String,
-  index: Schema.optionalKey(Schema.Number),
+  index: Schema.optionalKey(Schema.Int),
   /** Where in the decoded value the error is: field names and array indexes (see `locateIssue`). */
-  path: Schema.optionalKey(Schema.Array(Schema.Union([Schema.String, Schema.Number]))),
+  path: Schema.optionalKey(Schema.Array(Schema.Union([Schema.String, Schema.Int]))),
 }) {}
 
-/** The path of the first issue: the keys of nested Pointer issues. */
-const issuePath = (issue: unknown): Array<string | number> => {
-  const path: Array<string | number> = []
-  let node = issue as { path?: ReadonlyArray<PropertyKey>; issue?: unknown; issues?: ReadonlyArray<unknown> } | undefined
-  for (let i = 0; node && i < 1000; i++) {
-    for (const k of node.path ?? []) if (typeof k === "string" || typeof k === "number") path.push(k)
-    node = (node.issue ?? node.issues?.[0]) as typeof node
-  }
-  return path
+type Path = ReadonlyArray<string | number>
+
+/** The parts of an Effect schema issue read here. */
+interface IssueNode {
+  readonly path?: ReadonlyArray<PropertyKey>
+  readonly issue?: unknown
+  readonly issues?: ReadonlyArray<unknown>
+  readonly ast?: SchemaAST.AST
 }
+
+/** An issue, its first nested issue, and so on: the way to the first error. */
+function* firstIssues(issue: unknown): Generator<IssueNode> {
+  let node = issue as IssueNode | undefined
+  for (let i = 0; node && i < 1000; i++) {
+    yield node
+    node = (node.issue ?? node.issues?.[0]) as IssueNode | undefined
+  }
+}
+
+const keysOf = (node: IssueNode): Path => (node.path ?? []).filter((k): k is string | number => typeof k === "string" || typeof k === "number")
+
+/** The path of the first issue: the keys of nested Pointer issues. */
+const issuePath = (issue: unknown): Path => [...firstIssues(issue)].flatMap(keysOf)
 
 /**
  * An issue inside a `Schema.Redacted` (a `Secret`): its place, and a message
  * naming the type. Effect's own message there never shows the value, but
  * doesn't name the type either (spec §15 asks for both).
  */
-const secretIssue = (issue: unknown): { path: Array<string | number>; message: string } | undefined => {
+const secretIssue = (issue: unknown): Option.Option<{ readonly path: Path; readonly message: string }> => {
   const path: Array<string | number> = []
-  let node = issue as { path?: ReadonlyArray<PropertyKey>; issue?: unknown; issues?: ReadonlyArray<unknown>; ast?: SchemaAST.AST } | undefined
-  for (let i = 0; node && i < 1000; i++) {
-    if (node.ast && isRedacted(node.ast)) return { path, message: secretMessage(node.ast) }
-    for (const k of node.path ?? []) if (typeof k === "string" || typeof k === "number") path.push(k)
-    node = (node.issue ?? node.issues?.[0]) as typeof node
+  for (const node of firstIssues(issue)) {
+    if (node.ast && isRedacted(node.ast)) return Option.some({ path, message: secretMessage(node.ast) })
+    path.push(...keysOf(node))
   }
-  return undefined
+  return Option.none()
 }
 
 /** An Effect schema error as a HausSchemaError, with its path. */
-const schemaError = (e: { readonly message: string; readonly issue: unknown }): HausSchemaError => {
-  const secret = secretIssue(e.issue)
-  return secret ? conversionError(new ConversionError(secret.message, secret.path)) : new HausSchemaError({ message: e.message, path: issuePath(e.issue) })
-}
+const schemaError = (e: { readonly message: string; readonly issue: unknown }): HausSchemaError =>
+  Option.match(secretIssue(e.issue), {
+    onSome: conversionError,
+    onNone: () => new HausSchemaError({ message: e.message, path: [...issuePath(e.issue)] }),
+  })
 
 /**
  * Where a decode error is in the haus value: the innermost value the error's
@@ -119,13 +131,25 @@ export type HausError = HausParseError | HausSchemaError
  * tree. Encoding writes it back unchanged, after checking that it is a haus
  * value within the limits. Treat its content as untrusted data.
  */
-export const Any = Schema.Any.annotate({ [VALUE]: true } as never) as unknown as Schema.Codec<Value>
+export const Any = Schema.Any.annotate({ [VALUE]: true }) as unknown as Schema.Codec<Value>
 
-/** Syntax errors become HausParseError; anything else is a bug (defect). */
-const toParseError = (e: unknown): HausParseError => {
-  if (e instanceof HausSyntaxError) return new HausParseError({ message: e.message, line: e.line, column: e.column })
-  throw e
-}
+/** A syntax error of the core parser as a HausParseError. */
+const parseErrorOf = (e: unknown): Option.Option<HausParseError> =>
+  e instanceof HausSyntaxError ? Option.some(new HausParseError({ message: e.message, line: e.line, column: e.column })) : Option.none()
+
+/** A conversion error as a HausSchemaError. */
+const conversionErrorOf = (e: unknown): Option.Option<HausSchemaError> =>
+  e instanceof ConversionError ? Option.some(conversionError(e)) : Option.none()
+
+/**
+ * A synchronous step of the core or the converters (which report errors by
+ * throwing), at the boundary to Effect: the exceptions `expected` recognizes
+ * fail with its typed error; any other exception is a bug and stays a defect.
+ */
+const fromSync = <A, E>(f: () => A, expected: (e: unknown) => Option.Option<E>): Effect.Effect<A, E> =>
+  Effect.sync(f).pipe(
+    Effect.catchDefect((defect) => Option.match(expected(defect), { onNone: () => Effect.die(defect), onSome: Effect.fail })),
+  )
 
 // ── open unions ──────────────────────────────────────────────
 
@@ -150,7 +174,7 @@ export const OpenUnion = <const Members extends ReadonlyArray<Schema.Top>>(membe
  * fields later would silently swap values of the same type.
  */
 export const Positional = <S extends Schema.Top>(schema: S): S["Rebuild"] =>
-  schema.annotate({ [POSITIONAL]: true } as never)
+  schema.annotate({ [POSITIONAL]: true })
 
 // ── numbers ──────────────────────────────────────────────────
 
@@ -160,7 +184,8 @@ export const Positional = <S extends Schema.Top>(schema: S): S["Rebuild"] =>
  * in the fewest digits that read back as that binary32 value. `Schema.Number`
  * is a `Float64`.
  */
-export const Float32 = Schema.Number.annotate({ [NUMBER]: "Float32" } as never)
+// @effect-diagnostics-next-line schemaNumber:off -- Float32 includes NaN and the infinities (spec §15)
+export const Float32 = Schema.Number.annotate({ [NUMBER]: "Float32" })
 
 // ── std/time ─────────────────────────────────────────────────
 
@@ -170,7 +195,7 @@ const stdTime = <S extends Schema.Top>(name: StdTimeType, schema: S) => setId(sc
 const timeString = <const Name extends StdTimeType>(name: Name) =>
   stdTime(
     name,
-    Schema.String.annotate({ [PRELUDE_TAG]: name } as never).check(Schema.makeFilter((s: string) => checkStdTime(name, s) ?? true)),
+    Schema.String.annotate({ [PRELUDE_TAG]: name }).check(Schema.makeFilter((s: string) => checkStdTime(name, s) ?? true)),
   ) as Named<Schema.String, `std/time#${Name}`>
 
 /** `Date("2026-11-07")` as the ISO date string; encodes back to `Date("…")`. */
@@ -215,7 +240,7 @@ const target = <S extends Schema.Top>(schema: S, codecs: ReadonlyArray<AnyCodec>
 }
 
 /** A conversion error, with its path written as Effect writes it (`at ["items"][2]`). */
-const conversionError = ({ message, path }: ConversionError): HausSchemaError =>
+const conversionError = ({ message, path }: { readonly message: string; readonly path: Path }): HausSchemaError =>
   path.length === 0 ? new HausSchemaError({ message })
   : new HausSchemaError({ message: `${message}\n  at ${path.map((k) => `[${JSON.stringify(k)}]`).join("")}`, path: [...path] })
 
@@ -230,14 +255,8 @@ export const decodeValue = <S extends Schema.Top, const C extends ReadonlyArray<
   const convert = compile(ast)
   const decode = Schema.decodeUnknownEffect(s)
   return (value: Value): Effect.Effect<Decoded<S, C>, HausSchemaError, S["DecodingServices"]> =>
-    Effect.try({
-      // Conversion work is bounded by the size of the input (see convert.ts).
-      try: () => guarded(decodeBudget(value), () => convert(value)),
-      catch: (e) => {
-        if (e instanceof ConversionError) return conversionError(e)
-        throw e
-      },
-    }).pipe(
+    // Conversion work is bounded by the size of the input (see convert.ts).
+    fromSync(() => guarded(decodeBudget(value), () => convert(value)), conversionErrorOf).pipe(
       Effect.flatMap((encoded) => decode(encoded, decodeOptions)),
       Effect.mapError((e) => (e instanceof HausSchemaError ? e : schemaError(e))),
     ) as Effect.Effect<Decoded<S, C>, HausSchemaError, S["DecodingServices"]>
@@ -252,7 +271,7 @@ export const decodeValue = <S extends Schema.Top, const C extends ReadonlyArray<
 export const decode = <S extends Schema.Top, const C extends ReadonlyArray<AnyCodec> = []>(schema: S, ...codecs: C & Checked<S, C>) => {
   const fromValue = (decodeValue as (s: S, ...c: ReadonlyArray<AnyCodec>) => (v: Value) => Effect.Effect<Decoded<S, C>, HausSchemaError, S["DecodingServices"]>)(schema, ...codecs)
   return Effect.fn("Haus.decode")(function* (text: string) {
-    const values = yield* Effect.try({ try: () => parseAll(text), catch: toParseError })
+    const values = yield* fromSync(() => parseAll(text), parseErrorOf)
     if (values.length !== 1) {
       return yield* new HausSchemaError({ message: `expected exactly one value, found ${values.length}` })
     }
@@ -289,8 +308,11 @@ export const decodeStream = <S extends Schema.Top, const C extends ReadonlyArray
   type A = Decoded<S, C>
   const fromValue = (decodeValue as (s: S, ...c: ReadonlyArray<AnyCodec>) => (v: Value) => Effect.Effect<A, HausSchemaError, S["DecodingServices"]>)(schema, ...codecs)
   const decodeChunks = <E>(chunks: ChunkSource): Stream.Stream<A, HausError | E, S["DecodingServices"]> =>
-    Stream.fromAsyncIterable(parseStream(chunks), (e): HausParseError | E =>
-      e instanceof SourceFailure ? (e.error as E) : toParseError(e)).pipe(
+    Stream.fromAsyncIterable(parseStream(chunks), (e) => e).pipe(
+      // The source's own errors pass through; syntax errors are HausParseErrors; anything else is a bug.
+      Stream.catch((e): Stream.Stream<never, HausParseError | E> =>
+        e instanceof SourceFailure ? Stream.fail(e.error as E)
+        : Option.match(parseErrorOf(e), { onNone: () => Stream.die(e), onSome: Stream.fail })),
       Stream.zipWithIndex,
       Stream.mapEffect(([value, index]) =>
         fromValue(value).pipe(Effect.mapError(({ message, path }) => new HausSchemaError({ message, index, ...(path ? { path } : {}) })))),
@@ -322,14 +344,7 @@ export const encodeValue = <S extends Schema.Top, const C extends ReadonlyArray<
   return (value: Decoded<S, C>): Effect.Effect<Value, HausSchemaError, S["EncodingServices"]> =>
     encode(value, { errors: "first" }).pipe(
       Effect.mapError(schemaError),
-      Effect.flatMap((encoded) =>
-        Effect.try({
-          try: () => guarded(DEFAULT_ENCODE_STEPS, () => toValue(encoded)),
-          catch: (e) => {
-            if (e instanceof ConversionError) return conversionError(e)
-            throw e
-          },
-        })),
+      Effect.flatMap((encoded) => fromSync(() => guarded(DEFAULT_ENCODE_STEPS, () => toValue(encoded)), conversionErrorOf)),
     ) as Effect.Effect<Value, HausSchemaError, S["EncodingServices"]>
 }
 
