@@ -7,6 +7,7 @@ export const links = {
   tour: "/docs/tour",
   install: "/docs/install",
   play: "/play",
+  tools: "/tools",
   quickstart: "/docs/install",
   lean: `${repo}/tree/main/spec/lean`,
   fuzz: `${repo}/tree/main/fuzz`,

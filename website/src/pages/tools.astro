@@ -1,0 +1,244 @@
+---
+import Base from "@/layouts/Base.astro";
+import Nav from "@/components/Nav.astro";
+import Footer from "@/components/Footer.astro";
+import Wash from "@/components/Wash.astro";
+import { PiLinkSimpleBold } from "react-icons/pi";
+import "@/styles/play.css";
+
+/** The verdict, one word on a wash per outcome. All are painted up front; one shows. */
+const verdicts = [
+  { state: "same", word: "Same", wash: ["sap", "cerulean"] as const, seed: 311 },
+  { state: "different", word: "Different", wash: ["rose", "gold"] as const, seed: 323 },
+  { state: "error", word: "Can't compare yet", wash: ["gold", "rose"] as const, seed: 337 },
+];
+
+const tools = [
+  { key: "compare", label: "Compare" },
+  { key: "format", label: "Format" },
+];
+---
+
+<Base
+  title="Tools · haus"
+  description="Check whether two haus documents hold the same value, and format files. Everything runs in your browser."
+>
+  <Nav />
+  <main id="main" class="mx-auto w-full max-w-7xl px-6 pt-6 pb-20 sm:pt-10">
+    <div class="relative isolate flex flex-wrap items-end justify-between gap-x-8 gap-y-5">
+      <Wash
+        seed={91}
+        class="-top-8 -left-10 -z-10 h-28 w-56"
+        strokes={[
+          { x: 0.35, y: 0.5, rx: 0.3, ry: 0.32, color: "sap", strength: 0.7 },
+          { x: 0.62, y: 0.42, rx: 0.16, ry: 0.2, color: "gold", strength: 0.5 },
+        ]}
+      />
+      <div class="max-w-[40rem]">
+        <h1 class="text-[2.2rem] leading-[1.08] sm:text-[2.8rem]">Tools</h1>
+        <p class="mt-3 text-[1.05rem] text-ink-2">
+          Check whether two documents say the same thing, or tidy a file up. It all runs in your browser:
+          nothing you paste is uploaded.
+        </p>
+      </div>
+      <div class="flex w-full items-center justify-between gap-4 sm:w-auto">
+        <div role="tablist" aria-label="Tool" class="flex gap-5">
+          {tools.map((t) => (
+            <button type="button" role="tab" class="play-tab tools-tab" data-tool={t.key} aria-controls={`panel-${t.key}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <button id="tools-share" type="button" class="play-button shrink-0">
+          <PiLinkSimpleBold size={15} aria-hidden="true" />
+          <span>Share</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Compare -->
+    <div id="panel-compare" data-panel="compare" role="tabpanel" class="mt-8">
+      <div class="mb-4 flex justify-end">
+        <label class="sr-only" for="cmp-example">Example</label>
+        <select id="cmp-example" class="play-select">
+          <option value="" disabled>Your own</option>
+        </select>
+      </div>
+      <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <section class="play-card" aria-label="First document">
+          <header class="play-card__head"><span>a.haus</span></header>
+          <div id="cmp-a" class="play-editor tools-editor"></div>
+        </section>
+        <section class="play-card" aria-label="Second document">
+          <header class="play-card__head"><span>b.haus</span></header>
+          <div id="cmp-b" class="play-editor tools-editor"></div>
+        </section>
+      </div>
+      <section id="cmp-verdict" class="play-card cmp-verdict mt-5" aria-label="Result">
+        <h3 class="cmp-headline">
+          {verdicts.map(({ state, word, wash: [main, bleed], seed }) => (
+            <span class="brush cmp-word" data-for={state}>
+              {word}
+              <Wash
+                seed={seed}
+                instant
+                strokes={[
+                  { x: 0.48, y: 0.55, rx: 0.46, ry: 0.32, rot: -0.03, color: main, strength: 1.5, wobble: 0.7 },
+                  { x: 0.8, y: 0.5, rx: 0.18, ry: 0.28, color: bleed, strength: 1.2, wobble: 0.7 },
+                ]}
+              />
+            </span>
+          ))}
+          <span id="cmp-rest" class="cmp-rest"></span>
+        </h3>
+        <div id="cmp-body" class="min-w-0" aria-live="polite"></div>
+      </section>
+    </div>
+
+    <!-- Format -->
+    <div id="panel-format" data-panel="format" role="tabpanel" class="mt-8" hidden>
+      <div class="mb-4 flex justify-end">
+        <label class="sr-only" for="fmt-example">Example</label>
+        <select id="fmt-example" class="play-select">
+          <option value="" disabled>Your own</option>
+        </select>
+      </div>
+      <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <section class="play-card" aria-label="Input">
+          <header class="play-card__head"><span>input.haus</span></header>
+          <div id="fmt-in" class="play-editor tools-editor"></div>
+        </section>
+        <section class="play-card flex min-w-0 flex-col" aria-label="Formatted">
+          <header class="play-card__head flex-wrap gap-y-2">
+            <div role="tablist" aria-label="Layout" class="flex gap-4">
+              <button type="button" role="tab" class="play-tab" data-style="pretty">Pretty</button>
+              <button type="button" role="tab" class="play-tab" data-style="compact">Compact</button>
+            </div>
+            <div class="flex items-center gap-2">
+              <label class="fmt-indent">
+                <span>Indent</span>
+                <select id="fmt-indent" class="play-select play-select--sm">
+                  <option value="2">2</option>
+                  <option value="4">4</option>
+                </select>
+              </label>
+              <button id="fmt-copy" type="button" class="play-button play-button--sm">Copy</button>
+            </div>
+          </header>
+          <div id="fmt-out" class="play-editor tools-editor flex-1"></div>
+          <p id="fmt-summary" class="play-summary" aria-live="polite"></p>
+        </section>
+      </div>
+    </div>
+  </main>
+  <Footer />
+</Base>
+
+<script>
+  import "@/lib/tools/main";
+</script>
+
+<style>
+  /* Boxes grow with their text up to most of the window, then scroll inside;
+     long lines wrap. Format keeps both sides scrolled to the same values. */
+  .tools-editor {
+    overflow: visible;
+  }
+  .tools-editor :global(.cm-editor) {
+    height: auto;
+  }
+  .tools-editor :global(.cm-scroller) {
+    min-height: 12rem;
+    max-height: 75vh;
+    overflow: auto;
+  }
+  .tools-tab {
+    font-size: 1rem;
+  }
+  :global(.canon-label) {
+    margin-bottom: 0.3rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--ink-3);
+  }
+  :global(.canon-text) {
+    margin: 0;
+    max-height: 7.5rem;
+    overflow: auto;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    line-height: 1.55;
+    color: var(--ink-2);
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .cmp-verdict {
+    padding: 1.5rem 1.6rem 1.6rem;
+    overflow: visible;
+  }
+  .cmp-headline {
+    position: relative;
+    display: flex;
+    align-items: baseline;
+    gap: 0.5em;
+    margin: 0 0 0.6rem;
+    font-size: clamp(2rem, 4vw, 2.6rem);
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+    color: var(--ink);
+  }
+  /* All words stay laid out so their washes get painted; only the current one shows. */
+  .cmp-word {
+    position: absolute;
+    left: 0;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .cmp-verdict[data-state="same"] .cmp-word[data-for="same"],
+  .cmp-verdict[data-state="different"] .cmp-word[data-for="different"],
+  .cmp-verdict[data-state="error"] .cmp-word[data-for="error"] {
+    position: relative;
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .cmp-rest {
+    font-size: 0.45em;
+    font-weight: 500;
+    letter-spacing: 0;
+    color: var(--ink-3);
+  }
+  :global(.cmp-verdict__text) {
+    margin: 0.35rem 0 0;
+    color: var(--ink-2);
+  }
+  :global(.cmp-verdict__note) {
+    margin: 1rem 0 0;
+    font-size: 0.9rem;
+    color: var(--ink-3);
+  }
+  :global(.cmp-canon) {
+    display: grid;
+    gap: 0.9rem;
+    margin-top: 0.9rem;
+  }
+  @media (min-width: 64rem) {
+    :global(.cmp-verdict[data-state="different"] .cmp-canon) {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+  :global(.cmp-canon__item) {
+    min-width: 0;
+  }
+  .fmt-indent {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-family: var(--font-sans);
+    font-size: 0.82rem;
+    color: var(--ink-2);
+  }
+  #fmt-indent:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+</style>

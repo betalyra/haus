@@ -1,4 +1,5 @@
 ---
+import SectionHeading from "./SectionHeading.astro";
 import Code from "./Code.astro";
 import CodeTabs from "./CodeTabs";
 import Wash from "./Wash.astro";
@@ -27,9 +28,9 @@ const notes: { term: string; rest: string; color: Pigment }[] = [
 ];
 ---
 
-<section id="languages" class="relative mx-auto w-full max-w-6xl scroll-mt-8 px-6 py-20 lg:py-32" aria-labelledby="code-heading">
+<section id="languages" class="relative mx-auto w-full max-w-6xl scroll-mt-8 px-6 py-20 lg:py-32" aria-labelledby="in-your-code">
   <div class="max-w-[42rem]">
-    <h2 id="code-heading" class="text-[2.2rem] leading-[1.08] sm:text-[2.8rem]">At home in your code.</h2>
+    <SectionHeading id="in-your-code">At home in your code.</SectionHeading>
     <p class="mt-5 text-[1.12rem] text-ink-2">
       Any haus file parses on its own, just like JSON. When you want types, put a
       <code class="inline-code">.schema.haus</code> file next to your data: your build reads it and gives you

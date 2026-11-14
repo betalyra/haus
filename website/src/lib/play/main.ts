@@ -9,6 +9,7 @@ import { completeAt, hoverAt, hoverText } from "../../../../typescript/packages/
 import { analyze, type Analysis } from "./analyze";
 import { createEditor, lintAgain, setLanguage, setText } from "./editor";
 import { presets } from "./presets";
+import { copyLink, decodeState, encodeState } from "../share";
 
 type Output = keyof Analysis["outputs"];
 
@@ -16,26 +17,11 @@ const $ = <E extends HTMLElement>(sel: string) => document.querySelector<E>(sel)
 
 // ── sharing ──────────────────────────────────────────────────
 
-const toBase64Url = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes)).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
-const fromBase64Url = (s: string) => Uint8Array.from(atob(s.replaceAll("-", "+").replaceAll("_", "/")), (c) => c.charCodeAt(0));
-
-async function pipe(bytes: Uint8Array, stream: CompressionStream | DecompressionStream): Promise<Uint8Array> {
-  return new Uint8Array(await new Response(new Blob([bytes as BlobPart]).stream().pipeThrough(stream)).arrayBuffer());
-}
-
-async function encode(data: string, schema: string, off: boolean): Promise<string> {
-  const json = new TextEncoder().encode(JSON.stringify({ d: data, s: schema, ...(off ? { x: 1 } : {}) }));
-  return toBase64Url(await pipe(json, new CompressionStream("deflate-raw")));
-}
+const encode = (data: string, schema: string, off: boolean) => encodeState({ d: data, s: schema, ...(off ? { x: 1 } : {}) });
 
 async function decode(hash: string): Promise<{ data: string; schema: string; off: boolean } | undefined> {
-  try {
-    const bytes = await pipe(fromBase64Url(hash), new DecompressionStream("deflate-raw"));
-    const { d, s, x } = JSON.parse(new TextDecoder().decode(bytes)) as { d: unknown; s: unknown; x?: unknown };
-    return typeof d === "string" && typeof s === "string" ? { data: d, schema: s, off: x === 1 } : undefined;
-  } catch {
-    return undefined;
-  }
+  const state = (await decodeState(hash)) as { d?: unknown; s?: unknown; x?: unknown } | undefined;
+  return typeof state?.d === "string" && typeof state.s === "string" ? { data: state.d, schema: state.s, off: state.x === 1 } : undefined;
 }
 
 // ── the page ─────────────────────────────────────────────────
@@ -155,13 +141,7 @@ async function start() {
   const share = $<HTMLButtonElement>("#play-share");
   share.addEventListener("click", async () => {
     history.replaceState(null, "", `#${await encode(data.state.doc.toString(), schema.state.doc.toString(), !use.checked)}`);
-    try {
-      await navigator.clipboard.writeText(location.href);
-      share.dataset.done = "Link copied";
-    } catch {
-      share.dataset.done = "Copy the address bar";
-    }
-    setTimeout(() => delete share.dataset.done, 1800);
+    await copyLink(share);
   });
 
   $("#play-schema").toggleAttribute("data-off", !use.checked);

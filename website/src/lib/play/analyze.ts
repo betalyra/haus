@@ -44,7 +44,7 @@ export interface Analysis {
   readonly summary: string;
 }
 
-const syntaxProblem = (e: HausSyntaxError, text: string): Problem => ({
+export const syntaxProblem = (e: HausSyntaxError, text: string): Problem => ({
   from: Math.min(e.offset, text.length),
   to: Math.min(e.offset + 1, text.length),
   severity: "error",

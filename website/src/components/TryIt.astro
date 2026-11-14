@@ -1,13 +1,14 @@
 ---
+import SectionHeading from "./SectionHeading.astro";
 import { PiArrowRightBold } from "react-icons/pi";
 import Painting from "./Painting.astro";
 import { links } from "@/lib/links";
 ---
 
-<section class="relative mx-auto w-full max-w-6xl px-6 py-20 lg:py-32" aria-labelledby="try-heading">
+<section class="relative mx-auto w-full max-w-6xl px-6 py-20 lg:py-32" aria-labelledby="try-it">
   <div class="grid grid-cols-1 items-center gap-14 md:grid-cols-12 md:gap-8 lg:gap-12">
     <div class="md:col-span-7">
-      <h2 id="try-heading" class="text-[2.2rem] leading-[1.08] sm:text-[2.8rem]">Come on in.</h2>
+      <SectionHeading id="try-it">Come on in.</SectionHeading>
       <p class="mt-5 max-w-[32rem] text-[1.12rem] text-ink-2">
         Take the five-minute tour, or paste your own data into the playground and see what haus makes of it.
       </p>

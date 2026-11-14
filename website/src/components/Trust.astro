@@ -1,4 +1,5 @@
 ---
+import SectionHeading from "./SectionHeading.astro";
 /** "Built to be trusted.": why haus means the same thing everywhere. */
 import { PiShieldCheckLight, PiSigmaLight, PiTranslateLight } from "react-icons/pi";
 import Wash from "./Wash.astro";
@@ -33,9 +34,9 @@ const points: { icon: typeof PiShieldCheckLight; wash: [Pigment, Pigment]; title
 ];
 ---
 
-<section class="relative mx-auto w-full max-w-6xl px-6 py-20 lg:py-32" aria-labelledby="trust-heading">
+<section class="relative mx-auto w-full max-w-6xl px-6 py-20 lg:py-32" aria-labelledby="trust">
   <div class="max-w-[40rem]">
-    <h2 id="trust-heading" class="text-[2.2rem] leading-[1.08] sm:text-[2.8rem]">Built to be trusted.</h2>
+    <SectionHeading id="trust">Built to be trusted.</SectionHeading>
     <p class="mt-5 text-[1.12rem] text-ink-2">A data format is a contract. haus's is <strong>checked by machine</strong>.</p>
   </div>
 

@@ -1,0 +1,171 @@
+/* Shared by the playground and the tools page: cards, tabs, switches, buttons. */
+.play-card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.play-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.7rem 1rem 0.6rem;
+  border-bottom: 1px solid var(--line-soft, var(--line));
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--ink-2);
+}
+.play-editor {
+  overflow: auto;
+}
+.play-editor .cm-editor {
+  height: 100%;
+}
+.play-tab {
+  padding: 0.15rem 0;
+  font-family: var(--font-sans, inherit);
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--ink-3);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color 150ms ease, border-color 150ms ease;
+}
+.play-tab:hover,
+.play-tab[aria-selected="true"] {
+  color: var(--ink);
+}
+.play-tab[aria-selected="true"] {
+  border-bottom-color: var(--ultramarine);
+}
+.play-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-sans);
+  font-size: 0.82rem;
+  color: var(--ink-2);
+  cursor: pointer;
+  user-select: none;
+}
+.play-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+.play-switch__track {
+  position: relative;
+  width: 1.9rem;
+  height: 1.1rem;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--ink) 18%, white);
+  transition: background-color 160ms ease;
+}
+.play-switch__track::after {
+  content: "";
+  position: absolute;
+  top: 0.15rem;
+  left: 0.15rem;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 50%;
+  background: var(--paper);
+  box-shadow: 0 1px 2px color-mix(in oklab, var(--ink) 30%, transparent);
+  transition: transform 160ms ease;
+}
+.play-switch input:checked + .play-switch__track {
+  background: var(--ultramarine);
+}
+.play-switch input:checked + .play-switch__track::after {
+  transform: translateX(0.8rem);
+}
+.play-switch input:focus-visible + .play-switch__track {
+  outline: 1.5px solid var(--ultramarine);
+  outline-offset: 2px;
+}
+/* A schema that is switched off stays editable, just quieter. */
+#play-schema[data-off] {
+  opacity: 0.5;
+}
+.play-caption {
+  margin: 0;
+  padding: 0.55rem 1rem 0;
+  font-size: 0.82rem;
+  color: var(--ink-3);
+}
+.play-link {
+  font-size: 0.8rem;
+  color: var(--ultramarine-ink, var(--ultramarine));
+  cursor: pointer;
+}
+.play-link:hover {
+  text-decoration: underline;
+}
+.play-summary {
+  margin: 0;
+  padding: 0.6rem 1rem;
+  border-top: 1px solid var(--line-soft, var(--line));
+  font-size: 0.85rem;
+  color: var(--ink-2);
+}
+.play-summary[data-state="error"] {
+  color: #ab2a5d;
+}
+.play-select,
+.play-button {
+  height: 2.4rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  font-size: 0.92rem;
+  color: var(--ink);
+  cursor: pointer;
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+.play-select {
+  padding: 0 2rem 0 0.95rem;
+  appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2357514a' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 0.8rem center;
+}
+.play-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0 1rem;
+  font-weight: 500;
+}
+.play-select:hover,
+.play-button:hover {
+  border-color: color-mix(in oklab, var(--ink) 30%, white);
+}
+.play-button[data-done]::after {
+  content: attr(data-done);
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  white-space: nowrap;
+  padding: 0.25rem 0.6rem;
+  border-radius: 8px;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 0.78rem;
+}
+
+/* Smaller controls inside a card header. */
+.play-button--sm,
+.play-select--sm {
+  height: 1.9rem;
+  font-size: 0.82rem;
+}
+.play-button--sm {
+  padding: 0 0.75rem;
+}
+.play-select--sm {
+  padding: 0 1.7rem 0 0.7rem;
+  background-position: right 0.6rem center;
+}

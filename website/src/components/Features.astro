@@ -1,4 +1,5 @@
 ---
+import SectionHeading from "./SectionHeading.astro";
 import { PiCircleDashedLight, PiCoinsLight, PiDoorOpenLight, PiFeatherLight, PiShapesLight, PiWavesLight } from "react-icons/pi";
 import Code from "./Code.astro";
 import Wash from "./Wash.astro";
@@ -18,11 +19,11 @@ const icons = {
 } as const;
 ---
 
-<section class="relative mx-auto w-full max-w-6xl px-6 py-20 lg:py-32" aria-labelledby="features-heading">
+<section class="relative mx-auto w-full max-w-6xl px-6 py-20 lg:py-32" aria-labelledby="features">
   <div class="max-w-[40rem]">
-    <h2 id="features-heading" class="text-[2.2rem] leading-[1.08] sm:text-[2.8rem]">
+    <SectionHeading id="features">
       What makes it a <span class="egg" data-egg><span class="egg__ip" aria-hidden="true">127.0.0.1.</span><span class="egg__word">home.</span></span>
-    </h2>
+    </SectionHeading>
     <p class="mt-5 text-[1.12rem] text-ink-2">
       What every project ends up inventing for itself, <strong>built into the format</strong> once.
     </p>

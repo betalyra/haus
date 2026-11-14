@@ -1,4 +1,5 @@
 ---
+import SectionHeading from "./SectionHeading.astro";
 /**
  * "This is haus.": a home described device by device. The code morphs as the
  * text scrolls (the docs' Story component), and the card under it shows the
@@ -9,9 +10,9 @@ import Step from "./docs/story/Step.astro";
 import { homeSteps } from "@/content/samples";
 ---
 
-<section class="relative mx-auto w-full max-w-6xl px-6 py-20 lg:py-32" aria-labelledby="showcase-heading">
+<section class="relative mx-auto w-full max-w-6xl px-6 py-20 lg:py-32" aria-labelledby="this-is-haus">
   <div class="max-w-[40rem]">
-    <h2 id="showcase-heading" class="text-[2.2rem] leading-[1.08] sm:text-[2.8rem]">This is haus.</h2>
+    <SectionHeading id="this-is-haus">This is haus.</SectionHeading>
     <p class="mt-5 text-[1.12rem] text-ink-2">
       Describe your home, device by device. haus <strong>works out the types</strong> as you go. Hover any value to see
       what it sees.

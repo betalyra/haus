@@ -3,8 +3,8 @@ import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap, t
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching, indentOnInput } from "@codemirror/language";
 import { linter, lintGutter, type Diagnostic } from "@codemirror/lint";
-import { Compartment, EditorState, StateEffect, type Extension } from "@codemirror/state";
-import { drawSelection, EditorView, highlightActiveLine, hoverTooltip, keymap, lineNumbers, placeholder, type Tooltip } from "@codemirror/view";
+import { Compartment, EditorState, StateEffect, StateField, type Extension } from "@codemirror/state";
+import { Decoration, drawSelection, EditorView, highlightActiveLine, hoverTooltip, keymap, lineNumbers, placeholder, type DecorationSet, type Tooltip } from "@codemirror/view";
 import { javascript } from "@codemirror/lang-javascript";
 import { haus, highlighting } from "./lang";
 
@@ -18,6 +18,26 @@ export const lintAgain = (view: EditorView) => view.dispatch({ effects: relint.o
 /** Switch an editor's language (one created by createEditor). */
 export const setLanguage = (view: EditorView, language: keyof typeof languages) =>
   view.dispatch({ effects: languageSlot.reconfigure(languages[language]()) });
+
+/** A range shown as related to something in another editor (the value under the other cursor). */
+const setLinked = StateEffect.define<{ from: number; to: number } | null>();
+const linkedMark = Decoration.mark({ class: "cm-linked" });
+const linked = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(marks, tr) {
+    marks = marks.map(tr.changes);
+    for (const e of tr.effects)
+      if (e.is(setLinked)) marks = e.value && e.value.to > e.value.from ? Decoration.set([linkedMark.range(e.value.from, e.value.to)]) : Decoration.none;
+    return marks;
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
+
+/** Mark a range as linked to the other editor's cursor, or clear it. */
+export const linkRange = (view: EditorView, range: { from: number; to: number } | null) => {
+  const len = view.state.doc.length;
+  view.dispatch({ effects: setLinked.of(range && { from: Math.min(range.from, len), to: Math.min(range.to, len) }) });
+};
 
 const theme = EditorView.theme({
   "&": { fontSize: "0.84rem", backgroundColor: "transparent", height: "100%" },
@@ -56,6 +76,7 @@ const theme = EditorView.theme({
   ".cm-lintRange-info": { backgroundImage: "none", textDecoration: "underline dotted #2d3f9c", textUnderlineOffset: "3px" },
   ".cm-gutter-lint": { width: "0.9rem" },
   ".cm-lint-marker": { width: "0.6rem", height: "0.6rem" },
+  ".cm-linked": { backgroundColor: "color-mix(in oklab, var(--gold, #e39b16) 16%, transparent)", borderRadius: "3px" },
   ".cm-matchingBracket": { backgroundColor: "color-mix(in oklab, var(--gold, #e39b16) 22%, transparent)", outline: "none" },
 });
 
@@ -72,10 +93,20 @@ export interface EditorOptions {
   /** Hover text at a position: the first line is the type. */
   readonly hover?: (pos: number) => { from: number; to: number; text: string } | undefined;
   readonly complete?: CompletionSource;
+  /** Wrap long lines instead of scrolling sideways. */
+  readonly wrap?: boolean;
+  /** Called with the cursor position when the selection moves. */
+  readonly onCursor?: (pos: number) => void;
 }
 
 export function createEditor(o: EditorOptions): EditorView {
-  const extensions: Extension[] = [theme, highlighting];
+  const extensions: Extension[] = [theme, highlighting, linked];
+  if (o.wrap) extensions.push(EditorView.lineWrapping);
+  if (o.onCursor) {
+    const onCursor = o.onCursor;
+    // Moves by the reader only: a replaced text also sets the selection.
+    extensions.push(EditorView.updateListener.of((u) => u.selectionSet && !u.docChanged && onCursor(u.state.selection.main.head)));
+  }
   extensions.push(languageSlot.of(o.language === false ? [] : languages[o.language ?? "haus"]()));
   if (o.readOnly) {
     // Line numbers here too, so the output lines up with the editors next to it.
