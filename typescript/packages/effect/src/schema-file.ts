@@ -8,7 +8,7 @@
  * (`schemaDeclarations`). Both follow the same mapping:
  *
  *   String → string            Int, Int64, UInt64 → bigint     other Int*, Float* → number
- *   Decimal → BigDecimal       Bool → boolean                   Bytes → Uint8Array
+ *   Decimal → string ("19.90") Bool → boolean                   Bytes → Uint8Array
  *   Maybe a → Option<A>        Array a → readonly A[]           Map v → { [key: string]: V }
  *   { a: T, b?: T }            → { readonly a: T; readonly b?: T }   (closed { … } rejects other fields)
  *   < Debug | Info >           → "Debug" | "Info"                     (only tags without payload)
@@ -16,16 +16,19 @@
  *   < Point Float64 Float64 > → { _tag: "Point"; values: readonly [number, number] }
  *   open variants              → … | Unknown                          (other tags kept as raw values)
  *   < >                        → string | Unknown                     (any tag: bare tags as their name)
- *   std/time: Instant → DateTime.Utc, ZonedDateTime → DateTime.Zoned, the others → string
+ *   std/time types → string, the text as written
  *   Any → Haus.Value (Haus.Any: the parsed value, unchanged)
  *   Secret a → Redacted<A> (Schema.Redacted: shows <redacted>; errors never show the value)
  *
  * Attributes don't change the schemas (spec §15); `@deprecated` becomes a
  * JSDoc `@deprecated` in the declarations.
  *
- * Codecs (codec.ts) replace named types: `fromSchemaFile(file, { codecs })`
- * builds the schemas with their types, and the declarations make every type
- * a function of the codecs' types (`Root<C>`, through `Lookup`).
+ * Every default keeps the value (spec §13.4). Codecs (codec.ts) replace named
+ * types: `fromSchemaFile(file, { codecs })` builds the schemas with their
+ * types, and the declarations make every type a function of the codecs'
+ * types (`Root<C>`, through `Lookup`). The lossy host types of Effect are
+ * codecs too: `Haus.decimalAsBigDecimal` (`prelude#Decimal`),
+ * `Haus.instantAsDateTime` and `Haus.zonedDateTimeAsDateTime`.
  */
 import {
   definitionDoc, deprecatedDoc, describeType, parseSchemaFile, type Builtin, type Case, type Definition, type Field, type Instance, type ParseSchemaOptions,
@@ -58,6 +61,8 @@ export interface FromSchemaFileOptions {
 export const compileSchemaFile = (text: string, options: ParseSchemaOptions = {}): CompiledSchemaFile =>
   fromSchemaFile(parseSchemaFile(text, options))
 
+const stdId = (name: StdType) => `std/time#${name}`
+
 const isEnum = (cases: readonly Case[]) => cases.length > 0 && cases.every((c) => c.payload.kind === "none")
 
 const INTS: Partial<Record<Builtin, readonly [number, number]>> = {
@@ -87,7 +92,7 @@ const builtin = (name: Builtin): Schema.Top => {
     case "Bool":
       return Schema.Boolean
     case "Decimal":
-      return Schema.BigDecimal
+      return Haus.Decimal
     case "Int":
       return Schema.BigInt
     case "Int64":
@@ -154,7 +159,7 @@ export const fromSchemaFile = (file: SchemaFile, options: FromSchemaFileOptions 
     return c ? c.apply(base) : base
   }
 
-  const std = (name: StdType): Schema.Top => named(`std/time#${name}`, Haus[name])
+  const std = (name: StdType): Schema.Top => named(stdId(name), Haus[name])
 
   const ref = (inst: Instance): Schema.Top => {
     const done = built.get(inst)
@@ -176,7 +181,8 @@ export const fromSchemaFile = (file: SchemaFile, options: FromSchemaFileOptions 
   const build = (t: Type): Schema.Top => {
     switch (t.kind) {
       case "builtin":
-        return builtin(t.name)
+        // Decimal is a named type that codecs can replace (Haus.decimalAsBigDecimal).
+        return t.name === "Decimal" ? named(Haus.DECIMAL_ID, Haus.Decimal) : builtin(t.name)
       case "std":
         return std(t.name)
       case "array":
@@ -250,27 +256,29 @@ export { definitionDoc }
 /** The codec map parameter of every declared type. `$` can't appear in haus names, so it never clashes. */
 const C = "C$"
 
-/** Named types inside `t`; `onRef` says whether to look inside a reference's body too. */
-const visitTypes = (t: Type, onRef: (inst: Instance) => boolean, onStd: (name: StdType) => void): void => {
+/** Named types inside `t`; `onRef` says whether to look inside a reference's body too. `onId` gets the ids of built-in named types. */
+const visitTypes = (t: Type, onRef: (inst: Instance) => boolean, onId: (id: string) => void): void => {
   switch (t.kind) {
+    case "builtin":
+      return t.name === "Decimal" ? onId(Haus.DECIMAL_ID) : undefined
     case "std":
-      return onStd(t.name)
+      return onId(stdId(t.name))
     case "array":
     case "maybe":
     case "secret":
-      return visitTypes(t.item, onRef, onStd)
+      return visitTypes(t.item, onRef, onId)
     case "map":
-      return visitTypes(t.value, onRef, onStd)
+      return visitTypes(t.value, onRef, onId)
     case "record":
-      return t.fields.forEach((f) => visitTypes(f.type, onRef, onStd))
+      return t.fields.forEach((f) => visitTypes(f.type, onRef, onId))
     case "variant":
       return t.cases.forEach((c) =>
-        c.payload.kind === "record" ? visitTypes(c.payload.record, onRef, onStd)
-        : c.payload.kind === "positional" ? c.payload.items.forEach((x) => visitTypes(x, onRef, onStd))
+        c.payload.kind === "record" ? visitTypes(c.payload.record, onRef, onId)
+        : c.payload.kind === "positional" ? c.payload.items.forEach((x) => visitTypes(x, onRef, onId))
         : undefined)
     case "ref":
-      t.instance.args.forEach((a) => visitTypes(a, onRef, onStd))
-      if (onRef(t.instance)) visitTypes(t.instance.body, onRef, onStd)
+      t.instance.args.forEach((a) => visitTypes(a, onRef, onId))
+      if (onRef(t.instance)) visitTypes(t.instance.body, onRef, onId)
       return
     default:
       return
@@ -319,7 +327,6 @@ export const schemaDeclarations = (file: SchemaFile, options: DeclarationOptions
     return taken.has(n) ? `${n}_` : n
   }
 
-  const STD_TYPES: Partial<Record<StdType, string>> = { Instant: "DateTime$.Utc", ZonedDateTime: "DateTime$.Zoned" }
   const unknownType = "Haus$.Unknown"
 
   const print = (t: Type): string => {
@@ -333,7 +340,7 @@ export const schemaDeclarations = (file: SchemaFile, options: DeclarationOptions
           case "Bool":
             return "boolean"
           case "Decimal":
-            return used.add("BigDecimal"), "BigDecimal$.BigDecimal"
+            return `Haus$.Lookup<${C}, ${JSON.stringify(Haus.DECIMAL_ID)}, string>`
           case "Int":
           case "Int64":
           case "UInt64":
@@ -343,11 +350,8 @@ export const schemaDeclarations = (file: SchemaFile, options: DeclarationOptions
           default:
             return "number"
         }
-      case "std": {
-        const ts = STD_TYPES[t.name] ?? "string"
-        if (ts.startsWith("DateTime$")) used.add("DateTime")
-        return `Haus$.Lookup<${C}, "std/time#${t.name}", ${ts}>`
-      }
+      case "std":
+        return `Haus$.Lookup<${C}, ${JSON.stringify(stdId(t.name))}, string>`
       case "array":
         return `ReadonlyArray<${print(t.item)}>`
       case "map":
@@ -396,7 +400,7 @@ export const schemaDeclarations = (file: SchemaFile, options: DeclarationOptions
       visited.add(inst)
       if (inst.args.length === 0) ids.add(inst.definition.id)
       return true
-    }, (name) => ids.add(`std/time#${name}`))
+    }, (id) => ids.add(id))
     return [...ids]
   }
 

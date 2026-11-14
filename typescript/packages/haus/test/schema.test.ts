@@ -74,9 +74,37 @@ describe("decoding", () => {
 
   it("Maybe is always written: None and Some(…); a missing field is an error", () => {
     const S = h.Array(h.Record({ v: h.Maybe(h.Int) }))
-    expect(h.parse(S, "[{ v: None }, { v: Some(1) }]")).toEqual([{ v: null }, { v: 1n }])
+    expect(h.parse(S, "[{ v: None }, { v: Some(1) }]")).toEqual([{ v: { _tag: "None" } }, { v: { _tag: "Some", value: 1n } }])
     expect(() => h.parse(S, "[{}]")).toThrow("missing field 'v' at $[0]")
     expect(() => h.parse(S, "[{ v: 1 }]")).toThrow("expected None | Some(Int), found number 1")
+  })
+
+  it("Maybe is tagged: Maybe (Maybe Int) keeps None and Some(None) apart", () => {
+    const M = h.Maybe(h.Maybe(h.Int))
+    expect(h.parse(M, "None")).toEqual(h.Maybe.none)
+    expect(h.parse(M, "Some(None)")).toEqual(h.Maybe.some(h.Maybe.none))
+    expect(h.parse(M, "Some(Some(1))")).toEqual({ _tag: "Some", value: { _tag: "Some", value: 1n } })
+    for (const text of ["None", "Some(None)", "Some(Some(1))"]) expect(h.stringify(M, h.parse(M, text))).toBe(text)
+  })
+
+  it("Maybe helpers", () => {
+    expect(h.Maybe.fromNullable(null)).toEqual(h.Maybe.none)
+    expect(h.Maybe.fromNullable(undefined)).toEqual(h.Maybe.none)
+    expect(h.Maybe.fromNullable(0)).toEqual(h.Maybe.some(0))
+    expect(h.Maybe.toNullable(h.Maybe.some("a"))).toBe("a")
+    expect(h.Maybe.toNullable(h.Maybe.none)).toBeNull()
+    expect(h.Maybe.getOrElse(h.Maybe.none, () => "default")).toBe("default")
+    expect(h.Maybe.getOrElse(h.Maybe.some("a"), () => "default")).toBe("a")
+    expect(h.Maybe.is(h.Maybe.some(undefined))).toBe(true)
+    expect(h.Maybe.is({ _tag: "Some" })).toBe(false)
+    expect(h.Maybe.is(null)).toBe(false)
+  })
+
+  it("Maybe encodes only its tagged form", () => {
+    const M = h.Maybe(h.String)
+    for (const bad of [null, undefined, "x", { _tag: "Some" }, { _tag: "Other", value: "x" }]) {
+      expect(() => h.encode(M, bad as never)).toThrow(h.HausEncodeError)
+    }
   })
 
   it("Optional: a field that may be missing stays missing", () => {
@@ -91,8 +119,8 @@ describe("decoding", () => {
   it("Optional(Maybe(…)): not given, None and Some stay apart (partial updates)", () => {
     const UserUpdate = h.Record({ name: h.Optional(h.String), nickname: h.Optional(h.Maybe(h.String)) })
     expect(h.parse(UserUpdate, "{}")).toEqual({})
-    expect(h.parse(UserUpdate, '{ name: "Jan", nickname: None }')).toEqual({ name: "Jan", nickname: null })
-    expect(h.parse(UserUpdate, '{ nickname: Some("J") }')).toEqual({ nickname: "J" })
+    expect(h.parse(UserUpdate, '{ name: "Jan", nickname: None }')).toEqual({ name: "Jan", nickname: { _tag: "None" } })
+    expect(h.parse(UserUpdate, '{ nickname: Some("J") }')).toEqual({ nickname: { _tag: "Some", value: "J" } })
   })
 
   it("Bytes and Map", () => {
@@ -170,7 +198,7 @@ describe("encoding", () => {
     paid: true,
     day: "2026-11-07",
     at: new Date("2026-11-07T10:00:00.000Z"),
-    note: null,
+    note: h.Maybe.none,
     tags: ["a", 'quote "x"'],
     shape: { _tag: "Point", values: [1, 2] },
     level: "Info",
@@ -194,9 +222,9 @@ describe("encoding", () => {
 
   it("Optional fields without a value are left out; Maybe always writes None or Some", () => {
     const UserUpdate = h.Record({ name: h.Optional(h.String), nickname: h.Optional(h.Maybe(h.String)) })
-    expect(h.stringify(UserUpdate, { nickname: null }, { style: "compact" })).toBe("{ nickname: None }")
+    expect(h.stringify(UserUpdate, { nickname: h.Maybe.none }, { style: "compact" })).toBe("{ nickname: None }")
     expect(h.stringify(UserUpdate, { name: "Jan" }, { style: "compact" })).toBe('{ name: "Jan" }')
-    expect(h.stringify(UserUpdate, { name: "Jan", nickname: "J" }, { style: "compact" })).toBe('{ name: "Jan", nickname: Some("J") }')
+    expect(h.stringify(UserUpdate, { name: "Jan", nickname: h.Maybe.some("J") }, { style: "compact" })).toBe('{ name: "Jan", nickname: Some("J") }')
     expect(h.Record({ a: h.Optional(h.Int), b: h.Maybe(h.Int) }).expected).toBe("{ a?: Int, b: Maybe Int | _ }")
   })
 

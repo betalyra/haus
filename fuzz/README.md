@@ -1,7 +1,8 @@
 # Differential testing
 
 Generated inputs go through every haus parser: the Lean reference parser
-(`spec/lean`), Rust, Roc and TypeScript. They must agree on every input:
+(`spec/lean`), Rust, Roc and TypeScript (and, with `--schema`, through
+every schema decoder: see [Schema decoding](#schema-decoding)). They must agree on every input:
 accepted with the same values, or rejected. A disagreement is a bug in at
 least one of them, or a gap in the spec.
 
@@ -88,6 +89,53 @@ above.
 | Rust | [`rust/haus/examples/time_runner.rs`](../rust/haus/examples/time_runner.rs) |
 | Roc | [`roc/fuzz/time_runner.roc`](../roc/fuzz/time_runner.roc) |
 | TypeScript | in this process |
+
+## Schema decoding
+
+The same idea for decoding with a schema (spec §15): generated values are
+decoded with a type of the schema suite ([`test-suite/schema`](../test-suite/schema),
+plus [`schema/fuzz.schema.haus`](schema/fuzz.schema.haus) for the integer
+sizes, std/time types and nestings the suite leaves out) and encoded again,
+by the Lean reference decoder and by each binding. They must agree on
+accepting or rejecting, and on the canonical form (§12) of what is encoded;
+error messages and places may differ.
+
+```sh
+sh fuzz/build.sh                               # also builds the schema runners
+node fuzz/src/main.ts --schema --count 20000   # about 15 seconds
+node fuzz/src/main.ts --schema --seed 7 --runners lean,typescript,rust
+```
+
+[`src/schema-gen.ts`](src/schema-gen.ts) generates a value for each type
+from its resolved form (the JSON that
+[`spec/lean/scripts/schema-types.ts`](../spec/lean/scripts/schema-types.ts)
+writes for Lean): mostly values the type accepts, written with varied
+formatting, and near misses: the wrong kind of value, missing and extra
+fields, unknown tags in open and closed variants, the wrong number of
+arguments, `Some` without its argument. Numbers sit on the edges: integers
+at and just past each range and at the number limit (where the canonical
+form switches to hex), `-0` in every spelling, floats as their exact decimal
+value or exactly halfway to the next float (or a hair either side, which
+catches rounding to binary64 before binary32), near overflow and underflow;
+decimals with scales, exponents and negative zeros. Strings have escapes,
+control and bidi characters and astral characters; keys sort differently by
+code points and by UTF-16 units; `Any` gets arbitrary values; recursive
+types sometimes go down to the nesting limit (256) and past it. A case that
+disagrees is shrunk to the smallest value with the same pattern of
+disagreement. An error inside a `Secret` that shows a part of the value is
+reported too.
+
+| Decoder | Runner (`FILE` of lines `SUITE TYPE HEX`, the value's text as hex UTF-8; prints `ok <canonical>` or `err …`) |
+|---|---|
+| Lean | `haus-ref --schema-batch TYPES FILE` ([`spec/lean/Main.lean`](../spec/lean/Main.lean)) |
+| TypeScript | in this process: `compileSchemaFile`, `h.decode`, `h.encode` |
+| Effect | in this process: `Haus.compileSchemaFile`, `decodeValue`, `encodeValue` |
+| Rust | [`schema-rust`](schema-rust): the code haus-build generates for each schema |
+| Roc | [`roc/schema_runner.roc`](roc/schema_runner.roc), with the modules `haus-gen roc` generates ([`roc/gen_schemas.ts`](roc/gen_schemas.ts)) |
+
+Nothing is masked: every binding's default host types keep the value (spec
+§13.4), so every runner must agree with Lean exactly. Lossy host types (Effect's
+`BigDecimal` and `DateTime`) are opt-in codecs that the runners don't use.
 
 ## When it finds something
 

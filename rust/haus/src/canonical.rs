@@ -106,7 +106,8 @@ fn hex(bytes: &[u8]) -> String {
 
 fn write(v: &Value, out: &mut String) {
     match v {
-        Value::Number(n) => out.push_str(&number_text(n)),
+        // The default number limit, whatever the reader's (spec §12).
+        Value::Number(n) => out.push_str(&number_text(n, crate::Limits::default().max_number_length)),
         Value::String(s) => quote(s, out),
         Value::Bytes(b) => {
             out.push_str("x\"");

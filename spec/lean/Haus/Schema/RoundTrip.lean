@@ -1,4 +1,5 @@
 import Haus.Schema.Correct
+import Haus.Schema.FloatLaw
 
 /-!
 # Encoding fits decoding (spec §15, "Encoding") — I5
@@ -11,8 +12,8 @@ For every type of an environment and every value it accepts:
   decoding drops information: fields an open record ignores, the spelling of
   a float, `-0` decoded as an integer (`Agree`).
 
-Both assume `FloatLaw`: the spelling of a decoded float rounds back to it.
-It holds on every test (`Haus.Schema.Float`), but is not proven.
+For floats both rest on `floatLaw` (`Haus.Schema.FloatLaw`): the spelling
+of a decoded float rounds back to it.
 
 `secret_error`: an error inside a `Secret` is the same whatever the value,
 so it can't show any part of it.
@@ -164,71 +165,71 @@ theorem floatTag?_encode {tag : String} {x : Flt} (k : FloatType) (h : floatTag?
 
 mutual
 /-- The encoding of a decoded value decodes to it by the same rules. -/
-theorem Dec.encode (hF : FloatLaw) {env : Env} {t : Ty} {v : Value} {x : Typed} :
+theorem Dec.encode {env : Env} {t : Ty} {v : Value} {x : Typed} :
     Dec env t v x → Dec env t (encode x) x
-  | .intro hw hc => by rw [encode_hide]; exact .intro hw (hc.encode hF)
+  | .intro hw hc => by rw [encode_hide]; exact .intro hw hc.encode
 
-theorem Core.encode (hF : FloatLaw) {env : Env} {c : Ty} {v : Value} {x : Typed} :
+theorem Core.encode {env : Env} {c : Ty} {v : Value} {x : Typed} :
     Core env c v x → Core env c (Schema.encode x) x
   | .string s => .string s
   | .bytes bs => .bytes bs
   | .int (n := n) _ hr => .int (wholeLit_intLit n) hr
   | .float (k := k) (a := a) (x := x) hx => by
     obtain ⟨n, m, q, rfl⟩ := roundLit_fin hx
-    exact .float (hF k a _ hx)
+    exact .float (floatLaw k a _ hx)
   | .floatTag (k := k) hx => by
     show Core env _ (encodeFloat k _) _
     rw [floatTag?_encode k hx]; exact .floatTag hx
   | .decimal a => .decimal a
   | .any v => .any v
   | .time hc => .time hc
-  | .array hi => .array (hi.encode hF)
-  | .map he => .map (he.encode hF)
-  | .record hm hf => .record (hf.missing hm) (hf.encode hF)
+  | .array hi => .array hi.encode
+  | .map he => .map he.encode
+  | .record hm hf => .record (hf.missing hm) hf.encode
   | .bare hc => .bare hc
-  | .recordCase hc hd => .recordCase hc (hd.encode hF)
-  | .positional hc ha => .positional hc (ha.encode hF)
+  | .recordCase hc hd => .recordCase hc hd.encode
+  | .positional hc ha => .positional hc ha.encode
   | .unknown hc => .unknown hc
 
-theorem Items.encode (hF : FloatLaw) {env : Env} {t : Ty} {xs : List Value} {ys : List Typed} :
+theorem Items.encode {env : Env} {t : Ty} {xs : List Value} {ys : List Typed} :
     Items env t xs ys → Items env t (encodeList ys) ys
   | .nil => .nil
-  | .cons hx hs => .cons (hx.encode hF) (hs.encode hF)
+  | .cons hx hs => .cons hx.encode hs.encode
 
-theorem Entries.encode (hF : FloatLaw) {env : Env} {t : Ty} {fs : List (String × Value)}
+theorem Entries.encode {env : Env} {t : Ty} {fs : List (String × Value)}
     {ys : List (String × Typed)} : Entries env t fs ys → Entries env t (encodeFields ys) ys
   | .nil => .nil
-  | .cons hx hs => .cons (hx.encode hF) (hs.encode hF)
+  | .cons hx hs => .cons hx.encode hs.encode
 
-theorem Fields.encode (hF : FloatLaw) {env : Env} {closed : Bool} {fields : List Field}
+theorem Fields.encode {env : Env} {closed : Bool} {fields : List Field}
     {fs : List (String × Value)} {ys : List (String × Typed)} :
     Fields env closed fields fs ys → Fields env closed fields (encodeFields ys) ys
   | .nil => .nil
-  | .keep hf hx hs => .keep hf (hx.encode hF) (hs.encode hF)
-  | .skip _ hs => hs.encode hF
+  | .keep hf hx hs => .keep hf hx.encode hs.encode
+  | .skip _ hs => hs.encode
 
-theorem Args.encode (hF : FloatLaw) {env : Env} {ts : List Ty} {xs : List Value} {ys : List Typed} :
+theorem Args.encode {env : Env} {ts : List Ty} {xs : List Value} {ys : List Typed} :
     Args env ts xs ys → Args env ts (encodeList ys) ys
   | .nil => .nil
-  | .cons hx hs => .cons (hx.encode hF) (hs.encode hF)
+  | .cons hx hs => .cons hx.encode hs.encode
 end
 
 /--
 **Decode, encode, decode is decode** (§15, I5): if `t` accepts `v` as `x`,
 it accepts the encoding of `x`, again as `x`.
 -/
-theorem decode_encode (hF : FloatLaw) {env : Env} {t : Ty} {v : Value} {x : Typed}
+theorem decode_encode {env : Env} {t : Ty} {v : Value} {x : Typed}
     (h : decode env t v = .ok x) : decode env t (encode x) = .ok x :=
-  ((decode_sound h).encode hF).decode
+  (decode_sound h).encode.decode
 
 /-! ## Encode after decode is the input, except where §15 says -/
 
 mutual
-theorem Dec.agree (hF : FloatLaw) {env : Env} {t : Ty} {v : Value} {x : Typed} :
+theorem Dec.agree {env : Env} {t : Ty} {v : Value} {x : Typed} :
     Dec env t v x → Agree env t v (encode x)
-  | .intro hw hc => by rw [encode_hide]; exact .intro hw (hc.agree hF)
+  | .intro hw hc => by rw [encode_hide]; exact .intro hw hc.agree
 
-theorem Core.agree (hF : FloatLaw) {env : Env} {c : Ty} {v : Value} {x : Typed} :
+theorem Core.agree {env : Env} {c : Ty} {v : Value} {x : Typed} :
     Core env c v x → AgreeCore env c v (Schema.encode x)
   | .string s => .same _ _
   | .bytes bs => .same _ _
@@ -238,42 +239,42 @@ theorem Core.agree (hF : FloatLaw) {env : Env} {c : Ty} {v : Value} {x : Typed} 
     · exact .negZero k
   | .float (k := k) (a := a) (x := x) hx => by
     obtain ⟨n, m, q, rfl⟩ := roundLit_fin hx
-    exact .float hx (hF k a _ hx)
+    exact .float hx (floatLaw k a _ hx)
   | .floatTag (k := k) hx => by
     show AgreeCore env _ _ (encodeFloat k _)
     rw [floatTag?_encode k hx]; exact .same _ _
   | .decimal a => .same _ _
   | .any v => .same _ _
   | .time _ => .same _ _
-  | .array hi => .array (hi.agree hF)
-  | .map he => .map (he.agree hF)
-  | .record _ hf => .record (hf.agree hF)
+  | .array hi => .array hi.agree
+  | .map he => .map he.agree
+  | .record _ hf => .record hf.agree
   | .bare _ => .same _ _
-  | .recordCase hc hd => .recordCase hc (hd.agree hF)
-  | .positional hc ha => .positional hc (ha.agree hF)
+  | .recordCase hc hd => .recordCase hc hd.agree
+  | .positional hc ha => .positional hc ha.agree
   | .unknown _ => .same _ _
 
-theorem Items.agree (hF : FloatLaw) {env : Env} {t : Ty} {xs : List Value} {ys : List Typed} :
+theorem Items.agree {env : Env} {t : Ty} {xs : List Value} {ys : List Typed} :
     Items env t xs ys → AgreeItems env t xs (encodeList ys)
   | .nil => .nil
-  | .cons hx hs => .cons (hx.agree hF) (hs.agree hF)
+  | .cons hx hs => .cons hx.agree hs.agree
 
-theorem Entries.agree (hF : FloatLaw) {env : Env} {t : Ty} {fs : List (String × Value)}
+theorem Entries.agree {env : Env} {t : Ty} {fs : List (String × Value)}
     {ys : List (String × Typed)} : Entries env t fs ys → AgreeEntries env t fs (encodeFields ys)
   | .nil => .nil
-  | .cons hx hs => .cons (hx.agree hF) (hs.agree hF)
+  | .cons hx hs => .cons hx.agree hs.agree
 
-theorem Fields.agree (hF : FloatLaw) {env : Env} {closed : Bool} {fields : List Field}
+theorem Fields.agree {env : Env} {closed : Bool} {fields : List Field}
     {fs : List (String × Value)} {ys : List (String × Typed)} :
     Fields env closed fields fs ys → AgreeFields env closed fields fs (encodeFields ys)
   | .nil => .nil
-  | .keep hf hx hs => .keep hf (hx.agree hF) (hs.agree hF)
-  | .skip hf hs => .drop hf (hs.agree hF)
+  | .keep hf hx hs => .keep hf hx.agree hs.agree
+  | .skip hf hs => .drop hf hs.agree
 
-theorem Args.agree (hF : FloatLaw) {env : Env} {ts : List Ty} {xs : List Value} {ys : List Typed} :
+theorem Args.agree {env : Env} {ts : List Ty} {xs : List Value} {ys : List Typed} :
     Args env ts xs ys → AgreeArgs env ts xs (encodeList ys)
   | .nil => .nil
-  | .cons hx hs => .cons (hx.agree hF) (hs.agree hF)
+  | .cons hx hs => .cons hx.agree hs.agree
 end
 
 /--
@@ -281,9 +282,9 @@ end
 value, except for the fields an open record ignores, the spelling of floats
 and `-0` decoded as an integer.
 -/
-theorem encode_agree (hF : FloatLaw) {env : Env} {t : Ty} {v : Value} {x : Typed}
+theorem encode_agree {env : Env} {t : Ty} {v : Value} {x : Typed}
     (h : decode env t v = .ok x) : Agree env t v (encode x) :=
-  (decode_sound h).agree hF
+  (decode_sound h).agree
 
 /-! ## Secrets -/
 

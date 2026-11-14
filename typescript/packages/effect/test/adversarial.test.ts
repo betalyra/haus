@@ -21,6 +21,20 @@ describe("recursive schemas", () => {
     expect(tree._tag).toBe("A")
   })
 
+  it("recursive values are limited only by the nesting depth (spec §9.9)", () => {
+    const { schemas } = Haus.compileSchemaFile(
+      "type Ints = < Nil | Cons Int Ints >\ntype Tree = { children: Array Tree }\ntype Chain = { next: Maybe (Array (Maybe Chain)) }",
+    )
+    const ints = "Cons(1, ".repeat(255) + "Nil" + ")".repeat(255)
+    const tree = "{ children: [".repeat(127) + "{ children: [] }" + "] }".repeat(127)
+    // Three levels of the value per Chain, and more schema wrappers than that.
+    const chain = "{ next: Some([Some ".repeat(84) + "{ next: None }" + "]) }".repeat(84)
+    for (const [schema, text] of [[schemas.Ints!, ints], [schemas.Tree!, tree], [schemas.Chain!, chain]] as const) {
+      const decoded = Effect.runSync(Haus.decode(schema)(text))
+      expect(Effect.runSync(Haus.encode(schema)(decoded, { style: "compact" }))).toBe(text)
+    }
+  })
+
   it("recursive unions whose members can't be told apart are rejected up front", () => {
     // Effect tries union members in turn: with recursion that is exponential.
     interface A { readonly a: ReadonlyArray<A | B> }

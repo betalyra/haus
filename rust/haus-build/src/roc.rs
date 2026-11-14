@@ -44,6 +44,7 @@ pub struct RocConfig {
     codecs: Vec<(String, String)>,
     /// Schema packages: their directory, and the alias the app gives their Roc package.
     packages: Vec<(PathBuf, String)>,
+    without_attributes: bool,
 }
 
 impl RocConfig {
@@ -63,10 +64,21 @@ impl RocConfig {
         self
     }
 
+    /// Leave the schema's attributes out, as if they weren't written: the
+    /// module decodes and encodes the same (spec §15). For tests of that.
+    #[doc(hidden)]
+    pub fn without_attributes(mut self) -> RocConfig {
+        self.without_attributes = true;
+        self
+    }
+
     /// The module for an application's schema file, named `module`, with id `id`.
     pub fn generate(&self, schema: &Path, module: &str, id: &str) -> Result<String> {
         let packages = self.packages.iter().try_fold(Packages::none(), |all, (dir, alias)| all.with(dir, alias))?;
-        generate(&read(schema)?, module, id, &self.codecs, &packages).map_err(|e| e.in_file(schema))
+        let text = read(schema)?;
+        let file = schema::parse(&text).map_err(|e| Error::from(e).in_file(schema))?;
+        let file = if self.without_attributes { schema::without_attributes(file) } else { file };
+        generate_file(&file, &text, module, id, &self.codecs, &packages).map_err(|e| e.in_file(schema))
     }
 
     /// The module of the schema package in `dir`: its name and ids come from the manifest.
@@ -98,7 +110,17 @@ pub fn generate(
     codecs: &[(String, String)],
     packages: &Packages,
 ) -> Result<String> {
-    let file = schema::parse(text)?;
+    generate_file(&schema::parse(text)?, text, module, id, codecs, packages)
+}
+
+fn generate_file(
+    file: &schema::File,
+    text: &str,
+    module: &str,
+    id: &str,
+    codecs: &[(String, String)],
+    packages: &Packages,
+) -> Result<String> {
     let mut imports = HashMap::new();
     // The Roc modules of schema packages and codecs; those of haus come first.
     let mut roc_imports = vec![];

@@ -11,13 +11,14 @@ const resolver = nodeResolver({ packages })
 
 // The schemas, typed as the content mapper declares them (see schemaDeclarations).
 type Currency<C = {}> = Haus.Lookup<C, "@haus/money@1#Currency", string | Haus.Unknown>
-type Money<C = {}> = Haus.Lookup<C, "@haus/money@1#Money", { readonly _tag: "Money"; readonly values: readonly [BigDecimal.BigDecimal, Currency<C>] }>
+type Decimal<C = {}> = Haus.Lookup<C, "prelude#Decimal", string>
+type Money<C = {}> = Haus.Lookup<C, "@haus/money@1#Money", { readonly _tag: "Money"; readonly values: readonly [Decimal<C>, Currency<C>] }>
 type LatLng<C = {}> = Haus.Lookup<C, "@haus/geo@1#LatLng", { readonly _tag: "LatLng"; readonly values: readonly [number, number] }>
 type Order<C = {}> = Haus.Lookup<C, "app/order#Order", { readonly total: Money<C>; readonly to: LatLng<C>; readonly day: Haus.Lookup<C, "std/time#Date", string> }>
 interface OrderF extends Haus.TypeLambda {
   readonly type: Order<this["C"]>
 }
-type OrderIds = "app/order#Order" | "@haus/money@1#Money" | "@haus/money@1#Currency" | "@haus/geo@1#LatLng" | "std/time#Date"
+type OrderIds = "app/order#Order" | "@haus/money@1#Money" | "@haus/money@1#Currency" | "@haus/geo@1#LatLng" | "std/time#Date" | "prelude#Decimal"
 
 const order = Haus.compileSchemaFile(
   `import std/time (Date)
@@ -43,15 +44,23 @@ const LatLngSchema = geoModule.LatLng as unknown as Haus.Named<Schema.Codec<LatL
 
 // ── codecs ──
 
+/** 1990n → "19.90". */
+const minorText = (minor: bigint) => {
+  const digits = (minor < 0n ? -minor : minor).toString().padStart(3, "0")
+  return `${minor < 0n ? "-" : ""}${digits.slice(0, -2)}.${digits.slice(-2)}`
+}
+
 /** Integer minor units, failing on more than 2 decimal places. */
 const Cents = Schema.Struct({ minor: Schema.BigInt, currency: Schema.String })
 const cents = Haus.codec(MoneySchema, (base) =>
   base.pipe(Schema.decodeTo(Cents, SchemaTransformation.transformEffect({
-    decode: ({ values: [amount, currency] }) =>
-      BigDecimal.normalize(amount).scale > 2 || typeof currency !== "string"
-        ? Effect.fail(new SchemaIssue.InvalidValue({ message: `${BigDecimal.format(amount)} has more than 2 decimal places` }))
-        : Effect.succeed({ minor: BigDecimal.scale(amount, 2).value, currency }),
-    encode: ({ minor, currency }) => Effect.succeed({ _tag: "Money" as const, values: [BigDecimal.make(minor, 2), currency] as const }),
+    decode: ({ values: [text, currency] }) => {
+      const amount = BigDecimal.fromStringUnsafe(text)
+      return BigDecimal.normalize(amount).scale > 2 || typeof currency !== "string"
+        ? Effect.fail(new SchemaIssue.InvalidValue({ message: `${text} has more than 2 decimal places` }))
+        : Effect.succeed({ minor: BigDecimal.scale(amount, 2).value, currency })
+    },
+    encode: ({ minor, currency }) => Effect.succeed({ _tag: "Money" as const, values: [minorText(minor), currency] as const }),
   }))))
 
 /** Only the shape of ISO 4217 codes (the @haus/money/iso profile). */
@@ -77,8 +86,8 @@ const text = `{ total: Money(19.90, EUR), to: LatLng(38.7223, -9.1393), day: Dat
 describe("codecs", () => {
   it("without codecs: the generic types", () => {
     const v = Effect.runSync(Haus.decode(Order)(text))
-    expectTypeOf(v.total).toEqualTypeOf<{ readonly _tag: "Money"; readonly values: readonly [BigDecimal.BigDecimal, string | Haus.Unknown] }>()
-    expect(v.total.values[1]).toBe("EUR")
+    expectTypeOf(v.total).toEqualTypeOf<{ readonly _tag: "Money"; readonly values: readonly [string, string | Haus.Unknown] }>()
+    expect(v.total.values).toEqual(["19.90", "EUR"])
     expect(v.to).toEqual({ _tag: "LatLng", values: [38.7223, -9.1393] })
     expect(v.day).toBe("2026-11-09")
   })
@@ -118,6 +127,21 @@ describe("codecs", () => {
     // @ts-expect-error the schema contains no std/time#Time
     void (() => Haus.decode(Order, time))
     expect(() => Haus.decode(Order, cents, cents)).toThrow("two codecs for @haus/money@1#Money")
+  })
+
+  it("the lossy Effect types are codecs: Decimal as BigDecimal", () => {
+    const v = Effect.runSync(Haus.decode(Order, Haus.decimalAsBigDecimal)(text))
+    expectTypeOf(v.total).toEqualTypeOf<{ readonly _tag: "Money"; readonly values: readonly [BigDecimal.BigDecimal, string | Haus.Unknown] }>()
+    expect(BigDecimal.equals(v.total.values[0], BigDecimal.fromStringUnsafe("19.9"))).toBe(true)
+    expect(v.total.values[0].scale).toBe(2)
+    expect(Effect.runSync(Haus.encode(Order, Haus.decimalAsBigDecimal)(v, { style: "compact" }))).toBe(text)
+    // What it drops: -0 and exponent notation.
+    const lossy = (amount: string) =>
+      Effect.runSync(Effect.flatMap(Haus.decode(Order, Haus.decimalAsBigDecimal)(text.replace("19.90", amount)), Haus.encode(Order, Haus.decimalAsBigDecimal)))
+    expect(lossy("-0")).toContain("Money(0, EUR)")
+    expect(lossy("15e2")).toContain("Money(1.5e3, EUR)")
+    expect(lossy("1.5e-3")).toContain("Money(0.0015, EUR)")
+    expect(lossy("1e-40")).toContain("Money(1e-40, EUR)")
   })
 
   it("convert: codecs for values already decoded without them", () => {

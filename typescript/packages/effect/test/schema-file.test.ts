@@ -1,6 +1,6 @@
 import { HausSchemaFileError, parseSchemaFile } from "@haus-fmt/haus"
 import { describe, expect, it } from "@effect/vitest"
-import { BigDecimal, DateTime, Effect, Exit, Option } from "effect"
+import { DateTime, Effect, Exit, Option } from "effect"
 import { schemaOptions } from "@haus-fmt/haus/node"
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
@@ -35,11 +35,11 @@ describe("schema files", () => {
     const thread = decoded(read("examples/thread.schema.haus"), "Root", read("examples/thread.haus"))
     expect(thread._tag).toBe("Comment")
     expect(typeof thread.likes).toBe("bigint")
-    expect(DateTime.isDateTime(thread.at)).toBe(true)
+    expect(thread.at).toBe("2026-11-01T09:00:00Z")
     expect(thread.replies[0]._tag).toBe("Comment")
 
     const tour = Effect.runSync(Haus.decode(compileFile("examples/syntax-tour.schema.haus").schemas.Root!)(read("examples/syntax-tour.haus"))) as any
-    expect(BigDecimal.isBigDecimal(tour.price)).toBe(true)
+    expect(typeof tour.price).toBe("string")
     expect(Option.isOption(tour.timeout)).toBe(true)
     expect(tour).not.toHaveProperty("owner")
   })
@@ -60,13 +60,51 @@ describe("schema files", () => {
     }`)
     expect(v.n).toBe(12345678901234567890n)
     expect(v.small).toBe(255)
-    expect(BigDecimal.format(v.d)).toBe("19.9")
+    expect(v.d).toBe("19.90")
+    expect(v.at).toBe("2026-11-08T10:00:00Z")
     expect(v.raw).toEqual(new Uint8Array([255, 0]))
     expect(v.day).toBe("2026-11-08")
-    expect(v.price).toMatchObject({ _tag: "Money", values: [expect.anything(), "EUR"] })
+    expect(v.price).toEqual({ _tag: "Money", values: ["19.90", "EUR"] })
     expect(v.nick).toEqual(Option.some("x"))
     expect(v.tags).toEqual({ a: 1n, b: 2n })
     expect(Exit.isFailure(decodeWith(schema.replace("small: UInt8", "small: Int8"), "Root", "{ small: 255 }"))).toBe(true)
+  })
+
+  it("the defaults keep the value: Decimal and std/time types are their text (spec §13.4)", () => {
+    const schema = `import std/time (Instant, ZonedDateTime)
+type Root = { d: Array Decimal, i: Instant, z: ZonedDateTime }`
+    const s = compile(schema).Root!
+    const text = `{ d: [-0, 15e2, 1.5e-3, 19.90, -0.00e-5], i: Instant("2026-11-13T10:00:00.123456789+01:00"), z: ZonedDateTime("2026-11-07T10:00:00+01:00[Europe/Atlantis]") }`
+    const v = Effect.runSync(Haus.decode(s)(text)) as any
+    expect(v.d).toEqual(["-0", "15e2", "1.5e-3", "19.90", "-0.00e-5"])
+    expect(Effect.runSync(Haus.encode(s, { style: "compact" })(v))).toBe(text)
+    // Text that isn't one number literal is never written.
+    const bad = Effect.runSyncExit(Haus.encode(s)({ ...v, d: ["19,90"] }))
+    expect(Exit.isFailure(bad)).toBe(true)
+  })
+
+  it("the lossy Effect types are codecs: Instant and ZonedDateTime as DateTime", () => {
+    const schema = `import std/time (Instant, ZonedDateTime)
+type Root = { i: Instant, z: ZonedDateTime }`
+    const s = compile(schema).Root!
+    // A group: this schema (typed loosely here) doesn't say which types it contains.
+    const dateTimes = Haus.codecs(Haus.instantAsDateTime, Haus.zonedDateTimeAsDateTime)
+    const roundTrip = (text: string) =>
+      Effect.runSync(Effect.flatMap(Haus.decode(s, dateTimes)(text), (v) => Haus.encode(s, dateTimes)(v, { style: "compact" })))
+    const v = Effect.runSync(Haus.decode(s, dateTimes)(`{ i: Instant("2026-11-07T10:00:00Z"), z: ZonedDateTime("2026-11-07T10:00:00+01:00[Europe/Berlin]") }`)) as any
+    expect(DateTime.isDateTime(v.i) && DateTime.isUtc(v.i)).toBe(true)
+    expect(DateTime.isDateTime(v.z) && DateTime.isZoned(v.z)).toBe(true)
+    // What they drop: digits below the millisecond, the offset and fraction as written.
+    expect(roundTrip(`{ i: Instant("2026-11-13T10:00:00.250999+01:00"), z: ZonedDateTime("2026-11-07T10:00:00.000+01:00[Europe/Berlin]") }`))
+      .toBe(`{ i: Instant("2026-11-13T09:00:00.250Z"), z: ZonedDateTime("2026-11-07T10:00:00+01:00[Europe/Berlin]") }`)
+    // A zone that is an offset keeps its brackets: what is written is always valid.
+    expect(roundTrip(`{ i: Instant("2026-11-07T10:00:00Z"), z: ZonedDateTime("2026-11-07T10:00:00+01:00[+01:00]") }`))
+      .toBe(`{ i: Instant("2026-11-07T10:00:00Z"), z: ZonedDateTime("2026-11-07T10:00:00+01:00[+01:00]") }`)
+    // A zone Intl doesn't know is an error (std/time alone accepts it).
+    expect(Exit.isFailure(Effect.runSyncExit(Haus.decode(s, dateTimes)(`{ i: Instant("2026-11-07T10:00:00Z"), z: ZonedDateTime("2026-11-07T10:00:00+01:00[Europe/Atlantis]") }`)))).toBe(true)
+    // A DateTime std/time can't write is an encoding error, never invalid haus.
+    const far = { i: DateTime.makeUnsafe("+012026-01-01T00:00:00Z"), z: DateTime.makeZonedUnsafe(0, { timeZone: "Europe/Berlin" }) }
+    expect(Exit.isFailure(Effect.runSyncExit(Haus.encode(s, dateTimes)(far as any)))).toBe(true)
   })
 
   it("Int is a bigint of any size and writes back unchanged", () => {
@@ -181,7 +219,9 @@ describe("schema files", () => {
     expect(d).toContain(`readonly timeout: Option$.Option<bigint>`)
     expect(d).toContain(`readonly owner?: string`)
     // Imported types are declared too, with their ids.
-    expect(d).toContain(`type Money<C$ = {}> = Haus$.Lookup<C$, "@haus/money@1#Money", { readonly _tag: "Money"; readonly values: readonly [BigDecimal$.BigDecimal, Currency<C$>] }>;`)
+    expect(d).toContain(`type Money<C$ = {}> = Haus$.Lookup<C$, "@haus/money@1#Money", { readonly _tag: "Money"; readonly values: readonly [Haus$.Lookup<C$, "prelude#Decimal", string>, Currency<C$>] }>;`)
+    expect(d).not.toContain("BigDecimal")
+    expect(d).not.toContain("DateTime$")
     expect(d).toContain(`"@haus/money@1#Money"`)
     expect(d).toContain(`Haus$.Lookup<C$, "std/time#Date", string>`)
     const g = Haus.schemaDeclarations(parseSchemaFile("type List a = closed < Nil | Cons a (List a) >"))
@@ -213,7 +253,7 @@ describe("standard modules", () => {
   it("std/time follows the profile, whatever the host type accepts", () => {
     const schema = `import std/time (Date, Instant, Duration)\ntype Root = { d: Date, i: Instant, p: Duration }`
     const ok = decoded(schema, "Root", `{ d: Date("2024-02-29"), i: Instant("2026-11-09T14:30:00+01:00"), p: Duration("PT1H30M") }`)
-    expect(DateTime.isDateTime(ok.i)).toBe(true)
+    expect(ok.i).toBe("2026-11-09T14:30:00+01:00")
     for (const bad of [`d: Date("2026-02-29")`, `i: Instant("2016-12-31T23:59:60Z")`, `i: Instant("2026-11-09 14:30:00Z")`, `p: Duration("PT")`]) {
       const data = `{ d: Date("2024-02-29"), i: Instant("2026-11-09T14:30:00Z"), p: Duration("PT1S"), ${bad} }`
       expect(Exit.isFailure(decodeWith(schema, "Root", data))).toBe(true)

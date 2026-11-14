@@ -37,7 +37,7 @@ fn decodes_into_rust_types() {
 #[test]
 fn encodes_back_to_the_same_text() {
     let ada: Person = from_str(ADA).unwrap();
-    assert_eq!(to_string(&ada), ADA);
+    assert_eq!(to_string(&ada).unwrap(), ADA);
 }
 
 #[test]
@@ -57,7 +57,7 @@ fn open_variants_keep_unknown_tags() {
     let shape: Shape = from_str("Triangle(1, 2, 3)").unwrap();
     let three = ["1", "2", "3"].map(|n| Value::Number(n.into())).to_vec();
     assert_eq!(shape, Shape::Unknown(Unknown { tag: "Triangle".into(), args: three }));
-    assert_eq!(to_string(&shape), "Triangle(1, 2, 3)");
+    assert_eq!(to_string(&shape).unwrap(), "Triangle(1, 2, 3)");
 }
 
 #[test]
@@ -94,7 +94,7 @@ fn spreads_copy_tags_and_fields() {
 
     let item: Item = from_str(r#"{ id: 1, label: "a" }"#).unwrap();
     assert_eq!(item.label, "a");
-    assert_eq!(to_string(&item), r#"{ id: 1, label: "a" }"#);
+    assert_eq!(to_string(&item).unwrap(), r#"{ id: 1, label: "a" }"#);
     assert!(from_str::<Item>(r#"{ id: 1, label: "a", extra: 2 }"#).is_err());
 }
 
@@ -107,7 +107,7 @@ fn secrets_stay_hidden() {
     let debug = format!("{login:?}");
     assert!(debug.contains("password: <redacted>") && !debug.contains("hunter2") && !debug.contains("1234"), "{debug}");
     // Encoding writes secrets in full, and Any as it was.
-    assert_eq!(to_string(&login), text);
+    assert_eq!(to_string(&login).unwrap(), text);
 
     // Errors name the place and the type, never the value.
     let e = decode_error::<Login>(r#"{ user: "ada", password: 4711 }"#);
@@ -129,5 +129,61 @@ fn deprecated_fields_still_decode() {
 fn deprecated_single_tag_variants_still_decode() {
     let legacy: features::Legacy = from_str("Only(7)").unwrap();
     assert_eq!(legacy.0.to_i128(), Some(7));
-    assert_eq!(to_string(&legacy), "Only(7)");
+    assert_eq!(to_string(&legacy).unwrap(), "Only(7)");
+}
+
+#[test]
+fn raw_values_are_checked_before_they_are_written() {
+    // Any and unknown variants hold a haus::Value, which code can build with anything.
+    let login = |extra: Value| Login { extra: Some(extra), ..from_str(r#"{ user: "ada", password: "x" }"#).unwrap() };
+    let error = |v: &dyn haus::Encode| to_string(v).unwrap_err().to_string();
+    let number = |n: &str| Value::Number(n.into());
+    let tag = |t: &str, args: Vec<Value>| Value::Variant { tag: t.into(), args };
+
+    // Numbers are written normalized, as the parser reads them.
+    assert_eq!(
+        to_string(&login(Value::Array(vec![number("1E5"), number("0xFF"), number("1_000")]))).unwrap(),
+        r#"{ user: "ada", password: "x", extra: [1e5, 255, 1000] }"#
+    );
+    assert_eq!(error(&login(Value::Array(vec![number("1"), number("abc")]))), ".extra[1]: not a number literal");
+    assert_eq!(error(&login(number("1.e5"))), ".extra: not a number literal");
+    assert_eq!(error(&login(number("1e6145"))), ".extra: exponent larger than 6144");
+    assert_eq!(error(&login(number(&"1.5".repeat(400)))), ".extra: number literal longer than 1000 characters");
+    assert_eq!(error(&login(tag("lower", vec![]))), ".extra: not a tag name: A to Z, then letters, digits and _");
+    assert_eq!(
+        error(&login(Value::Record(vec![("a".into(), number("1")), ("a".into(), number("2"))]))),
+        ".extra.a: the key is used twice in this record"
+    );
+    let deep = (0..256).fold(number("1"), |v, _| Value::Array(vec![v]));
+    assert_eq!(
+        error(&login(deep)).split_once(": ").map(|(_, why)| why.to_owned()),
+        Some("nesting deeper than 256 levels".into())
+    );
+    let huge = Value::String("x".repeat(16 * 1024 * 1024 + 1));
+    assert_eq!(error(&login(huge)), ".extra: string longer than 16777216 characters");
+
+    // An unknown variant's tag and payload, inside its own payload's path.
+    let shape = Shape::Unknown(Unknown { tag: "Hexagon".into(), args: vec![number("1"), number("--1")] });
+    assert_eq!(error(&shape), "(Hexagon)[1]: not a number literal");
+    assert_eq!(
+        error(&Shape::Unknown(Unknown { tag: "hexagon".into(), args: vec![] })),
+        "not a tag name: A to Z, then letters, digits and _"
+    );
+    let shape = Shape::Unknown(Unknown {
+        tag: "Hexagon".into(),
+        args: vec![Value::Record(vec![("side".into(), number("x"))])],
+    });
+    assert_eq!(error(&shape), "(Hexagon).side: not a number literal");
+
+    // A reader with lower limits: an integer longer than its number limit is written in hex.
+    let small = haus::Limits { max_number_length: 20, ..haus::Limits::default() };
+    let big = number("4722366482869645213695"); // 2^72 - 1
+    assert_eq!(haus::to_string(&big).unwrap(), "4722366482869645213695");
+    assert_eq!(haus::to_string_with(&big, &small).unwrap(), "0xffffffffffffffffff");
+    assert_eq!(haus::parse_with("0xffffffffffffffffff", &small).unwrap(), [big]);
+    let bigger = number(&"9".repeat(30));
+    assert_eq!(
+        haus::to_string_with(&bigger, &small).unwrap_err().to_string(),
+        "number literal longer than 20 characters"
+    );
 }

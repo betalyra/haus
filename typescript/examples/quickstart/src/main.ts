@@ -13,7 +13,7 @@ const depth = (c: Comment): number => 1 + Math.max(0, ...c.replies.map(depth));
 const reply = `Comment { author: "me", at: Instant("2026-11-16T09:00:00Z"), text: "+1", likes: 0, replies: [] }`;
 
 const program = Effect.gen(function* () {
-  // 1. The thread, as typed data: Int is bigint, Instant is DateTime.Utc.
+  // 1. The thread, as typed data: Int is bigint, Instant is its text as written.
   yield* Console.log(`thread by ${thread.author}: ${depth(thread)} levels, ${likes(thread)} likes`);
 
   // 2. Decode haus text with the schema, change it, encode it back.

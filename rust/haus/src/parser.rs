@@ -42,6 +42,17 @@ pub(crate) fn parse_single(src: &str, limits: &Limits, at_start: bool) -> Result
     Parser { src, b: src.as_bytes(), pos: 0, depth: 0, limits, file_start: at_start.then_some(0) }.single()
 }
 
+/// `text` as exactly one number literal (`1E5`, `0xFF`, `1_000`), normalized
+/// as the parser reads it (`1e5`, `255`, `1000`); None if it isn't one or is
+/// beyond the limits.
+pub(crate) fn number_literal(text: &str, limits: &Limits) -> Option<String> {
+    let mut p = Parser { src: text, b: text.as_bytes(), pos: 0, depth: 0, limits, file_start: None };
+    match p.number() {
+        Ok(Value::Number(n)) if p.pos == text.len() => Some(n),
+        _ => None,
+    }
+}
+
 type R<T> = Result<T, Error>;
 
 struct Parser<'a> {

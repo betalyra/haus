@@ -16,22 +16,30 @@
  *   Point(1, 2)              → TaggedStruct("Point", { x, y })     positional args fill fields in order
  *   EUR                      → Literal "EUR"  or  TaggedStruct("EUR", {})
  *   True / False             → Boolean
- *   None / Some(x)           → Option(X), or an optional key
- *   19.90                    → BigDecimal (exact), Number (Float64), Haus.Float32, BigInt, or a string (e.g. BigDecimalFromString)
- *   Instant("…")             → DateTimeUtc, or any schema encoded as a string
- *   ZonedDateTime("…")       → DateTimeZoned
+ *   None / Some(x)           → Option(X)   (a missing field is not None: `x?: T` is optionalKey(T))
+ *   19.90                    → Haus.Decimal (the exact text, "19.90"), Number (Float64), Haus.Float32, BigInt
+ *   Instant("…")             → Haus.Instant (the text as written)
+ *   ZonedDateTime("…")       → Haus.ZonedDateTime (the text as written)
  *   unknown tag in OpenUnion → { _tag: "@unknown", tag, value }
  *   any value                → Haus.Any: the parsed haus Value, unchanged
  *   a secret (Secret a)      → Schema.Redacted(A): errors inside never show the value
+ *
+ * The defaults keep the value: encoding what they decoded writes an equal
+ * haus value (spec §13.4). Host types that keep less are a choice:
+ * `Haus.DecimalAsBigDecimal`, `Haus.InstantAsDateTime` and
+ * `Haus.ZonedDateTimeAsDateTime` in hand-written schemas, and the codecs
+ * `Haus.decimalAsBigDecimal`, `Haus.instantAsDateTime` and
+ * `Haus.zonedDateTimeAsDateTime` for schema files (`Schema.BigDecimal`,
+ * `Schema.DateTimeUtc` and `Schema.DateTimeZoned` work as well, with the same losses).
  */
 import { HausSyntaxError, parseAll, parseStream, stringify, type ChunkSource, type FormatOptions, type Value } from "@haus-fmt/haus"
-import { checkStdTime, type StdTimeType } from "@haus-fmt/haus"
-import { Effect, Option, Schema, SchemaAST, Stream } from "effect"
-import { entries, isCodec, setId, type AnyCodec, type Checked, type Decoded, type Named } from "./codec.js"
+import { checkStdTime, normalizeNumber, type StdTimeType } from "@haus-fmt/haus"
+import { BigDecimal, DateTime as EffectDateTime, Effect, Option, Schema, SchemaAST, SchemaIssue, SchemaTransformation, Stream } from "effect"
+import { codec, entries, isCodec, setId, type AnyCodec, type Checked, type Decoded, type Named } from "./codec.js"
 import { withCodecs } from "./schema-file.js"
 import {
-  checkSchema, compile, compileEncoder, ConversionError, decodeBudget, DEFAULT_ENCODE_STEPS, guarded, isRedacted, NUMBER, POSITIONAL, PRELUDE_TAG, secretMessage,
-  UNKNOWN_TAG, VALUE,
+  checkSchema, compile, compileEncoder, ConversionError, dateTimeText, DECIMAL, decimalText, decodeBudget, DEFAULT_ENCODE_STEPS, guarded, isRedacted, NUMBER, POSITIONAL,
+  PRELUDE_TAG, secretMessage, UNKNOWN_TAG, VALUE,
 } from "./convert.js"
 
 export type { Value }
@@ -187,6 +195,44 @@ export const Positional = <S extends Schema.Top>(schema: S): S["Rebuild"] =>
 // @effect-diagnostics-next-line schemaNumber:off -- Float32 includes NaN and the infinities (spec §15)
 export const Float32 = Schema.Number.annotate({ [NUMBER]: "Float32" })
 
+/** The id codecs use for the prelude's `Decimal`. */
+export const DECIMAL_ID = "prelude#Decimal"
+
+/**
+ * haus `Decimal` (the default): any number, as its exact literal text,
+ * normalized as the parser does (spec §2): `19.90` → "19.90", `1.5e3` →
+ * "1.5e3", `-0` → "-0". Encoding writes the text back, so nothing is lost;
+ * text that isn't one number literal is an error. Pass it to a decimal
+ * library, or use `Haus.DecimalAsBigDecimal`.
+ */
+export const Decimal = setId(
+  Schema.String.annotate({ [DECIMAL]: true }).check(
+    Schema.makeFilter((s: string) => normalizeNumber(s) !== undefined || "a number literal, like \"19.90\""),
+  ),
+  DECIMAL_ID,
+) as Named<Schema.String, typeof DECIMAL_ID>
+
+/** A `Haus.Decimal` read as a BigDecimal: the text → BigDecimal, and back with its scale. */
+const asBigDecimal = <S extends Schema.Codec<string, string>>(base: S) =>
+  base.pipe(
+    Schema.decodeTo(
+      Schema.BigDecimal,
+      SchemaTransformation.transform({ decode: (text: string) => BigDecimal.fromStringUnsafe(text), encode: decimalText }),
+    ),
+  )
+
+/**
+ * haus `Decimal` as an Effect `BigDecimal`: an explicit, lossy choice (spec
+ * §13.4). It keeps the amount and the scale (`19.90` stays `19.90`), but
+ * drops exponent notation and the sign of zero: `-0` is written `0`, `15e2`
+ * as `1.5e3`, `1.5e-3` as `0.0015`. A different haus value, with another
+ * canonical form and hash. For schema files, the codec `Haus.decimalAsBigDecimal`.
+ */
+export const DecimalAsBigDecimal = asBigDecimal(Decimal)
+
+/** Codec for schema files: their `Decimal`s as BigDecimals, with the losses of `Haus.DecimalAsBigDecimal`. */
+export const decimalAsBigDecimal = codec(Decimal, asBigDecimal)
+
 // ── std/time ─────────────────────────────────────────────────
 
 const stdTime = <S extends Schema.Top>(name: StdTimeType, schema: S) => setId(schema, `std/time#${name}`)
@@ -210,23 +256,76 @@ export const Duration = timeString("Duration")
 export const YearMonth = timeString("YearMonth")
 /** `TimeZone("Europe/Lisbon")` as the IANA name (not looked up). */
 export const TimeZone = timeString("TimeZone")
-/**
- * `Instant("2026-11-07T10:00:00Z")` as an Effect `DateTime.Utc`. Lossy (spec
- * §13.4): it keeps the instant, not the offset or the fraction as written, so
- * `…10:00:00.250+01:00` is written back as `…09:00:00.250Z`, a different haus
- * value with another hash. `Haus.InstantText` keeps the text.
- */
-export const Instant = stdTime("Instant", Schema.DateTimeUtc.annotate({})) as Named<Schema.DateTimeUtc, "std/time#Instant">
-/**
- * `ZonedDateTime("2026-11-07T10:00:00+01:00[Europe/Lisbon]")` as an Effect
- * `DateTime.Zoned`. Lossy like `Haus.Instant`; `Haus.ZonedDateTimeText` keeps the text.
- */
-export const ZonedDateTime = stdTime("ZonedDateTime", Schema.DateTimeZoned.annotate({})) as Named<Schema.DateTimeZoned, "std/time#ZonedDateTime">
+/** `Instant("2026-11-07T10:00:00.250+01:00")` as its validated text, exactly as written (offset and fraction included). */
+export const Instant = timeString("Instant")
+/** `ZonedDateTime("2026-11-07T10:00:00+01:00[Europe/Lisbon]")` as its validated text, exactly as written. */
+export const ZonedDateTime = timeString("ZonedDateTime")
 
-/** `Instant("…")` as its validated string, exactly as written (offset and fraction included). */
-export const InstantText = timeString("Instant")
-/** `ZonedDateTime("…")` as its validated string, exactly as written. */
-export const ZonedDateTimeText = timeString("ZonedDateTime")
+/** An Effect DateTime as std/time text; a DateTime that std/time can't write (a year beyond 9999) is an encoding error. */
+const writeDateTime = (d: EffectDateTime.DateTime) =>
+  Effect.try({
+    try: () => dateTimeText(d).text,
+    catch: (e) => new SchemaIssue.InvalidValue({ message: e instanceof ConversionError ? e.message : String(e) }),
+  })
+
+const asDateTimeUtc = <S extends Schema.Codec<string, string>>(base: S) =>
+  base.pipe(
+    Schema.decodeTo(
+      Schema.DateTimeUtc,
+      SchemaTransformation.transformEffect({
+        decode: (s: string) =>
+          Option.match(EffectDateTime.make(s), {
+            onNone: () => Effect.fail(new SchemaIssue.InvalidValue({ message: `${s} is not a DateTime.Utc` })),
+            onSome: (d) => Effect.succeed(EffectDateTime.toUtc(d)),
+          }),
+        encode: writeDateTime,
+      }),
+    ),
+  )
+
+const asDateTimeZoned = <S extends Schema.Codec<string, string>>(base: S) =>
+  base.pipe(
+    Schema.decodeTo(
+      Schema.DateTimeZoned,
+      SchemaTransformation.transformEffect({
+        decode: (s: string) =>
+          Option.match(EffectDateTime.makeZonedFromString(s), {
+            onNone: () => Effect.fail(new SchemaIssue.InvalidValue({ message: `${s}: a zone that Intl doesn't know` })),
+            onSome: Effect.succeed,
+          }),
+        encode: writeDateTime,
+      }),
+    ),
+  )
+
+/**
+ * std/time `Instant` as an Effect `DateTime.Utc`: an explicit, lossy choice
+ * (spec §13.4). It keeps the instant to the millisecond, and drops digits
+ * below the millisecond, the offset and the fraction as written:
+ * `…10:00:00.250+01:00` is written `…09:00:00.250Z`, `…10:00:00.000Z` is
+ * written `…10:00:00Z`. A different haus value, with another canonical form
+ * and hash. A DateTime outside the years 0000–9999 can't be written (an
+ * encoding error). For schema files, the codec `Haus.instantAsDateTime`.
+ */
+export const InstantAsDateTime = asDateTimeUtc(Instant)
+
+/**
+ * std/time `ZonedDateTime` as an Effect `DateTime.Zoned`: an explicit, lossy
+ * choice (spec §13.4). It keeps the instant to the millisecond and the zone,
+ * and drops digits below the millisecond, the offset and the fraction as
+ * written (the offset is written as the zone has it at that instant). Zone
+ * names are looked up with Intl: an unknown zone is an error (std/time
+ * accepts any well-formed name), and a name Intl canonicalises is written
+ * that way (`Etc/UTC` → `UTC`). A zone that is an offset is written in
+ * brackets, `…+01:00[+01:00]`. For schema files, the codec `Haus.zonedDateTimeAsDateTime`.
+ */
+export const ZonedDateTimeAsDateTime = asDateTimeZoned(ZonedDateTime)
+
+/** Codec for schema files: their `Instant`s as `DateTime.Utc`, with the losses of `Haus.InstantAsDateTime`. */
+export const instantAsDateTime = codec(Instant, asDateTimeUtc)
+
+/** Codec for schema files: their `ZonedDateTime`s as `DateTime.Zoned`, with the losses of `Haus.ZonedDateTimeAsDateTime`. */
+export const zonedDateTimeAsDateTime = codec(ZonedDateTime, asDateTimeZoned)
 
 // ── decoding ─────────────────────────────────────────────────
 

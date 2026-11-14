@@ -57,7 +57,7 @@ fn keeps_a_huge_hex_integer_in_hex() {
     let big = format!("0x{}", "f".repeat(900));
     assert_eq!(c(&big), big);
     // and the compact writer does the same (spec §11), so its output parses again
-    assert_eq!(haus::ser::write(&parse(&big)), big);
+    assert_eq!(haus::ser::write(&parse(&big)), Ok(big));
 }
 
 #[test]

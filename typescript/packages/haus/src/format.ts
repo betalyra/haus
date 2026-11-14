@@ -33,6 +33,12 @@ export interface FormatOptions {
   readonly source?: string
   /** Comment spans from `parseDocument`; they are kept in the output. Needs `source`. */
   readonly comments?: readonly (readonly [number, number])[]
+  /**
+   * The number limit of the reader (default 1000, spec §7): an integer whose
+   * decimal literal is longer is written in hex, so that it parses again.
+   * Pass the same limits as to the parser.
+   */
+  readonly maxNumberLength?: number
 }
 
 /** Format a whole file: one value, or a stream with a comma after each value. */
@@ -54,9 +60,12 @@ export function stringify(value: Value, options: FormatOptions = {}): string {
   return options.style === "compact" ? f.line(value) : f.value(value, "", 0)
 }
 
-/** A hex literal at the length limit has a longer decimal form; such integers are written in hex. */
-export function numberText(text: string): string {
-  if (text.length > DEFAULT_LIMITS.maxNumberLength && /^-?\d+$/.test(text)) {
+/**
+ * A number's literal; an integer longer than `maxNumberLength` (a hex literal
+ * at the length limit has a longer decimal form) is written in hex.
+ */
+export function numberText(text: string, maxNumberLength: number = DEFAULT_LIMITS.maxNumberLength): string {
+  if (text.length > maxNumberLength && /^-?\d+$/.test(text)) {
     const n = BigInt(text)
     return (n < 0n ? "-0x" : "0x") + (n < 0n ? -n : n).toString(16)
   }
@@ -81,8 +90,10 @@ class Formatter {
   private readonly width: number
   private readonly source: string | undefined
   private readonly comments: readonly (readonly [number, number])[]
+  private readonly maxNumberLength: number
 
   constructor(options: FormatOptions) {
+    this.maxNumberLength = options.maxNumberLength ?? DEFAULT_LIMITS.maxNumberLength
     this.step = " ".repeat(options.indent ?? 2)
     this.width = options.width ?? 80
     this.source = options.source
@@ -335,7 +346,7 @@ class Formatter {
   // ── leaves ─────────────────────────────────────────────────
 
   private number(v: Extract<Value, { kind: "number" }>): string {
-    return numberText(this.original(v) ?? v.text)
+    return numberText(this.original(v) ?? v.text, this.maxNumberLength)
   }
 
   /** `x"…"`: the source spelling when reformatting (spaces kept), else lowercase hex. */

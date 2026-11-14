@@ -3,6 +3,7 @@ import haus.Value
 import haus.Decode
 import haus.Encode
 import Attributes
+import AttributesBare
 import Builtins
 import Numbers
 import Records
@@ -29,8 +30,8 @@ SchemaTest := [].{
 
 	## Case `i` of a cases file (see test-suite/schema/numbers.cases.haus):
 	## `Ok { type, input, output? }` decodes `input` with `type`, and encoding
-	## the result gives the canonical form of `output` (or of `input`);
-	## `Err { type, input }` doesn't decode.
+	## the result gives the canonical form of `output` (or of `input`), which
+	## the writer takes; `Err { type, input }` doesn't decode.
 	check : Str, U64, (Str, Value -> Codec) -> Bool
 	check = |cases, i, codec| {
 		ok = match Value.parse_all(cases) {
@@ -39,7 +40,8 @@ SchemaTest := [].{
 					(Ok(Text(ty)), Ok(input)) => {
 						want = field(fields, "output") ?? input
 						match codec(ty, input) {
-							Decoded(Ok(got)) if Encode.canonical(got) == Encode.canonical(want) => Ok({})
+							# The writer takes it too (it checks what it writes).
+							Decoded(Ok(got)) if Encode.canonical(got) == Encode.canonical(want) => Encode.to_str(got).map_ok(|_| {}).map_err(|e| "can't be written: ${Encode.message(e)}")
 							Decoded(Ok(got)) => Err("wrote ${Encode.canonical(got)}, expected ${Encode.canonical(want)}")
 							Decoded(Err(e)) => Err("didn't decode: ${Decode.message(e)}")
 							NoType => Err("the schema has no type ${ty}")
@@ -75,6 +77,16 @@ SchemaTest := [].{
 		"Shape" => Decoded(Attributes.decode_shape(v).map_ok(Attributes.encode_shape))
 		"Later" => Decoded(Attributes.decode_later(v).map_ok(Attributes.encode_later))
 		"Uses" => Decoded(Attributes.decode_uses(v).map_ok(Attributes.encode_uses))
+		_ => NoType
+	}
+
+	## Decode a value with a type of attributes.schema.haus without its attributes, and encode the result.
+	attributes_bare : Str, Value -> Codec
+	attributes_bare = |ty, v| match ty {
+		"Client" => Decoded(AttributesBare.decode_client(v).map_ok(AttributesBare.encode_client))
+		"Shape" => Decoded(AttributesBare.decode_shape(v).map_ok(AttributesBare.encode_shape))
+		"Later" => Decoded(AttributesBare.decode_later(v).map_ok(AttributesBare.encode_later))
+		"Uses" => Decoded(AttributesBare.decode_uses(v).map_ok(AttributesBare.encode_uses))
 		_ => NoType
 	}
 
@@ -157,32 +169,62 @@ expect SchemaTest.count(attributes_cases) == 10
 # Ok { type: "Client", input: { id: 1, mail: "a@example.com" } },
 expect SchemaTest.check(attributes_cases, 0, SchemaTest.attributes)
 
+# Without attributes: Ok { type: "Client", input: { id: 1, mail: "a@example.com" } },
+expect SchemaTest.check(attributes_cases, 0, SchemaTest.attributes_bare)
+
 # Ok { type: "Client", input: { id: 1, email: "a@example.com" } },
 expect SchemaTest.check(attributes_cases, 1, SchemaTest.attributes)
+
+# Without attributes: Ok { type: "Client", input: { id: 1, email: "a@example.com" } },
+expect SchemaTest.check(attributes_cases, 1, SchemaTest.attributes_bare)
 
 # Err { type: "Client", input: { mail: "a@example.com" } },
 expect SchemaTest.check(attributes_cases, 2, SchemaTest.attributes)
 
+# Without attributes: Err { type: "Client", input: { mail: "a@example.com" } },
+expect SchemaTest.check(attributes_cases, 2, SchemaTest.attributes_bare)
+
 # Ok { type: "Shape", input: Square { side: 2 } },
 expect SchemaTest.check(attributes_cases, 3, SchemaTest.attributes)
+
+# Without attributes: Ok { type: "Shape", input: Square { side: 2 } },
+expect SchemaTest.check(attributes_cases, 3, SchemaTest.attributes_bare)
 
 # Ok { type: "Shape", input: Dot },
 expect SchemaTest.check(attributes_cases, 4, SchemaTest.attributes)
 
+# Without attributes: Ok { type: "Shape", input: Dot },
+expect SchemaTest.check(attributes_cases, 4, SchemaTest.attributes_bare)
+
 # Err { type: "Shape", input: Triangle },
 expect SchemaTest.check(attributes_cases, 5, SchemaTest.attributes)
+
+# Without attributes: Err { type: "Shape", input: Triangle },
+expect SchemaTest.check(attributes_cases, 5, SchemaTest.attributes_bare)
 
 # Ok { type: "Later", input: { n: 1 } },
 expect SchemaTest.check(attributes_cases, 6, SchemaTest.attributes)
 
+# Without attributes: Ok { type: "Later", input: { n: 1 } },
+expect SchemaTest.check(attributes_cases, 6, SchemaTest.attributes_bare)
+
 # Ok { type: "Later", input: { n: 1, m: 2, x: 3 }, output: { n: 1, m: 2 } },
 expect SchemaTest.check(attributes_cases, 7, SchemaTest.attributes)
+
+# Without attributes: Ok { type: "Later", input: { n: 1, m: 2, x: 3 }, output: { n: 1, m: 2 } },
+expect SchemaTest.check(attributes_cases, 7, SchemaTest.attributes_bare)
 
 # Err { type: "Later", input: { m: 2 } },
 expect SchemaTest.check(attributes_cases, 8, SchemaTest.attributes)
 
+# Without attributes: Err { type: "Later", input: { m: 2 } },
+expect SchemaTest.check(attributes_cases, 8, SchemaTest.attributes_bare)
+
 # Ok { type: "Uses", input: { client: { id: 1 }, shape: Dot } },
 expect SchemaTest.check(attributes_cases, 9, SchemaTest.attributes)
+
+# Without attributes: Ok { type: "Uses", input: { client: { id: 1 }, shape: Dot } },
+expect SchemaTest.check(attributes_cases, 9, SchemaTest.attributes_bare)
 
 # builtins.cases.haus
 expect SchemaTest.count(builtins_cases) == 72
@@ -746,7 +788,7 @@ expect SchemaTest.check(records_cases, 19, SchemaTest.records)
 expect SchemaTest.check(records_cases, 20, SchemaTest.records)
 
 # types.cases.haus
-expect SchemaTest.count(types_cases) == 11
+expect SchemaTest.count(types_cases) == 12
 
 # Ok { type: "IntPair", input: { first: 1, second: 2 } },
 expect SchemaTest.check(types_cases, 0, SchemaTest.types)
@@ -780,6 +822,9 @@ expect SchemaTest.check(types_cases, 9, SchemaTest.types)
 
 # Err { type: "Expr", input: Add(Num(1), Sub(Num(2))) },
 expect SchemaTest.check(types_cases, 10, SchemaTest.types)
+
+# Ok { type: "Ints", input: Cons(99, Cons(98, Cons(97, Cons(96, Cons(95, Cons(94, Cons(93, Cons(92, Cons(91, Cons(90, Cons(89, Cons(88, Cons(87, Cons(86, Cons(85, Cons(84, Cons(83, Cons(82, Cons(81, Cons(80, Cons(79, Cons(78, Cons(77, Cons(76, Cons(75, Cons(74, Cons(73, Cons(72, Cons(71, Cons(70, Cons(69, Cons(68, Cons(67, Cons(66, Cons(65, Cons(64, Cons(63, Cons(62, Cons(61, Cons(60, Cons(59, Cons(58, Cons(57, Cons(56, Cons(55, Cons(54, Cons(53, Cons(52, Cons(51, Cons(50, Cons(49, Cons(48, Cons(47, Cons(46, Cons(45, Cons(44, Cons(43, Cons(42, Cons(41, Cons(40, Cons(39, Cons(38, Cons(37, Cons(36, Cons(35, Cons(34, Cons(33, Cons(32, Cons(31, Cons(30, Cons(29, Cons(28, Cons(27, Cons(26, Cons(25, Cons(24, Cons(23, Cons(22, Cons(21, Cons(20, Cons(19, Cons(18, Cons(17, Cons(16, Cons(15, Cons(14, Cons(13, Cons(12, Cons(11, Cons(10, Cons(9, Cons(8, Cons(7, Cons(6, Cons(5, Cons(4, Cons(3, Cons(2, Cons(1, Cons(0, Nil)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))) },
+expect SchemaTest.check(types_cases, 11, SchemaTest.types)
 
 # variants.cases.haus
 expect SchemaTest.count(variants_cases) == 45

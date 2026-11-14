@@ -332,6 +332,15 @@ export function recursiveNames(root: Shape): Map<Shape, string> {
 
 const PRELUDE_BOOL = new Set(["True", "False"])
 const PRELUDE_MAYBE = new Set(["None", "Some"])
+
+/**
+ * Whether the variants at a position are a `Maybe`: only `None` without a
+ * payload and `Some` with exactly one argument. `Some(1, 2)` or `None(3)` is
+ * an ordinary variant that happens to use these tags.
+ */
+export const isMaybeShape = (shape: Shape): boolean =>
+  [...shape.variants].every(([tag, v]) =>
+    PRELUDE_MAYBE.has(tag) && !v.record && (tag === "None" ? v.positional.length === 0 : !v.bare && v.positional.length === 1))
 /** Names a recursive type must not take: built-in types and the names `inferSchema` uses. */
 const reserved = () => new Set(["String", "Int", "Decimal", "Array", "Maybe", "Bool", "Stream", "Root", "Item", ...PRELUDE_STRING_TAGS])
 
@@ -444,7 +453,7 @@ class ShapePrinter {
     const tags = [...variants.keys()]
     const allBare = [...variants.values()].every((v) => v.bare && !v.record && v.positional.length === 0)
     if (allBare && tags.every((t) => PRELUDE_BOOL.has(t))) return "Bool"
-    if (tags.every((t) => PRELUDE_MAYBE.has(t))) {
+    if (isMaybeShape(s)) {
       const some = variants.get("Some")?.positional[0]
       if (!some) return "Maybe _"
       const inner = this.shape(some, ind)

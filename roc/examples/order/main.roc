@@ -38,7 +38,7 @@ main! = |_args| {
 	Stdout.line!(status(typed.status))?
 
 	# Encoding with the same codecs gives back the same haus text.
-	Stdout.line!(Encode.to_str(Typed.encode_root(typed)))?
+	Stdout.line!(Encode.to_str(Typed.encode_root(typed)).map_err(|e| Encode(e))?)?
 
 	# Codecs add rules on top of the schema's: Eur is a valid tag, but not ISO-shaped.
 	eur = text.replace_first("EUR", "Eur")

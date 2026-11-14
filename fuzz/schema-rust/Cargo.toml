@@ -1,0 +1,22 @@
+[package]
+name = "haus-schema-fuzz"
+version = "0.0.0"
+description = "The Rust runner of the schema fuzzer (fuzz/README.md): decodes with the code haus-build generates"
+edition = "2024"
+publish = false
+
+# Not part of the rust/ workspace: a crate of its own, built by fuzz/build.sh.
+[workspace]
+
+[[bin]]
+name = "schema_runner"
+path = "src/main.rs"
+
+[dependencies]
+haus = { package = "haus-fmt", path = "../../rust/haus" }
+
+[build-dependencies]
+haus-build = { path = "../../rust/haus-build" }
+
+[profile.release]
+debug = 1

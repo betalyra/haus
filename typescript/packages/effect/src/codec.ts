@@ -7,7 +7,7 @@
  *     base.pipe(Schema.decodeTo(Cents, SchemaTransformation.transform({ decode: toCents, encode: fromCents }))))
  *
  *   const order = yield* Haus.decode(Root, cents)(text)   // order.total: Cents
- *   const plain = yield* Haus.decode(Root)(text)          // order.total: { _tag: "Money", values: [BigDecimal, …] }
+ *   const plain = yield* Haus.decode(Root)(text)          // order.total: { _tag: "Money", values: ["19.90", …] }
  *
  * A codec is an ordinary Effect schema built from the type's base schema
  * (what haus decodes without codecs). It runs after the base, so it can add

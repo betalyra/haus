@@ -1,16 +1,28 @@
 ## Writing haus: the compact layout (spec §11: one value per line, normal
 ## spacing), and the building blocks that generated encoders use.
 ##
-##     Encode.to_str(Rec([("name", Text("Ada"))]))   # { name: "Ada" }
+##     Encode.to_str(Rec([("name", Text("Ada"))]))   # Ok("{ name: \"Ada\" }")
+##
+## The writer checks what it writes (spec §9.8). What generated encoders give
+## is always fine; a `Value` built in code, such as the raw value of an `Any`
+## or an unknown variant, may hold anything: `Num("abc")` is an error.
 import Int
 import Secret
 import Value
 
 Encode := [].{
 
-	## One value on one line.
-	to_str : Value -> Str
-	to_str = |value| bytes_to_str(line(value))
+	## One value on one line. The value is checked as it is written, against
+	## what a reader takes: number literals (normalized as the parser reads
+	## them, so `Num("1E5")` is written `1e5`), tag names, unique keys, and the
+	## parser's limits (nesting depth 256, number literals of 1000 characters,
+	## exponents up to 6144, strings of 16 Mi characters).
+	to_str : Value -> Try(Str, Error)
+	to_str = |value| line(value, 0).map_ok(bytes_to_str)
+
+	## `.extra[1]: not a number literal`, or just the reason at the root.
+	message : Error -> Str
+	message = |{ reason, path }| if (path == "") reason else "${path}: ${reason}"
 
 	## The canonical form (spec §12): one exact text per value, the same in
 	## every binding, so equal values (§2) give identical text. There is no
@@ -29,9 +41,18 @@ Encode := [].{
 	compare : Value, Value -> [Before, Same, After]
 	compare = |a, b| compare_bytes(canonical_bytes(a), canonical_bytes(b))
 
-	## A stream: one value per line, each followed by a comma.
-	stream : List(Value) -> Str
-	stream = |values| Str.join_with(values.map(|v| "${to_str(v)},\n"), "")
+	## A stream: one value per line, each followed by a comma. Errors say
+	## which value: `[3].total`.
+	stream : List(Value) -> Try(Str, Error)
+	stream = |values| {
+		var $out = []
+		var $i = 0.U64
+		for v in values {
+			$out = $out.concat(within(line(v, 0), "[${$i.to_str()}]")?).concat([',', '\n'])
+			$i = $i + 1
+		}
+		Ok(bytes_to_str($out))
+	}
 
 	# ── building blocks ─────────────────────────────────────
 
@@ -190,26 +211,191 @@ layout = |d, n| {
 	}
 }
 
-line : Value -> List(U8)
-line = |value| match value {
-	Num(text) => number_text(text)
-	Text(s) => quote(s)
-	Bytes(b) => "x\"".to_utf8().concat(hex(b)).append('"')
-	Arr(items) => ['['].concat(joined(items.map(line))).append(']')
-	Rec(fields) => record_line(fields)
-	Tag(name, []) => name.to_utf8()
-	Tag(name, [Rec(fields)]) => name.to_utf8().append(' ').concat(record_line(fields))
-	Tag(name, args) => name.to_utf8().append('(').concat(joined(args.map(line))).append(')')
+## Where in the value (`.extra[1]`, empty at the root), and what's wrong: the
+## same paths as `Decode.Error`.
+Error : { reason : Str, path : Str }
+
+# The parser's limits (spec §7 defaults, as in Value.roc): what a reader takes.
+max_depth : U64
+max_depth = 256
+
+max_number_length : U64
+max_number_length = 1000
+
+max_exponent : U64
+max_exponent = 6144
+
+max_string_length : U64
+max_string_length = 16 * 1024 * 1024
+
+## Prefix the path of an error coming out of a nested value.
+within : Try(a, Error), Str -> Try(a, Error)
+within = |result, segment| result.map_err(|{ reason, path }| { reason, path: "${segment}${path}" })
+
+fail : Str -> Try(a, Error)
+fail = |reason| Err({ reason, path: "" })
+
+## A value inside `depth` containers (records, arrays, payloads).
+line : Value, U64 -> Try(List(U8), Error)
+line = |value, depth| match value {
+	Num(text) => number(text).map_err(|reason| { reason, path: "" })
+	Text(s) => {
+		check_length(s)?
+		Ok(quote(s))
+	}
+	Bytes(b) =>
+		if b.len() > max_string_length // 2 {
+			fail("byte string longer than ${max_string_length.to_str()} characters")
+		} else {
+			Ok("x\"".to_utf8().concat(hex(b)).append('"'))
+		}
+	Arr(items) => {
+		open(depth)?
+		Ok(['['].concat(items_line(items, depth + 1)?).append(']'))
+	}
+	Rec(fields) => record_line(fields, depth)
+	Tag(name, args) =>
+		if !is_tag(name) {
+			fail("not a tag name: A to Z, then letters, digits and _")
+		} else {
+			match args {
+				[] => Ok(name.to_utf8())
+				[Rec(fields)] => Ok(name.to_utf8().append(' ').concat(within(record_line(fields, depth), "(${name})")?))
+				_ => {
+					open(depth)?
+					Ok(name.to_utf8().append('(').concat(within(items_line(args, depth + 1), "(${name})")?).append(')'))
+				}
+			}
+		}
 }
 
-record_line : List((Str, Value)) -> List(U8)
-record_line = |fields|
-	if fields.is_empty() {
-		['{', '}']
-	} else {
-		entries = fields.map(|(k, v)| key(k).concat([':', ' ']).concat(line(v)))
-		['{', ' '].concat(joined(entries)).concat([' ', '}'])
+## Opening a container inside `depth` others.
+open : U64 -> Try({}, Error)
+open = |depth| if (depth >= max_depth) fail("nesting deeper than ${max_depth.to_str()} levels") else Ok({})
+
+## Items separated by `, `, each at `depth`.
+items_line : List(Value), U64 -> Try(List(U8), Error)
+items_line = |items, depth| {
+	var $out = []
+	var $i = 0.U64
+	for x in items {
+		item = within(line(x, depth), "[${$i.to_str()}]")?
+		$out = if ($i == 0) item else $out.concat([',', ' ']).concat(item)
+		$i = $i + 1
 	}
+	Ok($out)
+}
+
+record_line : List((Str, Value)), U64 -> Try(List(U8), Error)
+record_line = |fields, depth| {
+	open(depth)?
+	# Keys are unique (spec §1): a record built in code might repeat one.
+	var $seen = Set.empty()
+	for (k, _) in fields {
+		if $seen.contains(k) {
+			return Err({ reason: "the key is used twice in this record", path: ".${k}" })
+		}
+		$seen = $seen.insert(k)
+	}
+	var $out = []
+	for (k, v) in fields {
+		within(check_length(k), ".${k}")?
+		entry = key(k).concat([':', ' ']).concat(within(line(v, depth + 1), ".${k}")?)
+		$out = if ($out.is_empty()) entry else $out.concat([',', ' ']).concat(entry)
+	}
+	Ok(if ($out.is_empty()) ['{', '}'] else ['{', ' '].concat($out).concat([' ', '}']))
+}
+
+## A string within the string limit, counted in code points.
+check_length : Str -> Try({}, Error)
+check_length = |s| {
+	b = s.to_utf8()
+	too_long = b.len() > max_string_length and b.count_if(|c| c < 0x80 or c >= 0xC0) > max_string_length
+	if (too_long) fail("string longer than ${max_string_length.to_str()} characters") else Ok({})
+}
+
+## A tag name: `[A-Z][A-Za-z0-9_]*`.
+is_tag : Str -> Bool
+is_tag = |name| {
+	b = name.to_utf8()
+	first = byte_at(b, 0)
+	first >= 'A' and first <= 'Z' and b.all(|c| (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or (c >= '0' and c <= '9') or c == '_')
+}
+
+## The text a number is written as, or why it can't be: its normalized
+## literal (spec §2), in hex if it is an integer longer than the number limit.
+number : Str -> Try(List(U8), Str)
+number = |text| {
+	b = text.to_utf8()
+	literal_chars = b.all(|c| (c >= '0' and c <= '9') or (c >= 'a' and c <= 'f') or (c >= 'A' and c <= 'F') or c == 'x' or c == '.' or c == '_' or c == '+' or c == '-')
+	n =
+		if is_normalized(b) {
+			b
+		} else if !literal_chars {
+			return Err("not a number literal")
+		} else if b.len() > max_number_length {
+			return Err("number literal longer than ${max_number_length.to_str()} characters")
+		} else {
+			match Value.parse(text) {
+				Ok(Num(normalized)) => normalized.to_utf8()
+				_ => return Err("not a number literal")
+			}
+		}
+	# The exponent: `e`, an optional `-`, digits without leading zeros.
+	match n.find_first_index(|c| c == 'e') {
+		Ok(i) => {
+			digits = n.drop_first(i + 1).drop_if(|c| c == '-')
+			too_large = digits.len() > 4 or (U64.from_str(bytes_to_str(digits)) ?? 0) > max_exponent
+			if too_large {
+				return Err("exponent larger than ${max_exponent.to_str()}")
+			}
+		}
+		Err(_) => {}
+	}
+	if n.len() <= max_number_length {
+		return Ok(n)
+	}
+	negative = byte_at(n, 0) == '-'
+	digit_count = if (negative) n.len() - 1 else n.len()
+	# d decimal digits have at least ⌊(d − 1) · log₁₆ 10⌋ + 1 hex digits (0.830482 is just below log₁₆ 10).
+	at_least = (if (negative) 3 else 2) + (digit_count - 1) * 830482 // 1000000 + 1
+	integer = n.drop_if(|c| c == '-').all(|c| c >= '0' and c <= '9')
+	written = if (integer and at_least <= max_number_length) number_text(text_of(n)) else n
+	if written.len() > max_number_length {
+		Err("number literal longer than ${max_number_length.to_str()} characters")
+	} else {
+		Ok(written)
+	}
+}
+
+text_of : List(U8) -> Str
+text_of = |bytes| bytes_to_str(bytes)
+
+## Whether a literal is normalized (spec §2), as the parser gives it:
+## `-?(0|[1-9][0-9]*)(.[0-9]+)?(e(0|-?[1-9][0-9]*))?`.
+is_normalized : List(U8) -> Bool
+is_normalized = |b| {
+	digit = |c| c >= '0' and c <= '9'
+	whole = |s| s == ['0'] or (byte_at(s, 0) >= '1' and byte_at(s, 0) <= '9' and s.all(digit))
+	(mantissa, exp) = match b.find_first_index(|c| c == 'e') {
+		Ok(i) => (b.take_first(i), Ok(b.drop_first(i + 1)))
+		Err(_) => (b, Err({}))
+	}
+	unsigned = if (byte_at(mantissa, 0) == '-') mantissa.drop_first(1) else mantissa
+	(int, frac) = match unsigned.find_first_index(|c| c == '.') {
+		Ok(i) => (unsigned.take_first(i), Ok(unsigned.drop_first(i + 1)))
+		Err(_) => (unsigned, Err({}))
+	}
+	frac_ok = match frac {
+		Ok(f) => !f.is_empty() and f.all(digit)
+		Err(_) => True
+	}
+	exp_ok = match exp {
+		Ok(e) => whole(e) or (byte_at(e, 0) == '-' and e != ['-', '0'] and whole(e.drop_first(1)))
+		Err(_) => True
+	}
+	whole(int) and frac_ok and exp_ok
+}
 
 ## The canonical form: no spaces, fields sorted by key.
 canonical_bytes : Value -> List(U8)
@@ -320,18 +506,6 @@ decimal_to_hex = |digits| {
 	$out
 }
 
-## Items separated by `, `.
-joined : List(List(U8)) -> List(U8)
-joined = |items| {
-	var $out = []
-	var $first = True
-	for item in items {
-		$out = if ($first) item else $out.concat([',', ' ']).concat(item)
-		$first = False
-	}
-	$out
-}
-
 ## A key without quotes if it is an identifier: `name`, `_id`.
 key : Str -> List(U8)
 key = |k| {
@@ -436,23 +610,23 @@ bytes_to_str = |bytes| match Str.from_utf8(bytes) {
 
 # ── tests ────────────────────────────────────────────────────
 
-expect Encode.to_str(Rec([("name", Text("Ada")), ("pt-BR", Num("1"))])) == "{ name: \"Ada\", \"pt-BR\": 1 }"
-expect Encode.to_str(Tag("Shipped", [Rec([("tracking", Text("DE-4711"))])])) == "Shipped { tracking: \"DE-4711\" }"
-expect Encode.to_str(Tag("Money", [Num("44.40"), Tag("EUR", [])])) == "Money(44.40, EUR)"
-expect Encode.to_str(Arr([Bytes([0x0b, 0xff]), Rec([]), Arr([])])) == "[x\"0bff\", {}, []]"
-expect Encode.to_str(Text("a\"b\\\n\u(202E)")) == "\"a\\\"b\\\\\\n\\u{202E}\""
-expect Encode.stream([Tag("A", []), Num("1")]) == "A,\n1,\n"
-expect Int.from_str("340282366920938463463374607431768211457").map_ok(|n| Encode.to_str(Encode.int(n))) == Ok("340282366920938463463374607431768211457")
-expect Encode.to_str(Encode.record([("a", Present(Num("1"))), ("b", Missing)])) == "{ a: 1 }"
-expect Encode.to_str(Text("\u(1B)\u(7F)\u(85)")) == "\"\\u{1B}\\u{7F}\\u{85}\""
+expect Encode.to_str(Rec([("name", Text("Ada")), ("pt-BR", Num("1"))])) == Ok("{ name: \"Ada\", \"pt-BR\": 1 }")
+expect Encode.to_str(Tag("Shipped", [Rec([("tracking", Text("DE-4711"))])])) == Ok("Shipped { tracking: \"DE-4711\" }")
+expect Encode.to_str(Tag("Money", [Num("44.40"), Tag("EUR", [])])) == Ok("Money(44.40, EUR)")
+expect Encode.to_str(Arr([Bytes([0x0b, 0xff]), Rec([]), Arr([])])) == Ok("[x\"0bff\", {}, []]")
+expect Encode.to_str(Text("a\"b\\\n\u(202E)")) == Ok("\"a\\\"b\\\\\\n\\u{202E}\"")
+expect Encode.stream([Tag("A", []), Num("1")]) == Ok("A,\n1,\n")
+expect Int.from_str("340282366920938463463374607431768211457").map_ok(|n| Encode.to_str(Encode.int(n))) == Ok(Ok("340282366920938463463374607431768211457"))
+expect Encode.to_str(Encode.record([("a", Present(Num("1"))), ("b", Missing)])) == Ok("{ a: 1 }")
+expect Encode.to_str(Text("\u(1B)\u(7F)\u(85)")) == Ok("\"\\u{1B}\\u{7F}\\u{85}\"")
 
 # Floats in their one spelling (spec §15).
-expect [1.0, 100.0, 123000.0, 1.5, 12.25, 0.1, 0.000001, 1e-7, 1.5e-7, 1e20, 1e21, -1.5, 0.30000000000000004, 5e-324, 1.7976931348623157e308].map(|x| Encode.to_str(Encode.f64(x))) == ["1", "100", "123000", "1.5", "12.25", "0.1", "0.000001", "1e-7", "1.5e-7", "100000000000000000000", "1e21", "-1.5", "0.30000000000000004", "5e-324", "1.7976931348623157e308"]
-expect [0.0, -0.0, 0.0 / 0.0, 1.0 / 0.0, -1.0 / 0.0].map(|x| Encode.to_str(Encode.f64(x))) == ["0", "-0", "NaN", "Infinity", "NegInfinity"]
-expect [0.1.F32, 16777216.0, 1.0000001, 3.4028235e38, 1e21, -0.0].map(|x| Encode.to_str(Encode.f32(x))) == ["0.1", "16777216", "1.0000001", "3.4028235e38", "1e21", "-0"]
+expect [1.0, 100.0, 123000.0, 1.5, 12.25, 0.1, 0.000001, 1e-7, 1.5e-7, 1e20, 1e21, -1.5, 0.30000000000000004, 5e-324, 1.7976931348623157e308].map(|x| Encode.to_str(Encode.f64(x)) ?? "") == ["1", "100", "123000", "1.5", "12.25", "0.1", "0.000001", "1e-7", "1.5e-7", "100000000000000000000", "1e21", "-1.5", "0.30000000000000004", "5e-324", "1.7976931348623157e308"]
+expect [0.0, -0.0, 0.0 / 0.0, 1.0 / 0.0, -1.0 / 0.0].map(|x| Encode.to_str(Encode.f64(x)) ?? "") == ["0", "-0", "NaN", "Infinity", "NegInfinity"]
+expect [0.1.F32, 16777216.0, 1.0000001, 3.4028235e38, 1e21, -0.0].map(|x| Encode.to_str(Encode.f32(x)) ?? "") == ["0.1", "16777216", "1.0000001", "3.4028235e38", "1e21", "-0"]
 # Exactly half way between the two closest shortest candidates: the even one, like JavaScript.
-expect [1690060720831323.25, -1690060720831323.25].map(|x| Encode.to_str(Encode.f64(x))) == ["1690060720831323.2", "-1690060720831323.2"]
-expect [2097152.25.F32, 2097152.75, 1048576.125, 4498.53125].map(|x| Encode.to_str(Encode.f32(x))) == ["2097152.2", "2097152.8", "1048576.1", "4498.5312"]
+expect [1690060720831323.25, -1690060720831323.25].map(|x| Encode.to_str(Encode.f64(x)) ?? "") == ["1690060720831323.2", "-1690060720831323.2"]
+expect [2097152.25.F32, 2097152.75, 1048576.125, 4498.53125].map(|x| Encode.to_str(Encode.f32(x)) ?? "") == ["2097152.2", "2097152.8", "1048576.1", "4498.5312"]
 
 # The canonical form (spec §12): the same cases as the TypeScript and Rust bindings.
 canonical_of : Str -> Str
@@ -490,6 +664,53 @@ expect match Value.parse_all("9, 10, [], \"😀\", { b: 1, a: 2 }, Some(1), -1")
 expect compare_texts("{ b: 1, a: 2 }", "{ a: 2, b: 1 }") == Same and compare_texts("1.0", "1") == After
 # The compact writer keeps a huge integer in hex too (spec §11), so its output parses again.
 expect match Value.parse_all("0x${"f".repeat(900)}") {
-	Ok([v]) => Encode.to_str(v) == "0x${"f".repeat(900)}"
+	Ok([v]) => Encode.to_str(v) == Ok("0x${"f".repeat(900)}")
 	_ => False
+}
+
+# The writer checks what it writes (spec §9.8): a Value built in code may hold anything.
+error_of : Value -> Str
+error_of = |v| match Encode.to_str(v) {
+	Ok(text) => "wrote ${text}"
+	Err(e) => Encode.message(e)
+}
+
+expect Encode.to_str(Arr([Num("1E5"), Num("0xFF"), Num("1_000"), Num("-0x0"), Num("1e-0"), Num("1E+05")])) == Ok("[1e5, 255, 1000, 0, 1e0, 1e5]")
+expect ["", "-", "1.", ".5", "01", "1e", "+1", "0x", "1 ", "1 // c", "NaN", "1e5.5", "abc", "--1"].map(|n| error_of(Num(n))) == List.repeat("not a number literal", 14)
+expect error_of(Rec([("extra", Arr([Num("1"), Num("abc")]))])) == ".extra[1]: not a number literal"
+expect error_of(Num("1e6145")) == "exponent larger than 6144"
+expect error_of(Num("1e-99999")) == "exponent larger than 6144"
+expect error_of(Num("1.5".repeat(400))) == "number literal longer than 1000 characters"
+expect error_of(Num("9".repeat(1300))) == "number literal longer than 1000 characters"
+expect error_of(Tag("lower", [])) == "not a tag name: A to Z, then letters, digits and _"
+expect error_of(Tag("Hexagon", [Num("1"), Num("--1")])) == "(Hexagon)[1]: not a number literal"
+expect error_of(Tag("Hexagon", [Rec([("side", Num("x"))])])) == "(Hexagon).side: not a number literal"
+expect error_of(Rec([("a", Num("1")), ("a", Num("2"))])) == ".a: the key is used twice in this record"
+expect error_of(Bytes(List.repeat(0, 8 * 1024 * 1024 + 1))) == "byte string longer than 16777216 characters"
+expect error_of(Text("x".repeat(16 * 1024 * 1024 + 1))) == "string longer than 16777216 characters"
+expect Encode.stream([Num("1"), Num("x")]) == Err({ reason: "not a number literal", path: "[1]" })
+# Nesting: as deep as the parser reads, and no deeper.
+nested : U64, Value, (Value -> Value) -> Value
+nested = |n, inner, wrap| {
+	var $v = inner
+	var $i = 0
+	while $i < n {
+		$v = wrap($v)
+		$i = $i + 1
+	}
+	$v
+}
+
+expect Encode.to_str(nested(256, Num("1"), |v| Arr([v]))).is_ok() and error_of(nested(257, Num("1"), |v| Arr([v]))).ends_with("nesting deeper than 256 levels")
+expect Encode.to_str(nested(256, Tag("N", []), |v| Tag("C", [Num("1"), v]))).is_ok() and error_of(nested(257, Tag("N", []), |v| Tag("C", [Num("1"), v]))).ends_with("nesting deeper than 256 levels")
+expect Encode.to_str(nested(255, Rec([]), |v| Tag("A", [Rec([("a", v)])]))).is_ok() and error_of(nested(256, Rec([]), |v| Tag("A", [Rec([("a", v)])]))).ends_with("nesting deeper than 256 levels")
+# Every value the parser gives is written again, and parses back to itself.
+expect {
+	texts = ["${"[".repeat(256)}${"]".repeat(256)}", "0x${"f".repeat(900)}", "-0x${"F".repeat(900)}", "1e6144", "-0", "A { a: [1, B(2)] }"]
+	texts.all(
+		|t| match Value.parse(t) {
+			Ok(v) => Encode.to_str(v).map_ok(|w| Value.parse(w).map_ok(Encode.canonical)) == Ok(Ok(Encode.canonical(v)))
+			Err(_) => False
+		},
+	)
 }

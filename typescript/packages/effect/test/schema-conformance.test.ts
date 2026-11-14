@@ -31,26 +31,10 @@ const schemaCases = (text: string): Case[] =>
     return { ok: v.tag === "Ok", type: type.value, input, output: f.get("output") ?? input, name: `${v.tag} ${type.value} ${canonical(input)}` }
   })
 
-/** Cases expected to fail, by suite and name: limits of the Effect types the adapter maps to. */
-const EXPECTED_FAILURES: Readonly<Record<string, ReadonlyArray<string>>> = {
-  builtins: [
-    // std/time Instant decodes to Effect's DateTime.Utc, which drops the written
-    // offset (+01:00 comes back as Z): a documented lossy mapping (spec §13.4,
-    // README "Three of these keep the value…"). Haus.InstantText keeps the text.
-    `Ok At Instant("2026-11-13T10:00:00.250+01:00")`,
-  ],
-  numbers: [
-    // Decimal decodes to Effect's BigDecimal, which has no negative zero: `-0`
-    // comes back as `0`. A documented lossy mapping, like Instant.
-    "Ok Dec -0",
-  ],
-}
-
 const suites = readdirSync(DIR).filter((f) => f.endsWith(".schema.haus")).map((f) => f.replace(".schema.haus", ""))
 
 describe.each(suites)("%s", (suite) => {
   const [text, cases] = [readFileSync(`${DIR}${suite}.schema.haus`, "utf8"), schemaCases(readFileSync(`${DIR}${suite}.cases.haus`, "utf8"))]
-  const expectedFailures = new Set(EXPECTED_FAILURES[suite] ?? [])
 
   const run = (schemas: Haus.CompiledSchemaFile["schemas"]) => (c: Case) => {
     const schema = schemas[c.type]
@@ -66,7 +50,7 @@ describe.each(suites)("%s", (suite) => {
   }
 
   const { schemas } = Haus.compileSchemaFile(text)
-  for (const c of cases) (expectedFailures.has(c.name) ? it.fails : it)(c.name, () => run(schemas)(c))
+  for (const c of cases) it(c.name, () => run(schemas)(c))
 
   // Attributes don't matter (spec §15): the same results without them. Only
   // files that have attributes; for the others the text is the same.
@@ -74,7 +58,7 @@ describe.each(suites)("%s", (suite) => {
   if (stripped !== text) {
     describe("without attributes", () => {
       const plain = Haus.compileSchemaFile(stripped).schemas
-      for (const c of cases) (expectedFailures.has(c.name) ? it.fails : it)(c.name, () => run(plain)(c))
+      for (const c of cases) it(c.name, () => run(plain)(c))
     })
   }
 })

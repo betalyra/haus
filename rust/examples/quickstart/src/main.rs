@@ -29,7 +29,7 @@ fn main() -> Result<(), haus::Error> {
     // 2. Decode haus text with the schema, change it, encode it back.
     let reply: Comment = haus::from_str(REPLY)?;
     let liked = Comment { likes: (reply.likes.to_i128().unwrap_or_default() + 1).into(), ..reply };
-    println!("{}", haus::to_string(&liked));
+    println!("{}", haus::to_string(&liked)?);
 
     // 3. A value that doesn't match the schema is an error that says where.
     if let Err(error) = haus::from_str::<Comment>(&REPLY.replace("likes: 0", r#"likes: "lots""#)) {

@@ -13,8 +13,8 @@ fraction `a / b`, and every comparison is a comparison of products. There
 is no floating-point arithmetic here, so nothing is rounded twice.
 
 `roundLit` reads a literal, `spell` writes a float. That spelling rounds
-back to the same float (`FloatLaw`) is tested below and in the schema
-suite, and assumed by the round-trip theorems; it is not proven.
+back to the same float (`FloatLaw`) is proven in `Haus.Schema.FloatLaw`
+(`floatLaw`), and tested below and in the schema suite.
 -/
 
 namespace Haus.Schema
@@ -194,7 +194,7 @@ def spell (k : FloatType) (x : Flt) : String :=
 
 /--
 The law the round trip needs: the spelling of a decoded float rounds back
-to it. Tested (`#guard`s below and the schema suite), not proven.
+to it. Proven as `floatLaw` (`Haus.Schema.FloatLaw`).
 -/
 def FloatLaw : Prop := ∀ (k : FloatType) (lit : String) (x : Flt),
   roundLit k lit = some x → roundLit k (spell k x) = some x

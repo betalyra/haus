@@ -15,7 +15,7 @@ const fileTabs: Tab[] = [
 
 const languageTabs: Tab[] = [
   { value: "ts", icon: "typescript", label: "TypeScript", caption: "haus schemas are Standard Schemas, so Zod, Valibot and ArkType work too." },
-  { value: "effect", icon: "effect", label: "Effect", caption: "The Effect binding: Int becomes bigint, Instant a DateTime.Utc." },
+  { value: "effect", icon: "effect", label: "Effect", caption: "The Effect binding: Int becomes bigint, Instant stays its exact text. DateTime is an opt-in." },
   { value: "rust", icon: "rust", label: "Rust", caption: "haus-build generates the types at compile time." },
   { value: "python", icon: "python", label: "Python", caption: "The parser and streams today, with pattern matching. Typed decoding is on its way." },
   { value: "roc", icon: "roc", label: "Roc", caption: "haus-gen generates the types. The Roc parser is still in progress." },

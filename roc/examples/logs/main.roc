@@ -53,7 +53,7 @@ main! = |_args| {
 
 	# 2. Write a stream: the problems, one entry per line.
 	Stdout.line!("problems:")?
-	Stdout.write!(Encode.stream($problems.map(Logs.encode_entry)))?
+	Stdout.write!(Encode.stream($problems.map(Logs.encode_entry)).map_err(|e| Encode(e))?)?
 	Ok({})
 }
 

@@ -91,6 +91,51 @@ describe("decode", () => {
       expect(DateTime.formatIso(e.at)).toBe("2026-11-07T10:00:00.000Z")
     }))
 
+  it.effect("Haus.Decimal, Haus.Instant and Haus.ZonedDateTime keep the text: nothing is lost", () =>
+    Effect.gen(function* () {
+      const S = Schema.Struct({ d: Schema.Array(Haus.Decimal), i: Haus.Instant, z: Haus.ZonedDateTime })
+      const text = '{ d: [-0, 15e2, 19.90, 0xFF], i: Instant("2026-11-07T10:00:00.250999+01:00"), z: ZonedDateTime("2026-11-07T10:00:00+01:00[+01:00]") }'
+      const v = yield* Haus.decode(S)(text)
+      expect(v.d).toEqual(["-0", "15e2", "19.90", "255"])
+      expect(v.i).toBe("2026-11-07T10:00:00.250999+01:00")
+      expect(yield* Haus.encode(S, { style: "compact" })(v)).toBe(text.replace("0xFF", "255"))
+      // Text built in code is normalized as the parser would; anything else is an error.
+      expect(yield* Haus.encode(S, { style: "compact" })({ ...v, d: ["1E+05", "1_000"] })).toContain("d: [1e5, 1000]")
+      expect((yield* Effect.flip(Haus.encode(S)({ ...v, d: ["19,90"] }))).message).toContain("number literal")
+      expect((yield* Effect.flip(Haus.decode(S)(text.replace("19.90", '"19.90"')))).message).toContain("expected a number")
+    }))
+
+  it.effect("Haus.DecimalAsBigDecimal: a BigDecimal, without -0 and exponent notation", () =>
+    Effect.gen(function* () {
+      const S = Schema.Array(Haus.DecimalAsBigDecimal)
+      const v = yield* Haus.decode(S)("[19.90, -0, 15e2, 1.5e-3]")
+      expect(BigDecimal.isBigDecimal(v[0]) && v[0].scale).toBe(2)
+      expect(yield* Haus.encode(S, { style: "compact" })(v)).toBe("[19.90, 0, 1.5e3, 0.0015]")
+    }))
+
+  it.effect("Haus.InstantAsDateTime and Haus.ZonedDateTimeAsDateTime: DateTimes, without the written offset", () =>
+    Effect.gen(function* () {
+      const S = Schema.Struct({ i: Haus.InstantAsDateTime, z: Haus.ZonedDateTimeAsDateTime })
+      const v = yield* Haus.decode(S)('{ i: Instant("2026-11-07T10:00:00.250999+01:00"), z: ZonedDateTime("2026-11-07T10:00:00+01:00[+01:00]") }')
+      expect(DateTime.formatIso(v.i)).toBe("2026-11-07T09:00:00.250Z")
+      expect(yield* Haus.encode(S, { style: "compact" })(v))
+        .toBe('{ i: Instant("2026-11-07T09:00:00.250Z"), z: ZonedDateTime("2026-11-07T10:00:00+01:00[+01:00]") }')
+      const year10000 = { ...v, i: DateTime.makeUnsafe("+010000-01-01T00:00:00Z") }
+      expect((yield* Effect.flip(Haus.encode(S)(year10000))).message).toContain("Instant")
+      const unknownZone = '{ i: Instant("2026-11-07T10:00:00Z"), z: ZonedDateTime("2026-11-07T10:00:00+01:00[Europe/Atlantis]") }'
+      expect((yield* Effect.flip(Haus.decode(S)(unknownZone))).message).toContain("Europe/Atlantis")
+    }))
+
+  it.effect("Schema.DateTimeZoned with an offset zone writes the zone (std/time needs one)", () =>
+    Effect.gen(function* () {
+      const S = Schema.Struct({ z: Schema.DateTimeZoned })
+      const text = '{ z: ZonedDateTime("2026-11-07T10:00:00-05:30[-05:30]") }'
+      expect(yield* Haus.encode(S, { style: "compact" })(yield* Haus.decode(S)(text))).toBe(text)
+      const lmt = '{ z: ZonedDateTime("1900-01-01T00:00:00-00:36[Europe/Lisbon]") }'
+      // Local mean time has an offset with seconds: written in UTC rather than moved.
+      expect(yield* Haus.encode(S, { style: "compact" })(yield* Haus.decode(S)(lmt))).toBe('{ z: ZonedDateTime("1900-01-01T00:36:00Z[Europe/Lisbon]") }')
+    }))
+
   it.effect("open unions of literals: known tags as strings, others as Unknown", () =>
     Effect.gen(function* () {
       const OpenCurrency = Haus.OpenUnion([Schema.Literals(["EUR", "USD"])])

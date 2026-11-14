@@ -6,7 +6,7 @@ const ABOVE_2_128: &str = "340282366920938463463374607431768211457"; // 2^128 + 
 fn int_of_any_size_writes_back_unchanged() {
     let n: haus::Int = haus::from_str(ABOVE_2_128).unwrap();
     assert_eq!(n.as_str(), ABOVE_2_128);
-    assert_eq!(haus::to_string(&n), ABOVE_2_128);
+    assert_eq!(haus::to_string(&n).as_deref(), Ok(ABOVE_2_128));
     assert_eq!(n.to_i128(), None);
     assert_eq!(n.to_i64(), None);
 

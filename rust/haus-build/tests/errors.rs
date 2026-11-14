@@ -167,6 +167,24 @@ type B = { ...Base, b: Int }
 }
 
 #[test]
+fn a_spread_of_a_deprecated_type_is_a_use() {
+    let warnings = haus_build::check(
+        "@deprecated(\"use Event\")\ntype OldEvent = < A | B >
+type Event = < ...OldEvent | X >
+@deprecated
+type OldBase = { id: Int }
+type Item = { ...OldBase, x: Int }
+type Both = closed { ...Item, y: Int }
+@deprecated
+type Older = { ...OldBase }",
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    let warnings: Vec<String> = warnings.iter().map(ToString::to_string).collect();
+    // Once where each spread is written: not again where Item is spread, nor inside a deprecated type.
+    assert_eq!(warnings, ["3:19: OldEvent is deprecated: use Event", "6:18: OldBase is deprecated"]);
+}
+
+#[test]
 fn attribute_arguments_may_hold_any_text() {
     // Non-ASCII text in comments and strings inside the parentheses.
     for schema in [

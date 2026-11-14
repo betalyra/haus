@@ -32,7 +32,7 @@ haus_build::Config::new()
 // src/main.rs
 mod order { haus::include_schema!("order"); }
 let order: order::Root = haus::from_str(&text)?;          // checks every rule of the schema
-let text = haus::to_string(&order);                       // back to haus (compact)
+let text = haus::to_string(&order)?;                      // back to haus (compact)
 ```
 
 | haus | Rust |
@@ -55,6 +55,16 @@ deprecation warnings only where it touches them. Attributes haus doesn't
 define (`@since`) are accepted and reported as Cargo warnings, as are uses of
 deprecated types in a schema; `Config::quiet()` turns them off.
 
+Writing checks what it writes, so `haus::to_string` returns a `Result`. A
+value of the generated types is always valid; what can fail is a `haus::Value`
+built in code, the raw value of an `Any` or an unknown variant (spec §9.8):
+`Value::Number("abc".into())` is an `EncodeError` (`.extra: not a number
+literal`), as are a tag that isn't a tag name, a key used twice in a record,
+and nesting, strings and numbers beyond the limits. Number literals are
+written as the parser reads them (`1E5` as `1e5`). For a reader with other
+limits, `haus::to_string_with(&value, &limits)` checks those, and writes an
+integer longer than its number limit in hex so that it parses again.
+
 `haus::Int` is an integer of any size, kept as its digits and written back
 unchanged. `to_i64()` / `to_i128()` give it as a native integer when it fits; the
 `bigint` feature adds conversions to and from `num_bigint::BigInt`. For a native
@@ -68,7 +78,7 @@ every crate.
 
 Streams (spec §6) are read as the values arrive: `haus::stream::decode::<T, _>(reader)`
 is an iterator over any `std::io::Read`, and `haus::stream::encode` writes one value per
-line. `haus::stream::Reader` does no I/O itself (push byte chunks, split anywhere, get
+line (`encode_with` for other limits). `haus::stream::Reader` does no I/O itself (push byte chunks, split anywhere, get
 the completed values), so an async adapter is a short loop around it.
 
 Without a schema, `haus::parse` reads any haus text into `Value`s: a parser in

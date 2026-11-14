@@ -37,7 +37,7 @@ fn main() -> Result<(), haus::Error> {
     }
 
     // Encoding with the same codecs gives back the same haus text.
-    println!("{}", haus::to_string(&typed));
+    println!("{}", haus::to_string(&typed)?);
 
     // Codecs add rules on top of the schema's: Eur is a valid tag, but not ISO-shaped.
     let eur = ORDER.replace("EUR", "Eur");

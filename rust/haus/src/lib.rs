@@ -13,6 +13,15 @@
 //! With a schema, `haus-build` generates Rust types that implement [`Decode`]
 //! and [`Encode`], and [`from_str`] / [`to_string`] check every rule of the
 //! schema: closed records and variants, integer ranges, the std/time profile.
+//! Writing checks the value too, since a [`Value`] built in code (the raw
+//! value of an `Any`, say) may not be one a reader takes:
+//!
+//! ```
+//! let fine = haus::Value::Number("1E5".into());
+//! assert_eq!(haus::to_string(&fine).unwrap(), "1e5");
+//! let wrong = haus::Value::Number("abc".into());
+//! assert_eq!(haus::to_string(&wrong).unwrap_err().to_string(), "not a number literal");
+//! ```
 
 mod canonical;
 mod codec;
@@ -31,7 +40,7 @@ pub use canonical::{Hasher, hash, hash_all};
 pub use canonical::{canonical, compare, equals};
 pub use codec::{Codec, same_id};
 pub use de::{AnyTag, Bytes, Decimal, Decode, Int, Unknown};
-pub use error::{DecodeError, Error, Segment, SyntaxError};
+pub use error::{DecodeError, EncodeError, Error, Segment, SyntaxError};
 pub use parser::{Limits, parse_with};
 pub use secret::Secret;
 pub use ser::Encode;
@@ -75,12 +84,25 @@ pub fn from_str_all<T: Decode>(src: &str) -> Result<Vec<T>, Error> {
     parse(src)?.iter().enumerate().map(|(i, v)| T::decode(v).map_err(|e| e.index(i).into())).collect()
 }
 
-/// Write one value on one line (the compact layout, spec §11).
-pub fn to_string<T: Encode + ?Sized>(value: &T) -> String {
-    ser::write(&value.encode())
+/// Write one value on one line (the compact layout, spec §11). Fails if the
+/// value isn't one a reader with the default limits takes, which only a
+/// [`Value`] built in code can cause, such as the raw value of an `Any` or an
+/// unknown variant (spec §9.8): see [`ser::write_with`].
+pub fn to_string<T: Encode + ?Sized>(value: &T) -> Result<String, EncodeError> {
+    to_string_with(value, &Limits::default())
 }
 
-/// Write a stream: one value per line, each followed by `,`.
-pub fn to_string_all<T: Encode>(values: &[T]) -> String {
-    values.iter().map(|v| to_string(v) + ",\n").collect()
+/// [`to_string`], for a reader with `limits`: the value must be within them,
+/// and integers longer than its number limit are written in hex.
+pub fn to_string_with<T: Encode + ?Sized>(value: &T, limits: &Limits) -> Result<String, EncodeError> {
+    ser::write_with(&value.encode(), limits)
+}
+
+/// Write a stream: one value per line, each followed by `,`. Errors say which value: `[3].total: …`.
+pub fn to_string_all<T: Encode>(values: &[T]) -> Result<String, EncodeError> {
+    values
+        .iter()
+        .enumerate()
+        .map(|(i, v)| to_string(v).map(|line| line + ",\n").map_err(|e| e.within(Segment::Index(i))))
+        .collect()
 }
