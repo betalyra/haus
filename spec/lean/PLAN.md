@@ -29,12 +29,14 @@ prototype, …) is outside Lean and stays covered by tests.
 | ✅ | **E. Encoder round trip** | `parse_canonical`: for every value a parser returns, its canonical form parses back to that value (in canonical order), so no string, key or number can break out of its syntax. Holds for number limits of at least the default (spec §12 writes long integers by the default limit). In [`Haus/RoundTrip/`](Haus/RoundTrip). | 1–2 weeks |
 | ✅ | **F. Streams** | A model of the bindings' stream readers: `read_chunks`, any split gives the same values and errors; `read_correct`, the reader returns `vs` exactly when `parse` accepts the whole text with `vs`. In [`Haus/Stream/`](Haus/Stream). | 1–2 weeks |
 | ✅ | **H. Canonical form** (spec §12) | `canonical_eq_iff`: two parsed values have the same canonical form exactly when they are equal (§2), so `hash` is well defined. `canonicalAll_eq_iff` does the same for `hashAll` of a file or stream, and `read_canonicalAll`/`canonicalAll_prefix` cover hashing while reading ([`Haus/RoundTrip/HashAll.lean`](Haus/RoundTrip/HashAll.lean)). Reference encoder in [`Haus/Canonical.lean`](Haus/Canonical.lean), implemented in TypeScript, Rust and Roc and fuzzed against it. | 1–2 weeks |
-| ⬜ | **P. Linear time** (spec §7) | A cost model (steps counted next to the result) and proofs that the stream scanner and a linear reference parser take at most `c · length` steps (below) | 1–2 weeks |
-| ⬜ | **I. Schema language** (separate project) | Decoding with any schema terminates in linear time (§9.8–10) | months |
+| ⬜ | **P. Linear time** (spec §7) | A cost model (steps counted next to the result) and proofs that the stream scanner and a linear reference parser take at most `c · length` steps (below). Deferred: see below. | 1–2 weeks |
+| ⬜ | **I. Schema decoding** (spec §14–15) | A reference decoder that passes the schema suite, then termination, the round trip and linear time, in steps I1–I7 (below) | I1–I3: ~2 weeks; all: months |
+| ⬜ | **V. Versions** (spec §10) | `Extends old new`: a new version is a conservative extension of the old one (same values for every old text; canonical form and built-in rules agree on what the old version can express). Defined before 1.0, proven for each release. | days per release |
 | ✅ | **T. std/time** | A reference model of the profile (spec §13.2, `std/time.md`), the bindings' time checkers fuzzed against it, and its security and calendar properties proven | 1–3 weeks |
 
-Order: A–H and T1–T6 are done. Next P (linear time), whose cost model I
-reuses; I waits for a stable schema language.
+Order: A–H and T1–T6 are done. Next I1–I3, I5 and the definition of V, before 1.0 freezes §15 (a reference decoder that the
+bindings can be fuzzed against, as the parser is), then I4–I6. P comes after
+the benchmarks' doubling tests and is needed only for I7.
 
 ## A. Security properties of the grammar
 
@@ -150,6 +152,31 @@ What this can't cover: the bindings' own code (S17 was in Rust's buffer
 handling, not in the design) and constant factors. Those are covered by the
 benchmarks ([`plans/benchmarks.md`](../../plans/benchmarks.md)), including a
 doubling test in CI: twice the input must take about twice the time.
+
+**Deferred.** P would hardly help parser development: it proves the model,
+not the bindings, and the bug it is about (S17) was found by measuring. The
+doubling tests catch such bugs in the real code. P3 also needs a model of
+hashing (constant-time sets), which Lean without Mathlib supports poorly.
+P is worth doing for the claim "proven linear", after the benchmarks, and
+P1 is needed for I7. P2 alone (the stream scanner) is the cheapest part.
+
+## I. Schema decoding
+
+Spec §15 defines what each type accepts, and `test-suite/schema` tests it.
+The goal is the same as for parsing: an executable reference in Lean that
+the bindings are fuzzed against, then proofs about it. Each step after I3
+stands on its own.
+
+| | Step | Gives | Effort |
+|---|---|---|---|
+| ⬜ | I1. Schema types | A model of resolved types, without attributes (`@deprecated` lives in a separate table for tools, so `decode (erase s) = decode s` holds by construction): built-in types, records (open or closed, `?` fields), variants (open or closed, payload forms), `Array`, `Map`, `Maybe`, named types with generics substituted, recursion through an environment | days |
+| ⬜ | I2. Reference decoder and encoder | `decode`/`encode` following §15, unknown values included. Floats abstract: a rounding function and a spelling function assumed correct (IEEE arithmetic is not modelled). | ~1 week |
+| ⬜ | I3. Conformance | Lean tests generated from `test-suite/schema`; the bindings' decoders fuzzed against the Lean one (`fuzz/`) | days |
+| ⬜ | I4. Termination | Decoding terminates for every schema §14 allows: guarded recursion consumes input at each level (§9.9) | 1–2 weeks |
+| ⬜ | I5. Round trip | decode, encode, decode is decode; encode after decode equals the input (§2) except where §15 says it doesn't (ignored fields, float spelling, `-0` as an integer) | 1–2 weeks |
+| ⬜ | I6. Schema checker | The static rules of §14 (guarded recursion, no spread cycles, regular generics) imply what I4 assumes | weeks |
+| ⬜ | I7. Linear time | Decoding takes at most `c · size` steps (§9.8). Needs P1's cost model. | weeks |
+
 
 ## T. std/time
 
