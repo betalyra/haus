@@ -168,29 +168,24 @@ async function start() {
   let hashRun = 0;
 
   /** Say whether the pasted hash is the file's or one of its values'. */
+  const checkRest = $("#hash-check-rest");
   const markMatches = () => {
     const want = check.value.trim().toLowerCase();
     const matchFile = want !== "" && want === fileHash;
     const matchValue = want === "" ? -1 : valueHashes.indexOf(want);
-    $("#hash-file-block").toggleAttribute("data-match", matchFile);
-    valueList.querySelectorAll<HTMLElement>("[data-digest]").forEach((item) => item.toggleAttribute("data-match", want !== "" && item.dataset.digest === want));
-    if (!want) {
-      checkStatus.textContent = "";
-      delete checkStatus.dataset.state;
-    } else if (!/^[0-9a-f]{64}$/.test(want)) {
-      checkStatus.textContent = "A SHA-256 hash is 64 hex digits.";
-      checkStatus.dataset.state = "error";
-    } else if (matchFile) {
-      checkStatus.textContent = valueHashes.length === 1 ? "Matches the file." : "Matches the whole file.";
-      checkStatus.dataset.state = "ok";
-    } else if (matchValue >= 0) {
+    valueList.querySelectorAll<HTMLElement>("[data-digest]").forEach((item) => item.toggleAttribute("data-match", !matchFile && want !== "" && item.dataset.digest === want));
+    const say = (state: string | undefined, rest = "") => {
+      if (state) checkStatus.dataset.state = state;
+      else delete checkStatus.dataset.state;
+      checkRest.textContent = rest;
+    };
+    if (!want) say(undefined);
+    else if (!/^[0-9a-f]{64}$/.test(want)) say("error", "A SHA-256 hash is 64 hex digits.");
+    else if (matchFile) say("ok", valueHashes.length === 1 ? "the file" : "the whole file");
+    else if (matchValue >= 0) {
       valueList.querySelector<HTMLElement>("[data-match]")?.scrollIntoView({ block: "nearest" });
-      checkStatus.textContent = `Matches value ${matchValue + 1}.`;
-      checkStatus.dataset.state = "ok";
-    } else {
-      checkStatus.textContent = "Doesn't match this file or any of its values.";
-      checkStatus.dataset.state = "error";
-    }
+      say("ok", `value ${matchValue + 1}`);
+    } else say("none");
   };
 
   const copyButton = (text: () => string) => {

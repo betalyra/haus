@@ -8,9 +8,16 @@ import "@/styles/play.css";
 
 /** The verdict, one word on a wash per outcome. All are painted up front; one shows. */
 const verdicts = [
-  { state: "same", word: "Same", wash: ["sap", "cerulean"] as const, seed: 311 },
-  { state: "different", word: "Different", wash: ["rose", "gold"] as const, seed: 323 },
+  { state: "same", word: "Same", wash: ["sap", "yellow"] as const, seed: 311 },
+  { state: "different", word: "Different", wash: ["rose", "sienna"] as const, seed: 323 },
   { state: "error", word: "Can't compare yet", wash: ["gold", "rose"] as const, seed: 337 },
+];
+
+/** The hash check, the same idea in small: green for a match, red for none. */
+const checks = [
+  { state: "ok", word: "Match", wash: ["sap", "yellow"] as const, seed: 341 },
+  { state: "none", word: "No match", wash: ["rose", "sienna"] as const, seed: 353 },
+  { state: "error", word: "Not a hash", wash: ["gold", "rose"] as const, seed: 367 },
 ];
 
 const tools = [
@@ -84,7 +91,22 @@ const tools = [
           <div class="hash-check">
             <label for="hash-check" class="sr-only">Check a hash</label>
             <input id="hash-check" class="hash-check__input" type="text" spellcheck="false" autocomplete="off" placeholder="Paste a hash to check it" />
-            <p id="hash-check-status" class="hash-check__status" aria-live="polite"></p>
+            <div id="hash-check-status" class="hash-check__status" aria-live="polite">
+              {checks.map(({ state, word, wash: [main, bleed], seed }) => (
+                <span class="brush check-word" data-for={state}>
+                  {word}
+                  <Wash
+                    seed={seed}
+                    instant
+                    strokes={[
+                      { x: 0.48, y: 0.55, rx: 0.46, ry: 0.32, rot: -0.03, color: main, strength: 1.5, wobble: 0.7 },
+                      { x: 0.8, y: 0.5, rx: 0.18, ry: 0.28, color: bleed, strength: 1.2, wobble: 0.7 },
+                    ]}
+                  />
+                </span>
+              ))}
+              <span id="hash-check-rest" class="check-rest"></span>
+            </div>
           </div>
           <p id="hash-summary" class="play-summary" aria-live="polite"></p>
         </section>
@@ -254,8 +276,7 @@ const tools = [
   :global(.hash-value + .hash-value) {
     border-top: 1px solid var(--line-soft, var(--line));
   }
-  /* A match with the pasted hash: the same gold as linked values in the editors. */
-  .hash-file[data-match],
+  /* The value the pasted hash belongs to: the same gold as linked values in the editors. */
   :global(.hash-value[data-match]) {
     background: color-mix(in oklab, var(--gold, #e39b16) 14%, transparent);
   }
@@ -282,6 +303,7 @@ const tools = [
     color: var(--ink);
   }
   .hash-check {
+    position: relative;
     padding: 0.7rem 1rem;
     border-top: 1px solid var(--line-soft, var(--line));
   }
@@ -296,23 +318,49 @@ const tools = [
     font-size: 0.8rem;
     color: var(--ink);
   }
-  .hash-check__input:focus {
-    outline: 1.5px solid var(--ultramarine);
-    outline-offset: 1px;
+  .hash-check__input:hover {
+    border-color: color-mix(in oklab, var(--ink) 30%, white);
+  }
+  /* Focus darkens the edge to ink, like the editors' cards, instead of a blue ring. */
+  .hash-check__input:focus,
+  .hash-check__input:focus-visible {
+    outline: none;
+    border-color: color-mix(in oklab, var(--ink) 55%, white);
   }
   .hash-check__status {
-    margin: 0.4rem 0 0;
-    font-size: 0.82rem;
-    color: var(--ink-2);
+    position: relative;
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    margin-top: 0.7rem;
+    font-size: 1.15rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--ink);
   }
-  .hash-check__status:empty {
-    display: none;
+  /* Hidden but laid out, so the washes are painted before the first check. */
+  .hash-check__status:not([data-state]) {
+    position: absolute;
+    visibility: hidden;
   }
-  .hash-check__status[data-state="ok"] {
-    color: var(--sap-ink);
+  /* Like the compare verdict: every word stays laid out so its wash gets painted. */
+  .check-word {
+    position: absolute;
+    left: 0;
+    opacity: 0;
+    pointer-events: none;
   }
-  .hash-check__status[data-state="error"] {
-    color: #ab2a5d;
+  .hash-check__status[data-state="ok"] .check-word[data-for="ok"],
+  .hash-check__status[data-state="none"] .check-word[data-for="none"],
+  .hash-check__status[data-state="error"] .check-word[data-for="error"] {
+    position: relative;
+    opacity: 1;
+  }
+  .check-rest {
+    font-size: 0.74rem;
+    font-weight: 500;
+    letter-spacing: 0;
+    color: var(--ink-3);
   }
   .cmp-verdict {
     padding: 1.5rem 1.6rem 1.6rem;

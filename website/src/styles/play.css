@@ -39,6 +39,15 @@
 .play-tab[aria-selected="true"] {
   border-bottom-color: var(--ultramarine);
 }
+/* Keyboard focus in ink, not the blue ring: the label darkens and gets a faint line. */
+.play-tab:focus-visible {
+  outline: none;
+  border-radius: 0;
+  color: var(--ink);
+}
+.play-tab:focus-visible:not([aria-selected="true"]) {
+  border-bottom-color: color-mix(in oklab, var(--ink) 30%, white);
+}
 .play-switch {
   display: inline-flex;
   align-items: center;
@@ -82,7 +91,7 @@
   transform: translateX(0.8rem);
 }
 .play-switch input:focus-visible + .play-switch__track {
-  outline: 1.5px solid var(--ultramarine);
+  outline: 1.5px solid color-mix(in oklab, var(--ink) 55%, white);
   outline-offset: 2px;
 }
 /* A schema that is switched off stays editable, just quieter. */
@@ -142,6 +151,12 @@
 .play-select:hover,
 .play-button:hover {
   border-color: color-mix(in oklab, var(--ink) 30%, white);
+}
+/* Focus darkens the edge to ink, like hover but firmer, instead of a blue ring. */
+.play-select:focus-visible,
+.play-button:focus-visible {
+  outline: none;
+  border-color: color-mix(in oklab, var(--ink) 55%, white);
 }
 .play-button[data-done]::after {
   content: attr(data-done);

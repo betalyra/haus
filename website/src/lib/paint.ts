@@ -133,8 +133,11 @@ export function paintAll() {
   const ro = new ResizeObserver((entries) => {
     entries.forEach((e) => {
       const el = e.target as HTMLCanvasElement;
+      // Not reached yet, or already painted at this size. A canvas that had no
+      // size when painted (inside a hidden panel) is painted once it has one.
+      if (!canvases.has(el) || !el.clientWidth || !el.clientHeight) return;
       const old = canvases.get(el);
-      if (!old || old.size === `${el.clientWidth}x${el.clientHeight}`) return;
+      if (old && old.size === `${el.clientWidth}x${el.clientHeight}`) return;
       canvases.delete(el);
       paint(el);
     });
