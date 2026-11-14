@@ -72,6 +72,27 @@ const { schemas } = compileSchemaFile(text, schemaOptions("order.schema.haus"))
 const order = h.parse(schemas.Order!, data)
 ```
 
+| schema file | `h.` schema | TypeScript |
+|---|---|---|
+| `String`, `Bytes`, `Bool` | `h.String`, `h.Bytes`, `h.Bool` | `string`, `Uint8Array`, `boolean` |
+| `Int`, `Int64`, `UInt64` | `h.Int`, `h.Int64`, `h.UInt64` | `bigint` |
+| `Int8` … `UInt32`, `Float32`, `Float64` | `h.Int8` …, `h.Float64` | `number` |
+| `Decimal` | `h.Decimal` | `string`, the exact literal (`"19.90"`) |
+| `Maybe a`, `Array a`, `Map v` | `h.Maybe`, `h.Array`, `h.Map` | `A \| null`, `readonly A[]`, `ReadonlyMap<string, V>` |
+| `Date`, `Instant`, … (std/time) | `h.Date`, `h.StdTime("Instant")`, … | `string`, as written |
+| `{ a: T, b?: T }` | `h.Record({ a, b: h.Optional(…) })` | `{ readonly a: T; readonly b?: T }` |
+| `< A \| B { x: T } >` | `h.Variant`, `h.OpenVariant`, `h.Enum` | `{ _tag: "B"; x: T } \| …`, open: `\| Unknown` |
+| `Any` | `h.Any` | `Value`: the parsed value, unchanged |
+| `Secret a` | `h.Secret(a)` | `Secret<A>`: prints `<redacted>`, `expose()` gives the value |
+
+A `Secret` hides its value from `console.log`, `String()` and
+`JSON.stringify`, and errors inside one name its place and type, never the
+value. Encode one with `h.Secret.make(value)`. `@deprecated` and other
+attributes don't change decoding; the declarations (`schemaDeclarations`) mark
+deprecated types, fields and tags with JSDoc `@deprecated`, `checkData` hints
+where data uses them, and `parseSchemaFile(…).warnings` lists attributes this
+version doesn't know.
+
 ## Write haus
 
 ```ts

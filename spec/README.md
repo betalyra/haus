@@ -137,9 +137,21 @@ Errors report a 1-based line and column. Columns count **Unicode code points**, 
 9. **Recursive types** (a type that contains itself, like a tree) are allowed but MUST be explicit (e.g. `h.Recursive`). Every cycle MUST pass through a record field, array element or variant payload, so that each level of recursion consumes a level of input. A schema that applies itself to the same value again MUST fail. Each recursive type SHOULD have its own, smaller depth limit (default 64).
 10. **Schemas are declarative.** The schema language describes structure only: records, arrays, variants, prelude types and recursion. Generic types MAY refer to themselves only with the same parameters (`type List a = < Nil | Cons a (List a) >`; not `T (Pair a a)`). There are no type-level functions, conditions on values, references between values, or user code in schemas, and no syntax for rules about values: the only such rules are those of built-in types (§13.1), which run in linear time. Checking a value against a schema then always terminates in linear time; anything more belongs in application code, where the work budget (item 8) still applies.
 
-## 10. Evolution
+## 10. Evolution and versions
 
-There is no version header. Any syntax added later MUST be a syntax error in every earlier version, so an old parser fails loudly instead of misreading newer data. Changes in meaning that leave the syntax unchanged are not allowed. The rules of built-in types (§13.1) are part of this: they never change once published. Schema packages are versioned separately, with the rules of §13.3.
+This specification is versioned. Versions 0.x are drafts, in which anything may still change. From 1.0 on, haus only grows:
+
+- A **minor version** (1.1, 1.2, …) may add: syntax, schema-language constructs (never prelude types, see below), standard modules and types in them, attributes (§14), and new canonical forms or hashes under new names (§12).
+- A **patch version** (1.0.1, …) only clarifies wording. Nothing it changes changes behaviour.
+- There is **no breaking version**. A later version may make invalid text valid, through new syntax or new schema constructs. It never makes valid text invalid, never changes what valid text means, never changes what an existing schema accepts or what it decodes to, and never changes the canonical form or the hash of a value. Default limits (§7) may only grow. The rules of built-in types (§13.1) never change once published.
+- **New syntax MUST be a syntax error in every earlier version,** so an old parser fails loudly instead of misreading newer data.
+- **The prelude is fixed at 1.0.** A schema may not redefine a prelude type (§14), so adding one would break schemas that define a type of that name. Built-in types added later go into standard modules, which a schema imports (§13.2).
+
+**No version header.** A file doesn't say which version it is written in: every version reads every earlier version's text the same way. Files whose first character (after a byte order mark) is `#` are reserved for a version directive, such as `#haus 2`, should a version that breaks compatibility ever become unavoidable. Such a version would require the directive in every file, and a file without one would always be read by the rules of 1.x. Parsers SHOULD report a file starting with `#haus` as needing a newer version of haus, rather than as an ordinary syntax error.
+
+**Conformance.** An implementation states the version it implements ("haus 1.1"). The conformance suite (`../test-suite`) is tagged for each version. Media types MAY carry the version as a parameter: `application/vnd.haus; version=1.1`.
+
+Schema packages are versioned separately, with the rules of §13.3.
 
 ## 11. Standard format
 
@@ -248,7 +260,7 @@ Types come from four places:
 
 | Tier | Contents | Rules about values | Bindings |
 |---|---|---|---|
-| **Prelude** ([`prelude.schema.haus`](prelude.schema.haus)) | the data model: `Bool`, `Maybe`, `Result`, `String`, `Bytes`, `Array a`, `Map v`, records, `Int`, `Int8`…`UInt64`, `Float32`, `Float64`, `Decimal` | built in (ranges of `Int8`…) | MUST support |
+| **Prelude** ([`prelude.schema.haus`](prelude.schema.haus)) | the data model: `Bool`, `Maybe`, `Result`, `String`, `Bytes`, `Array a`, `Map v`, records, `Int`, `Int8`…`UInt64`, `Float32`, `Float64`, `Decimal`, `Any`, `Secret a` | built in (ranges of `Int8`…) | MUST support |
 | **Standard modules** ([`std/`](std)) | [`std/time`](std/time.schema.haus) only | built in: the [std/time profile](std/time.md) | MUST support |
 | **Official extensions** ([`../extensions`](../extensions)) | schema packages `@haus/…`, e.g. `@haus/money`, `@haus/geo` | none; profiles for codecs | MAY offer codecs |
 | **Community packages** | schema packages of any other organisation | none | MAY offer codecs |
@@ -374,6 +386,22 @@ type Person = closed { ...Base, name: String }
 
 Only a named type without parameters can be spread; to reuse a structure with a part left open, use a type parameter (`type Envelope e = { id: String, event: e }`). There are no row parameters: `...r` is reserved and MUST be rejected.
 
+**Attributes.** An attribute gives tools information about a type, field or tag. It is written before it:
+
+```
+@deprecated("use Customer")
+type Client = { id: Int, @deprecated("use email") mail?: String, email?: String }
+type Shape = < Circle { r: Float64 } | @deprecated Square { side: Float64 } >
+```
+
+Attributes are metadata: they never change which data a type accepts or what it decodes to (§15). There is one:
+
+- `@deprecated` or `@deprecated("why, and what to use instead")`: the type, field or tag will be removed in a later major version of its package (§13.3). Tools that check data against a schema SHOULD mark a deprecated field or tag the data uses with a hint (not an error); tools SHOULD mark a schema's use of a deprecated type; code generators SHOULD emit the language's own marker, such as `#[deprecated]` in Rust or `@deprecated` in JSDoc. A field or tag copied by a spread keeps its attributes.
+
+An attribute is added to this list only if it passes three tests: it doesn't change which data is valid or what it decodes to; tools act on it the same way in every language (text for people belongs in comments); and most target languages have a counterpart for it. Rules about values (`@min`, `@pattern`, `@default`) never pass the first test (§9.10).
+
+Tools MUST accept an attribute this version doesn't define, MUST NOT give it a meaning, and SHOULD warn about it, so that a schema using an attribute of a later version still works with older tools. Implementations MUST NOT define attributes of their own.
+
 Implementations MUST reject:
 
 - unknown types, types used with the wrong number of arguments, types defined twice, and redefinitions of prelude types;
@@ -382,7 +410,8 @@ Implementations MUST reject:
 - a spread of something other than a named variant (in a variant) or a named record (in a record), of a type with parameters, or of a `Stream`;
 - a type that spreads itself, directly or through other types (`type A = < ...B >`, `type B = < ...A >`);
 - `...r`: row parameters are not part of the language;
-- recursion that doesn't pass through a record field, array element or variant payload (`type A = B`, `type B = A`), §9.9;
+- an attribute this version defines with arguments it doesn't take (`@deprecated(1)`), or twice on one type, field or tag (attributes it doesn't define are accepted as they are, §14 above);
+- recursion that doesn't pass through a record field, array element or variant payload (`type A = B`, `type B = A`), §9.9. `Secret a` is not a step of its own: `type A = Secret A` is unguarded;
 - a generic type that refers to itself with arguments other than its own parameters, §9.10;
 - `Stream a` anywhere but as the whole type of a definition, and references to such a definition;
 - the import errors of §13.3.
@@ -422,7 +451,9 @@ A value outside an integer type's range is an error, never wrapped or clamped. F
 | `Maybe a` | `None`, or `Some(x)` with exactly one argument `x` that `a` accepts |
 | `Result e a` | `Err(x)` with `x` an `e`, or `Ok(x)` with `x` an `a` |
 | `Array a` | an array whose elements `a` all accept |
-| `Map v` | a record with any keys, whose values `v` all accept |
+| `Map v` | a record with any keys, whose values `v` all accept. As for records (§2), the order of its entries carries no meaning. |
+| `Any` | any value, kept exactly as parsed: the binding's value tree (§9.5 applies, as for unknown values). Encoding writes it back unchanged, after checking it is a value within the limits (§9.8). |
+| `Secret a` | exactly what `a` accepts, decoded as `a` decodes it, in a host type that hides it (below) |
 | `Date`, `Time`, … (std/time) | the type's own tag with exactly one string argument that the [std/time profile](std/time.md) accepts: `Date("2026-11-13")`. `Instant("2026-11-13T10:00:00Z")` is not a `Date`. |
 
 **Records.** `{ … }` accepts a record in which:
@@ -449,6 +480,15 @@ A listed tag with any other payload is an error, in open variants too: an unknow
 
 How it is represented is up to the binding. For example, a binding MAY represent an unknown value without a payload by its tag name, so that `< >` decodes `EUR` to the string `"EUR"`.
 
+**Secrets.** `Secret a` marks a value that must not end up in logs, such as an API key or a password. The data is the same as for `a`: it is written in full, since the receiver needs it, and its canonical form and hash (§12) don't change. What changes is the host side. Bindings MUST:
+
+- decode it to a type that hides the value when printed, logged, inspected or converted to JSON (showing something like `<redacted>`), and gives it out only through an explicit call;
+- leave the value out of error messages: an error inside a `Secret` is reported at the secret itself (`$.apiKey`), with its type, never with the value found or any part of it. A path into the secret could itself reveal it, through the keys of a `Map`.
+
+Tools that show data, such as editors and `haus check`, SHOULD mask values of a `Secret` type.
+
+**Attributes don't matter.** Decoding and encoding are the same with and without the attributes of a schema (§14).
+
 **Named, generic and recursive types.** A named type decodes as its definition. A generic type decodes as its definition with the parameters replaced by the arguments: `Maybe Int`, `Envelope Event`. A recursive type decodes one level of the input at a time (§9.9).
 
 **Streams.** `Stream a` describes a file: each top-level value decodes as an `a`, on its own, as it is read. An error names the value's index in the stream.
@@ -459,7 +499,7 @@ How it is represented is up to the binding. For example, a binding MAY represent
 - the spelling of a float: `0.10` decodes as `Float64` to the float 0.1, which is written `0.1`;
 - `-0` decoded as an integer, which is written `0`.
 
-Integers are written as decimal integers, and decimals as their literal, scale included (§3).
+Integers are written as decimal integers (in hex when longer than the number limit, as in §12), and decimals as their literal, scale included (§3).
 
 **Floats** are written as `NaN`, `Infinity` and `NegInfinity`, and otherwise in one exact spelling, so that every binding writes the same float as the same text and gives it the same canonical form and hash (§12):
 

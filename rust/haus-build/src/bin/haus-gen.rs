@@ -62,6 +62,10 @@ fn run(args: &[String]) -> Result<(), String> {
             let name = schema.file_name().and_then(|f| f.to_str()).unwrap_or_default();
             let id = args.id.unwrap_or_else(|| name.trim_end_matches(".schema.haus").to_owned());
             let module = args.module.ok_or("--module is required")?;
+            let text = fs::read_to_string(schema).map_err(|e| format!("{}: {e}", schema.display()))?;
+            for w in haus_build::check(&text).unwrap_or_default() {
+                eprintln!("haus-gen: warning: {}:{w}", schema.display());
+            }
             args.config.generate(schema, &module, &id)
         }
         "roc-package" => args.config.generate_package(Path::new(input)).map(|(_, code)| code),

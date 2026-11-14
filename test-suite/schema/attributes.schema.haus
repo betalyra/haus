@@ -1,0 +1,11 @@
+// Attributes (spec §14): metadata for tools. Decoding is the same without them.
+@deprecated("use Customer")
+type Client = { id: Int, @deprecated("use email") mail?: String, email?: String }
+
+type Shape = closed < Circle { r: Float64 } | @deprecated Square { side: Float64 } | @deprecated("gone") Dot >
+
+// An attribute this version doesn't define is accepted and ignored.
+@since("1.2")
+type Later = { @since("1.2") @deprecated n: Int, @example(1, "a", [True]) m?: Int }
+
+type Uses = { client: Client, shape: Shape }

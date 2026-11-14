@@ -2,7 +2,7 @@
 //! (spec §11: one value per line, normal spacing).
 
 use crate::de::{AnyTag, Bytes, Decimal, Int, Unknown};
-use crate::{Codec, Value};
+use crate::{Codec, Secret, Value};
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
@@ -39,6 +39,10 @@ pub fn result<A, E>(r: &Result<A, E>, ok: impl FnOnce(&A) -> Value, err: impl Fn
         Err(x) => variant("Err", vec![err(x)]),
     }
 }
+/// `Secret a`: the value in full (the receiver needs it).
+pub fn secret<T>(s: &Secret<T>, f: impl FnOnce(&T) -> Value) -> Value {
+    f(s.expose())
+}
 /// A type with a codec: back to its base type, then encoded.
 pub fn codec<C: Codec>(x: &C::Target) -> Value {
     C::encode(x).encode()
@@ -47,6 +51,11 @@ pub fn codec<C: Codec>(x: &C::Target) -> Value {
 impl<T: Encode + ?Sized> Encode for &T {
     fn encode(&self) -> Value {
         (**self).encode()
+    }
+}
+impl<T: Encode> Encode for Secret<T> {
+    fn encode(&self) -> Value {
+        secret(self, T::encode)
     }
 }
 impl<T: Encode> Encode for Box<T> {

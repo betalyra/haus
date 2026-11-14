@@ -11,3 +11,6 @@ type Counts = Map Int
 type Day = Date
 type At = Instant
 type Span = Duration
+type Payload = Any
+type Key = Secret String
+type Config = closed { name: String, key: Secret String, pin?: Secret Int, extra: Any }

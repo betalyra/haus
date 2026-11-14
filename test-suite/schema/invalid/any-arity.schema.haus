@@ -1,0 +1,2 @@
+// Any takes no arguments.
+type A = Any Int

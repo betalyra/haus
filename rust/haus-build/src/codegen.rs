@@ -9,12 +9,16 @@
 //! | `< >`                        | `haus::AnyTag`                           |
 //! | `Maybe a`, `Result e a`      | `Option<A>`, `Result<A, E>`              |
 //! | `Array a`, `Map v`           | `Vec<A>`, `BTreeMap<String, V>`          |
+//! | `Any`, `Secret a`            | `haus::Value`, `haus::Secret<A>`         |
+//!
+//! `@deprecated` types, fields and tags get `#[deprecated]`. The generated
+//! code itself allows their use, so only code that touches them is warned.
 //!
 //! Records and variants written inline get a name from where they are:
 //! `Order.status` becomes `OrderStatus`. The code is built as tokens with
 //! `quote!` and printed with `prettyplease`.
 
-use crate::schema::{Case, Error, Field, File, Ty, TypeDef, error};
+use crate::schema::{Attribute, Case, Error, Field, File, PRELUDE, Ty, TypeDef, deprecation, error};
 use proc_macro2::{Ident, Literal, Span, TokenStream};
 use quote::{ToTokens, format_ident, quote};
 use std::collections::{HashMap, HashSet};
@@ -47,42 +51,11 @@ pub struct Input<'a> {
     pub codecs: &'a [Codec],
 }
 
-/// The prelude: built-in types and their number of parameters.
-const PRELUDE: &[(&str, usize)] = &[
-    ("Bool", 0),
-    ("Maybe", 1),
-    ("Result", 2),
-    ("String", 0),
-    ("Bytes", 0),
-    ("Array", 1),
-    ("Map", 1),
-    ("Int", 0),
-    ("Int8", 0),
-    ("Int16", 0),
-    ("Int32", 0),
-    ("Int64", 0),
-    ("UInt8", 0),
-    ("UInt16", 0),
-    ("UInt32", 0),
-    ("UInt64", 0),
-    ("Float32", 0),
-    ("Float64", 0),
-    ("Decimal", 0),
-    ("Stream", 1),
-];
-
 pub const STD_TIME: [&str; 8] =
     ["Date", "Time", "DateTime", "Instant", "ZonedDateTime", "Duration", "YearMonth", "TimeZone"];
 
 pub fn generate(file: &File, input: &Input) -> Result<String, Error> {
     let fail = |pos, reason: String| Err(error(input.text, pos, reason));
-    if let Some((i, d)) = file.types.iter().enumerate().find(|(i, d)| file.types[..*i].iter().any(|e| e.name == d.name))
-    {
-        return fail(file.types[i].pos, format!("{} is defined twice", d.name));
-    }
-    if let Some(d) = file.types.iter().find(|d| PRELUDE.iter().any(|(n, _)| *n == d.name)) {
-        return fail(d.pos, format!("{} is a prelude type and can't be redefined", d.name));
-    }
     let ids = known_ids(file, input);
     if let Some(codec) = input.codecs.iter().find(|c| !ids.contains(&c.id)) {
         return fail(
@@ -243,15 +216,17 @@ struct FieldRs {
     key: String,
     optional: bool,
     rs: Rs,
+    /// `#[deprecated]`, or nothing.
+    deprecated: TokenStream,
 }
 
 impl FieldRs {
     fn decl(&self, visibility: TokenStream) -> TokenStream {
-        let (name, ty) = (&self.name, &self.rs.ty);
+        let (name, ty, deprecated) = (&self.name, &self.rs.ty, &self.deprecated);
         if self.optional {
-            quote!(#visibility #name: ::std::option::Option<#ty>)
+            quote!(#deprecated #visibility #name: ::std::option::Option<#ty>)
         } else {
-            quote!(#visibility #name: #ty)
+            quote!(#deprecated #visibility #name: #ty)
         }
     }
 
@@ -318,6 +293,7 @@ impl<'a> At<'a> {
 struct Item<'a> {
     name: Ident,
     params: Vec<Ident>,
+    /// Doc comments, and `#[deprecated]` if it is.
     doc: TokenStream,
     at: At<'a>,
 }
@@ -342,14 +318,17 @@ impl Item<'_> {
         quote! {
             #doc
             #[derive(Debug, Clone, PartialEq)]
+            #[allow(deprecated)]
             #definition
 
+            #[allow(deprecated)]
             impl #de_g ::haus::Decode for #name #g {
                 fn decode(v: &::haus::Value) -> ::std::result::Result<Self, ::haus::DecodeError> {
                     #decode
                 }
             }
 
+            #[allow(deprecated)]
             impl #en_g ::haus::Encode for #name #g {
                 fn encode(&self) -> ::haus::Value {
                     #encode
@@ -378,7 +357,11 @@ impl<'a> Gen<'a> {
         let item = Item {
             name: format_ident!("{}", def.name),
             params: def.params.iter().map(|p| param(p)).collect(),
-            doc: docs(def.doc.lines().chain(["", &format!("haus type `{id}`.")]).skip_while(|l| l.is_empty())),
+            doc: {
+                let doc = docs(def.doc.lines().chain(["", &format!("haus type `{id}`.")]).skip_while(|l| l.is_empty()));
+                let deprecated = deprecated(&def.attrs);
+                quote!(#doc #deprecated)
+            },
             at: At { owner: def, hint: def.name.clone(), contained: false },
         };
         self.define(&item, &def.ty, Some(&id))
@@ -396,12 +379,13 @@ impl<'a> Gen<'a> {
             Ty::Variant { closed, cases, .. } => (self.variant(item, *closed, cases)?, true),
             ty => {
                 let target = self.lower(ty, &item.at)?.ty;
-                (quote! { #doc pub type #name #g = #target; }, false)
+                (quote! { #doc #[allow(deprecated)] pub type #name #g = #target; }, false)
             }
         };
         // Structs and enums carry their id; aliases can't.
         let id = id.filter(|_| nominal).map(|id| {
             quote! {
+                #[allow(deprecated)]
                 impl #g #name #g {
                     /// The type's id (spec §13.3).
                     #[allow(dead_code)]
@@ -477,6 +461,17 @@ impl<'a> Gen<'a> {
             "Int8" | "Int16" | "Int32" | "Int64" => scalar(format_ident!("i{}", &name[3..]).into_token_stream()),
             "UInt8" | "UInt16" | "UInt32" | "UInt64" => scalar(format_ident!("u{}", &name[4..]).into_token_stream()),
             "Float32" | "Float64" => scalar(format_ident!("f{}", &name[5..]).into_token_stream()),
+            "Any" => scalar(quote!(::haus::Value)),
+            "Secret" => {
+                let inner = self.lower(&args[0], at)?;
+                let (ty, de, en) = (&inner.ty, inner.de.value(), inner.en.value());
+                let what = format!("Secret {}", args[0]);
+                Ok(Rs {
+                    ty: quote!(::haus::Secret<#ty>),
+                    de: Fun::Expr(quote!(::haus::de::secret(x, #what, #de))),
+                    en: Fun::Expr(quote!(::haus::ser::secret(x, #en))),
+                })
+            }
             "Array" => {
                 let item = self.lower(&args[0], &at.inner("Item").contained())?;
                 let ty = &item.ty;
@@ -528,7 +523,13 @@ impl<'a> Gen<'a> {
             .iter()
             .map(|f| {
                 let rs = self.lower(&f.ty, &at.inner(&f.key))?;
-                Ok(FieldRs { name: field_ident(&f.key), key: f.key.clone(), optional: f.optional, rs })
+                Ok(FieldRs {
+                    name: field_ident(&f.key),
+                    key: f.key.clone(),
+                    optional: f.optional,
+                    rs,
+                    deprecated: deprecated(&f.attrs),
+                })
             })
             .collect::<Result<Vec<_>, Error>>()?;
         match out.iter().enumerate().find(|(i, f)| out[..*i].iter().any(|g| g.name == f.name)) {
@@ -622,8 +623,9 @@ impl<'a> Gen<'a> {
                 )
             }
         };
+        let deprecated = deprecated(&case.attrs);
         Ok(item.implement(
-            definition,
+            quote!(#deprecated #definition),
             quote! {
                 let (tag, args) = ::haus::de::variant(v, #label)?;
                 if tag != #tag {
@@ -648,9 +650,10 @@ impl<'a> Gen<'a> {
             .iter()
             .map(|case| {
                 let (tag, v) = (&case.tag, format_ident!("{}", case.tag));
+                let deprecated = deprecated(&case.attrs);
                 Ok(match self.payload(case, &item.at)? {
                     Payload::None => (
-                        quote!(#v),
+                        quote!(#deprecated #v),
                         quote!(#tag => { ::haus::de::args::<0>(tag, args)?; ::std::result::Result::Ok(Self::#v) }),
                         quote!(Self::#v => ::haus::ser::variant(#tag, ::std::vec![])),
                     ),
@@ -660,7 +663,7 @@ impl<'a> Gen<'a> {
                         let vars = vars(items.len());
                         let encoded = tuple_en(&items);
                         (
-                            quote!(#v(#(#tys),*)),
+                            quote!(#deprecated #v(#(#tys),*)),
                             quote!(#tag => { #bind ::std::result::Result::Ok(Self::#v(#(#values),*)) }),
                             quote!(Self::#v(#(#vars),*) => ::haus::ser::variant(#tag, ::std::vec![#(#encoded),*])),
                         )
@@ -675,7 +678,7 @@ impl<'a> Gen<'a> {
                         });
                         let bind = bind_record(quote!(::haus::de::payload(tag, args)), closed, fields);
                         (
-                            quote!(#v { #(#decls),* }),
+                            quote!(#deprecated #v { #(#decls),* }),
                             quote!(#tag => {
                                 #bind
                                 ::std::result::Result::Ok(Self::#v { #(#decoded),* })
@@ -763,6 +766,15 @@ fn bind_record(record: TokenStream, closed: bool, fields: &[Field]) -> TokenStre
 fn docs<'s>(lines: impl Iterator<Item = &'s str>) -> TokenStream {
     let lines = lines.map(|l| if l.is_empty() { String::new() } else { format!(" {l}") });
     quote!(#(#[doc = #lines])*)
+}
+
+/// `#[deprecated(note = "…")]` if the attributes say so (spec §14), or nothing.
+fn deprecated(attrs: &[Attribute]) -> TokenStream {
+    match deprecation(attrs) {
+        Some(Some(note)) => quote!(#[deprecated(note = #note)]),
+        Some(None) => quote!(#[deprecated]),
+        None => quote!(),
+    }
 }
 
 /// The parameters a type expression uses.

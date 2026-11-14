@@ -26,18 +26,20 @@ impl Default for Limits {
 
 /// Parse a file with the given limits.
 pub fn parse_with(src: &str, limits: &Limits) -> Result<Vec<Value>, Error> {
-    Parser { src, b: src.as_bytes(), pos: 0, depth: 0, limits }.sequence(true)
+    let start = if src.starts_with('\u{FEFF}') { 3 } else { 0 };
+    Parser { src, b: src.as_bytes(), pos: start, depth: 0, limits, file_start: Some(start) }.sequence()
 }
 
-/// The rest of a stream: like `parse_with`, but not at the start of the input,
-/// so a byte order mark is not skipped (the reader removes the one at the start).
-pub(crate) fn parse_rest(src: &str, limits: &Limits) -> Result<Vec<Value>, Error> {
-    Parser { src, b: src.as_bytes(), pos: 0, depth: 0, limits }.sequence(false)
+/// The rest of a stream: like `parse_with`, but a byte order mark is not
+/// skipped (the reader removes the one at the start). `at_start`: the text
+/// is the start of the file.
+pub(crate) fn parse_rest(src: &str, limits: &Limits, at_start: bool) -> Result<Vec<Value>, Error> {
+    Parser { src, b: src.as_bytes(), pos: 0, depth: 0, limits, file_start: at_start.then_some(0) }.sequence()
 }
 
 /// Exactly one value, with comments and whitespace around it: one item of a stream.
-pub(crate) fn parse_single(src: &str, limits: &Limits) -> Result<Value, Error> {
-    Parser { src, b: src.as_bytes(), pos: 0, depth: 0, limits }.single()
+pub(crate) fn parse_single(src: &str, limits: &Limits, at_start: bool) -> Result<Value, Error> {
+    Parser { src, b: src.as_bytes(), pos: 0, depth: 0, limits, file_start: at_start.then_some(0) }.single()
 }
 
 type R<T> = Result<T, Error>;
@@ -48,6 +50,8 @@ struct Parser<'a> {
     pos: usize,
     depth: usize,
     limits: &'a Limits,
+    /// Where the file's first character is, if this text has it (after a byte order mark).
+    file_start: Option<usize>,
 }
 
 /// Raw bidirectional controls (U+202A–U+202E, U+2066–U+2069) are not allowed outside escapes.
@@ -77,11 +81,8 @@ fn describe(c: Option<char>) -> String {
 impl<'a> Parser<'a> {
     // ── values ─────────────────────────────────────────────────
 
-    fn sequence(&mut self, at_start: bool) -> R<Vec<Value>> {
+    fn sequence(&mut self) -> R<Vec<Value>> {
         let mut out = Vec::new();
-        if at_start && self.src.starts_with('\u{FEFF}') {
-            self.pos = 3;
-        }
         self.trivia()?;
         while !self.eof() {
             out.push(self.value()?);
@@ -129,6 +130,10 @@ impl<'a> Parser<'a> {
                     start,
                     format!("unexpected identifier '{word}': lowercase identifiers can only be record keys{hint}"),
                 ))
+            }
+            // Reserved for a version directive (spec §10): `#haus 2`.
+            Some(b'#') if self.file_start == Some(self.pos) && self.b[self.pos..].starts_with(b"#haus") => {
+                Err(self.fail("the file starts with a version directive (#haus): it needs a newer version of haus"))
             }
             _ => Err(self.fail(format!("expected a value, found {}", describe(self.peek_char())))),
         }
@@ -752,4 +757,24 @@ fn normalize_exponent(text: String) -> String {
     let digits = exponent.trim_start_matches(['+', '-']).trim_start_matches('0');
     let digits = if digits.is_empty() { "0" } else { digits };
     format!("{mantissa}{}{digits}", if negative && digits != "0" { "-" } else { "" })
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::parse;
+
+    #[test]
+    fn a_version_directive_needs_a_newer_version() {
+        let newer = "the file starts with a version directive (#haus): it needs a newer version of haus";
+        for text in ["#haus 2\n{ a: 1 }", "\u{FEFF}#haus 2\n1"] {
+            let e = parse(text).unwrap_err();
+            assert_eq!((e.reason.as_str(), e.line), (newer, 1), "{text:?}");
+        }
+        let stream = crate::stream::values("#haus 2\n1,\n".as_bytes()).next().unwrap().unwrap_err();
+        assert!(stream.to_string().contains("needs a newer version of haus"), "{stream}");
+        // Anywhere else, or another `#`, is an ordinary syntax error.
+        for text in [" #haus 2", "1, #haus 2", "#2"] {
+            assert_eq!(parse(text).unwrap_err().reason, "expected a value, found '#'", "{text:?}");
+        }
+    }
 }

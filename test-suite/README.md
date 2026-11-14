@@ -30,6 +30,10 @@ the type, encode the result with the same type, and compare its canonical form
 (§12) with that of `output`, or of `input` when there is no `output`. For
 `Err`, decoding must fail. Error messages are not compared.
 
+`schema/invalid/NAME.schema.haus` must be rejected by schema checkers (spec §14).
+Bindings also check that attributes don't matter: each schema file, with every
+attribute removed, must give the same result for every case.
+
 ## Expected output encoding
 
 `NAME.json` is a JSON array holding the file's top-level values in order (an

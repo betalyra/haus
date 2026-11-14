@@ -7,9 +7,13 @@
  *
  * Errors are values the schema doesn't allow. Hints are fields and tags an
  * open type doesn't list: allowed (a reader ignores them, or reads the tag as
- * unknown), but maybe a typo, so editors mark them gently.
+ * unknown), but maybe a typo, so editors mark them gently; and fields and
+ * tags the schema marks `@deprecated` (spec §14).
+ *
+ * Values of a `Secret` type are never shown (spec §15): a problem inside one
+ * is reported as one error at the secret, with its type and not its value.
  */
-import type { Case, Field, Instance, RecordType, SchemaFile, StdType, Type, VariantType } from "./schema-file.js"
+import { deprecation, type Case, type Field, type Instance, type RecordType, type SchemaFile, type StdType, type Type, type VariantType } from "./schema-file.js"
 import { checkStdTime } from "./std-time.js"
 import type { HRecord, HVariant, Value } from "./value.js"
 
@@ -129,6 +133,8 @@ function describe(t: Type): string {
       return `Map ${atom(t.value)}`
     case "maybe":
       return `Maybe ${atom(t.item)}`
+    case "secret":
+      return `Secret ${atom(t.item)}`
     case "record":
       return "a record"
     case "variant":
@@ -157,8 +163,13 @@ const tags = (v: VariantType) => {
  * other type expects exactly one.
  */
 export interface CheckOptions {
-  /** Called for every value with the type the schema expects there (as written: `Comment`, not its body). */
-  readonly onValue?: (value: Value, type: Type) => void
+  /**
+   * Called for every value with the type the schema expects there (as
+   * written: `Comment`, not its body). `secret` is true for a value of a
+   * `Secret` type and the values inside it, which tools should not show.
+   * A secret's value is passed twice: with its `Secret` type, then with the type inside.
+   */
+  readonly onValue?: (value: Value, type: Type, secret: boolean) => void
 }
 
 export function checkData(file: SchemaFile, typeName: string, values: readonly Value[], options: CheckOptions = {}): CheckIssue[] {
@@ -182,10 +193,13 @@ export function checkData(file: SchemaFile, typeName: string, values: readonly V
     return t
   }
 
+  /** How many `Secret`s the value being checked is inside. */
+  let hidden = 0
+
   const check = (v: Value, type: Type): void => {
-    options.onValue?.(v, type)
-    if (issues.length >= MAX_ISSUES) return
     const t = resolve(type)
+    options.onValue?.(v, type, hidden > 0 || t.kind === "secret")
+    if (issues.length >= MAX_ISSUES) return
     switch (t.kind) {
       case "builtin":
         return builtin(v, t.name, type)
@@ -203,6 +217,20 @@ export function checkData(file: SchemaFile, typeName: string, values: readonly V
         if (v.kind === "variant" && v.tag === "None" && v.args.length === 0) return
         if (v.kind === "variant" && v.tag === "Some" && v.args.length === 1) return check(v.args[0]!, t.item)
         return report("error", `expected None or Some(…) (${describe(type)}), found ${found(v)}`, ...at(v))
+      case "secret": {
+        // Check what's inside, then replace whatever was found there (messages
+        // quote values, keys and tags of the data) by one error without them.
+        const before = issues.length
+        hidden++
+        try {
+          check(v, t.item)
+        } finally {
+          hidden--
+        }
+        const inside = issues.splice(before)
+        if (inside.some((i) => i.severity === "error")) report("error", `expected ${describe(t.item)} (a Secret: the value is not shown)`, ...at(v))
+        return
+      }
       case "record":
         if (v.kind !== "record") return mismatch(v, type)
         return record(v, t)
@@ -216,6 +244,8 @@ export function checkData(file: SchemaFile, typeName: string, values: readonly V
 
   const builtin = (v: Value, name: string, type: Type): void => {
     switch (name) {
+      case "Any":
+        return
       case "String":
         if (v.kind !== "string") mismatch(v, type)
         return
@@ -263,6 +293,8 @@ export function checkData(file: SchemaFile, typeName: string, values: readonly V
     for (const [key, x] of v.fields) {
       const f = known.get(key)
       if (f) {
+        const message = deprecation(f.attributes)
+        if (message !== undefined) report("hint", `${quoteKey(key)} is deprecated${message ? `: ${message}` : ""}`, ...(v.keySpans?.get(key) ?? at(x)))
         check(x, f.type)
         continue
       }
@@ -282,6 +314,8 @@ export function checkData(file: SchemaFile, typeName: string, values: readonly V
       else report("error", `${v.tag} is not allowed here: expected ${tags(t)}.${hint}`, ...tagSpan(v))
       return
     }
+    const message = deprecation(c.attributes)
+    if (message !== undefined) report("hint", `${v.tag} is deprecated${message ? `: ${message}` : ""}`, ...tagSpan(v))
     const [first] = v.args
     switch (c.payload.kind) {
       case "none":

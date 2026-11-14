@@ -42,6 +42,9 @@ jobs:
       - name: Conformance suite
         working-directory: spec/lean
         run: .lake/build/bin/haus-ref --suite ../../test-suite
+      - name: Schema suite
+        working-directory: spec/lean
+        run: .lake/build/bin/haus-ref --schema-suite ../../test-suite/schema schema-suite.json
 
   rust:
     name: Rust
@@ -86,6 +89,10 @@ jobs:
       - name: Test
         working-directory: typescript
         run: pnpm test
+      - name: Lean schema types are up to date
+        run: |
+          node spec/lean/scripts/schema-types.ts > spec/lean/schema-suite.json
+          git diff --exit-code spec/lean/schema-suite.json
 
   roc:
     name: Roc
@@ -108,7 +115,7 @@ jobs:
         working-directory: roc
         run: |
           (cd package && roc test ConformanceTest.roc && roc test TimeTest.roc)
-          (cd package && roc test Decode.roc && roc test Encode.roc && roc test Int.roc && roc test Stream.roc)
+          (cd package && roc test Decode.roc && roc test Encode.roc && roc test Int.roc && roc test Stream.roc && roc test Secret.roc && roc test Value.roc)
           (cd examples/shop && roc test main.roc)
           (cd schema-test && roc test main.roc)
 

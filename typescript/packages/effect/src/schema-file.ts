@@ -17,15 +17,23 @@
  *   open variants              → … | Unknown                          (other tags kept as raw values)
  *   < >                        → string | Unknown                     (any tag: bare tags as their name)
  *   std/time: Instant → DateTime.Utc, ZonedDateTime → DateTime.Zoned, the others → string
+ *   Any → Haus.Value (Haus.Any: the parsed value, unchanged)
+ *   Secret a → Redacted<A> (Schema.Redacted: shows <redacted>; errors never show the value)
+ *
+ * Attributes don't change the schemas (spec §15); `@deprecated` becomes a
+ * JSDoc `@deprecated` in the declarations.
  *
  * Codecs (codec.ts) replace named types: `fromSchemaFile(file, { codecs })`
  * builds the schemas with their types, and the declarations make every type
  * a function of the codecs' types (`Root<C>`, through `Lookup`).
  */
-import { parseSchemaFile, type Builtin, type Case, type Definition, type Field, type Instance, type ParseSchemaOptions, type SchemaFile, type StdType, type Type } from "@haus-fmt/haus"
+import {
+  definitionDoc, deprecatedDoc, describeType, parseSchemaFile, type Builtin, type Case, type Definition, type Field, type Instance, type ParseSchemaOptions,
+  type SchemaFile, type StdType, type Type,
+} from "@haus-fmt/haus"
 import { Schema } from "effect"
 import { entries, idOf, setId, type AnyCodec, type CodecEntry } from "./codec.js"
-import { BARE_TAG, CLOSED, NUMBER, STRICT, VALUES } from "./convert.js"
+import { BARE_TAG, CLOSED, NUMBER, SECRET, STRICT, VALUES } from "./convert.js"
 // Circular import: only used when a schema file is compiled, after both modules have loaded.
 import * as Haus from "./index.js"
 
@@ -88,6 +96,8 @@ const builtin = (name: Builtin): Schema.Top => {
       return Schema.BigInt.check(Schema.isBetweenBigInt({ minimum: 0n, maximum: 2n ** 64n - 1n }))
     case "Float32":
       return Haus.Float32
+    case "Any":
+      return Haus.Any
     default:
       return Schema.Number // Float64
   }
@@ -174,6 +184,9 @@ export const fromSchemaFile = (file: SchemaFile, options: FromSchemaFileOptions 
         return Schema.Record(Schema.String, build(t.value))
       case "maybe":
         return Schema.Option(build(t.item))
+      case "secret":
+        // The haus type, for errors that name it without showing the value.
+        return Schema.Redacted(build(t.item)).annotate({ [SECRET]: describeType(t.item) } as never)
       case "record": {
         const s = Schema.Struct(fields(t.fields))
         return t.closed ? s.annotate({ [CLOSED]: true } as never) : s
@@ -229,11 +242,9 @@ export interface DeclarationOptions {
 
 const KEY = /^[A-Za-z_$][A-Za-z0-9_$]*$/
 const prop = (k: string) => (KEY.test(k) ? k : JSON.stringify(k))
-const comment = (body: string) => `/**\n * ${body.replaceAll("*/", "*\\/").split("\n").join("\n * ")}\n */\n`
 
-/** JSDoc for a definition: its comment and its haus source. */
-export const definitionDoc = (d: Definition, extra = ""): string =>
-  comment(`${extra}${"```haus-schema\n"}${d.source}\n${"```"}`)
+/** JSDoc for a definition: its comment and its haus source, and `@deprecated` when it is (the core's). */
+export { definitionDoc }
 
 /** The codec map parameter of every declared type. `$` can't appear in haus names, so it never clashes. */
 const C = "C$"
@@ -245,6 +256,7 @@ const visitTypes = (t: Type, onRef: (inst: Instance) => boolean, onStd: (name: S
       return onStd(t.name)
     case "array":
     case "maybe":
+    case "secret":
       return visitTypes(t.item, onRef, onStd)
     case "map":
       return visitTypes(t.value, onRef, onStd)
@@ -325,6 +337,8 @@ export const schemaDeclarations = (file: SchemaFile, options: DeclarationOptions
           case "Int64":
           case "UInt64":
             return "bigint"
+          case "Any":
+            return "Haus$.Value"
           default:
             return "number"
         }
@@ -339,14 +353,16 @@ export const schemaDeclarations = (file: SchemaFile, options: DeclarationOptions
         return `{ readonly [key: string]: ${print(t.value)} }`
       case "maybe":
         return used.add("Option"), `Option$.Option<${print(t.item)}>`
+      case "secret":
+        return used.add("Redacted"), `Redacted$.Redacted<${print(t.item)}>`
       case "record":
         return record(t.fields)
       case "variant": {
         if (t.cases.length === 0 && t.open) return `string | ${unknownType}`
         const cases = isEnum(t.cases)
-          ? t.cases.map((c) => JSON.stringify(c.tag))
+          ? t.cases.map((c) => deprecatedDoc(c.attributes) + JSON.stringify(c.tag))
           : t.cases.map((c) => {
-            const tag = `readonly _tag: ${JSON.stringify(c.tag)}`
+            const tag = `${deprecatedDoc(c.attributes)}readonly _tag: ${JSON.stringify(c.tag)}`
             switch (c.payload.kind) {
               case "none":
                 return `{ ${tag} }`
@@ -367,7 +383,7 @@ export const schemaDeclarations = (file: SchemaFile, options: DeclarationOptions
         return paramName(t.name)
     }
   }
-  const fieldList = (fs: readonly Field[]) => fs.map((f) => `readonly ${prop(f.key)}${f.optional ? "?" : ""}: ${print(f.type)}`)
+  const fieldList = (fs: readonly Field[]) => fs.map((f) => `${deprecatedDoc(f.attributes)}readonly ${prop(f.key)}${f.optional ? "?" : ""}: ${print(f.type)}`)
   const record = (fs: readonly Field[]) => (fs.length === 0 ? "{}" : `{ ${fieldList(fs).join("; ")} }`)
 
   /** Ids of the named types a type contains (codecs may replace them), its own included. */

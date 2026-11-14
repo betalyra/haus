@@ -125,25 +125,25 @@ Variants := [].{
 		Circle(r) => Tag("Circle", [Encode.record([("r", Present(Encode.int(r.r)))])])
 	}
 
-	## haus type `variants#Any`.
-	Any : [Bare(Str), Other(Str, List(Value))]
+	## haus type `variants#AnyTag`.
+	AnyTag : [Bare(Str), Other(Str, List(Value))]
 
-	decode_any : Value -> Try(Any, Decode.Error)
-	decode_any = |v| Decode.any_tag(v)
+	decode_any_tag : Value -> Try(AnyTag, Decode.Error)
+	decode_any_tag = |v| Decode.any_tag(v)
 
-	encode_any : Any -> Value
-	encode_any = |v| Encode.any_tag(v)
+	encode_any_tag : AnyTag -> Value
+	encode_any_tag = |v| Encode.any_tag(v)
 
 	## haus type `variants#Holder`.
-	Holder : { shape : Shape, any : List(Any) }
+	Holder : { shape : Shape, any : List(AnyTag) }
 
 	decode_holder : Value -> Try(Holder, Decode.Error)
 	decode_holder = |v| {
 		fs = Decode.strict_record(v)?
-		Ok({ shape: Decode.field(fs, "shape", decode_shape)?, any: Decode.field(fs, "any", |x1| Decode.list(x1, decode_any))? })
+		Ok({ shape: Decode.field(fs, "shape", decode_shape)?, any: Decode.field(fs, "any", |x1| Decode.list(x1, decode_any_tag))? })
 	}
 
 	encode_holder : Holder -> Value
-	encode_holder = |v| Encode.record([("shape", Present(encode_shape(v.shape))), ("any", Present(Encode.list(v.any, encode_any)))])
+	encode_holder = |v| Encode.record([("shape", Present(encode_shape(v.shape))), ("any", Present(Encode.list(v.any, encode_any_tag)))])
 
 }

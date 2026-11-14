@@ -115,7 +115,7 @@ impl Reader {
     pub fn finish(mut self) -> Result<Vec<Value>, SyntaxError> {
         let mut out = self.scan(true)?;
         let text = self.text(self.buf.len())?;
-        let rest = parse_rest(text, &self.options.limits).map_err(|e| e.from(self.origin))?;
+        let rest = parse_rest(text, &self.options.limits, self.at_file_start()).map_err(|e| e.from(self.origin))?;
         if !rest.is_empty() && self.options.require_terminator {
             let end = self.origin.after(text);
             let reason = "stream ended without ',' after the last value (truncated?)";
@@ -235,11 +235,16 @@ impl Reader {
     fn cut(&mut self, comma: usize) -> Result<Value, SyntaxError> {
         let origin = self.origin;
         let text = self.text(comma)?;
-        let value = parse_single(text, &self.options.limits).map_err(|e| e.from(origin))?;
+        let value = parse_single(text, &self.options.limits, self.at_file_start()).map_err(|e| e.from(origin))?;
         self.origin = origin.after(text).after(",");
         self.start = comma + 1;
         self.chars = 0;
         Ok(value)
+    }
+
+    /// Whether the current value starts the file (after a byte order mark).
+    fn at_file_start(&self) -> bool {
+        self.origin.offset == 0 || self.origin == (Position { offset: 3, line: 1, column: 2 })
     }
 
     /// The current value's text, up to `end`.
@@ -254,7 +259,7 @@ impl Reader {
 
     /// A closing bracket without an opening one: let the parser say what's wrong.
     fn unbalanced(&self, at: usize) -> SyntaxError {
-        let error = |text: &str| match parse_single(text, &self.options.limits) {
+        let error = |text: &str| match parse_single(text, &self.options.limits, self.at_file_start()) {
             Err(e) => e.from(self.origin),
             Ok(_) => SyntaxError::at(text, at - self.start, format!("unexpected '{}'", self.buf[at] as char))
                 .from(self.origin),

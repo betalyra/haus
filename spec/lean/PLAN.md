@@ -30,13 +30,14 @@ prototype, …) is outside Lean and stays covered by tests.
 | ✅ | **F. Streams** | A model of the bindings' stream readers: `read_chunks`, any split gives the same values and errors; `read_correct`, the reader returns `vs` exactly when `parse` accepts the whole text with `vs`. In [`Haus/Stream/`](Haus/Stream). | 1–2 weeks |
 | ✅ | **H. Canonical form** (spec §12) | `canonical_eq_iff`: two parsed values have the same canonical form exactly when they are equal (§2), so `hash` is well defined. `canonicalAll_eq_iff` does the same for `hashAll` of a file or stream, and `read_canonicalAll`/`canonicalAll_prefix` cover hashing while reading ([`Haus/RoundTrip/HashAll.lean`](Haus/RoundTrip/HashAll.lean)). Reference encoder in [`Haus/Canonical.lean`](Haus/Canonical.lean), implemented in TypeScript, Rust and Roc and fuzzed against it. | 1–2 weeks |
 | ⬜ | **P. Linear time** (spec §7) | A cost model (steps counted next to the result) and proofs that the stream scanner and a linear reference parser take at most `c · length` steps (below). Deferred: see below. | 1–2 weeks |
-| ⬜ | **I. Schema decoding** (spec §14–15) | A reference decoder that passes the schema suite, then termination, the round trip and linear time, in steps I1–I7 (below) | I1–I3: ~2 weeks; all: months |
-| ⬜ | **V. Versions** (spec §10) | `Extends old new`: a new version is a conservative extension of the old one (same values for every old text; canonical form and built-in rules agree on what the old version can express). Defined before 1.0, proven for each release. | days per release |
+| 🟡 | **I. Schema decoding** (spec §14–15) | A reference decoder that passes the schema suite, then termination, the round trip and linear time, in steps I1–I7 (below). I1–I3 and I5 done, in [`Haus/Schema/`](Haus/Schema). | I1–I3: ~2 weeks; all: months |
+| 🟡 | **V. Versions** (spec §10) | `Extends old new`: a new version is a conservative extension of the old one (same values for every old text; canonical form, built-in types and schema decoding agree on what the old version can express). Defined, with `refl`, `trans` and `current_extends_self`, in [`Haus/Version.lean`](Haus/Version.lean); to be proven for each release. | days per release |
 | ✅ | **T. std/time** | A reference model of the profile (spec §13.2, `std/time.md`), the bindings' time checkers fuzzed against it, and its security and calendar properties proven | 1–3 weeks |
 
-Order: A–H and T1–T6 are done. Next I1–I3, I5 and the definition of V, before 1.0 freezes §15 (a reference decoder that the
-bindings can be fuzzed against, as the parser is), then I4–I6. P comes after
-the benchmarks' doubling tests and is needed only for I7.
+Order: A–H, T1–T6, I1–I3, I5 and the definition of V are done. Next:
+fuzzing the bindings' decoders against the Lean one (the rest of I3), a
+proof of `FloatLaw`, then I4 and I6. P comes after the benchmarks' doubling
+tests and is needed only for I7.
 
 ## A. Security properties of the grammar
 
@@ -169,11 +170,11 @@ stands on its own.
 
 | | Step | Gives | Effort |
 |---|---|---|---|
-| ⬜ | I1. Schema types | A model of resolved types, without attributes (`@deprecated` lives in a separate table for tools, so `decode (erase s) = decode s` holds by construction): built-in types, records (open or closed, `?` fields), variants (open or closed, payload forms), `Array`, `Map`, `Maybe`, named types with generics substituted, recursion through an environment | days |
-| ⬜ | I2. Reference decoder and encoder | `decode`/`encode` following §15, unknown values included. Floats abstract: a rounding function and a spelling function assumed correct (IEEE arithmetic is not modelled). | ~1 week |
-| ⬜ | I3. Conformance | Lean tests generated from `test-suite/schema`; the bindings' decoders fuzzed against the Lean one (`fuzz/`) | days |
+| ✅ | I1. Schema types | `Ty` ([`Schema/Types.lean`](Haus/Schema/Types.lean)): built-in types, `Any`, `Secret`, std/time types, `Array`, `Map`, records (open or closed, `?` fields), variants (open or closed, every payload form, `< >`), `Bool`/`Maybe`/`Result` as the prelude's closed variants, named references into an environment, generics applied. Attributes are not part of a type: a `Schema` keeps them in a table of their own, so `Schema.decode_erase` (decoding is the same without them) is `rfl`. | days |
+| ✅ | I2. Reference decoder and encoder | `decode`/`encode` following §15 ([`Schema/Decode.lean`](Haus/Schema/Decode.lean)), unknown values, `Any` and secrets included; errors with their place. Recursion on the value, so it terminates for every environment: a reference that comes up again at the same level is an error (§9.9). Floats exact, with integer arithmetic ([`Schema/Float.lean`](Haus/Schema/Float.lean)): rounding to binary64/binary32 ties to even, directly from the decimal; the shortest spelling with ties to the even digit, JavaScript's layout. `decode_iff`: the decoder computes the rules of §15, written as an inductive relation ([`Schema/Rules.lean`](Haus/Schema/Rules.lean)). `secret_error`: an error inside a `Secret` doesn't depend on the value. | ~1 week |
+| 🟡 | I3. Conformance | `haus-ref --schema-suite`: all 250 cases of `test-suite/schema` pass, none skipped. The types come from the TypeScript binding's schema-file parser ([`scripts/schema-types.ts`](scripts/schema-types.ts) → [`schema-suite.json`](schema-suite.json)); it also checks that removing the attributes changes no type. Floats also matched JavaScript's `Number`/`toString` on 20,000 random literals. Open: fuzzing the bindings' decoders against the Lean one. `haus-ref --schema-batch TYPES FILE` is the Lean side; missing are a generator of values for a type and a runner per binding in `fuzz/`. | days |
 | ⬜ | I4. Termination | Decoding terminates for every schema §14 allows: guarded recursion consumes input at each level (§9.9) | 1–2 weeks |
-| ⬜ | I5. Round trip | decode, encode, decode is decode; encode after decode equals the input (§2) except where §15 says it doesn't (ignored fields, float spelling, `-0` as an integer) | 1–2 weeks |
+| ✅ | I5. Round trip | `decode_encode`: decode, encode, decode is decode. `encode_agree`: encode after decode is the input except where §15 says (`Agree`: fields an open record ignores, a float spelled another way that rounds to the same float, `-0` as an integer written `0`). Both assume `FloatLaw` (the spelling of a decoded float rounds back to it), tested but not proven: proving it needs the layout to parse back, and rounding to be the identity on representable values. In [`Schema/RoundTrip.lean`](Haus/Schema/RoundTrip.lean). | 1–2 weeks |
 | ⬜ | I6. Schema checker | The static rules of §14 (guarded recursion, no spread cycles, regular generics) imply what I4 assumes | weeks |
 | ⬜ | I7. Linear time | Decoding takes at most `c · size` steps (§9.8). Needs P1's cost model. | weeks |
 
@@ -195,6 +196,19 @@ design, and so outside the model.
 | ✅ | T6. One spelling per value | For every type, two valid strings have the same value exactly when they differ at most in trailing zeros of the fraction (`time_same_iff`, `dateTime_same_iff`, `duration_same_iff`; for `Instant` and `ZonedDateTime` with the same offset: `instant_same_iff`, `zoned_same_iff`); `Date` and `YearMonth` have exactly one spelling (`date_same_iff`, `yearMonth_same_iff`). `duration_text`: formatting a duration's value gives back its text. Writing the proof found three more spellings, now rejected (`P01D`, `-P0D`, zero components such as `P1DT0S`). In [`Haus/Time/Spelling.lean`](Haus/Time/Spelling.lean). | ~1 week |
 
 
+## V. Versions
+
+[`Haus/Version.lean`](Haus/Version.lean). A `Version` is what a version
+fixes: its files (`parse`), its canonical form, its built-in types and its
+schema files, each decoder written as the value its encoder writes, so that
+versions with different host types compare. `Extends old new`: every text
+`old` accepts, `new` accepts with the same values; on what `old` can express,
+the canonical form is the same, and so are the built-in types and the types
+of every schema `old` accepts. Proven: `Extends.refl`, `Extends.trans`,
+`current_extends_self` (the version this model describes, with the schema
+files' resolver as a parameter, since schema files are parsed outside Lean).
+Each release proves `Extends previous release`.
+
 ## Also
 
 - Every disagreement found (by a proof or by testing) becomes a conformance
@@ -203,4 +217,6 @@ design, and so outside the model.
   characters in comments and strings (now an error everywhere), the Rust
   stream crash and the byte order mark in streams (fixed), and Roc's std/time
   check accepting duration components too long to parse as a float (fixed,
-  found while writing the model).
+  found while writing the model). The schema model found `type Any = < >`
+  in `test-suite/schema/variants.schema.haus`, which `Any` in the prelude
+  had made invalid (renamed `AnyTag`).

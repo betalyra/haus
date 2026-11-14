@@ -30,10 +30,17 @@ tags without payload, `{ _tag, … }` for other variants, `key?:` for fields onl
 records have.
 
 Plain, with a schema: the same, plus `Int8` … `UInt32` and floats → `number`, std/time values → their text as written,
-`Map` → `ReadonlyMap`, and open variants add `Unknown`
+`Map` → `ReadonlyMap`, open variants add `Unknown`, `Any` → `Value` (the parsed
+value, unchanged) and `Secret a` → `Secret<A>`
 (see [`@haus-fmt/haus`](../haus)).
 With Effect: `Int` → `bigint`, `Decimal` → `BigDecimal`, `Maybe` → `Option`,
-`Instant` → `DateTime.Utc`, which don't keep every spelling (see [`@haus-fmt/effect`](../effect)).
+`Instant` → `DateTime.Utc`, which don't keep every spelling, `Any` → `Haus.Value`
+and `Secret a` → `Redacted<A>` (see [`@haus-fmt/effect`](../effect)).
+
+A secret shows `<redacted>` when logged, and errors about one (at load time,
+or in the editor) never show its value. Types, fields and tags marked
+`@deprecated` in the schema are `@deprecated` in the declarations, so editors
+strike them through.
 
 Use the same target everywhere.
 

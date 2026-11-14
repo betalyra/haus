@@ -35,3 +35,10 @@ import Haus.Stream
 import Haus.Stream.Chunks
 import Haus.Stream.Scan
 import Haus.Stream.Correct
+import Haus.Schema.Types
+import Haus.Schema.Float
+import Haus.Schema.Decode
+import Haus.Schema.Rules
+import Haus.Schema.Correct
+import Haus.Schema.RoundTrip
+import Haus.Version

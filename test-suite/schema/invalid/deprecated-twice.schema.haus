@@ -1,0 +1,2 @@
+// The same attribute twice on one field.
+type A = { @deprecated @deprecated("x") x: Int }

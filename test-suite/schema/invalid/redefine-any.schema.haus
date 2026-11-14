@@ -1,0 +1,2 @@
+// Prelude types cannot be redefined.
+type Any = Int

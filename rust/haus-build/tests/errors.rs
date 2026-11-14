@@ -77,3 +77,108 @@ fn codecs() {
     .unwrap_err();
     assert_eq!(e.to_string(), "1:1: a codec for test/schema#B, but the schema has no such type (it has test/schema#A)");
 }
+
+#[test]
+fn attributes() {
+    assert_eq!(
+        error("type A = { @deprecated(1) x: Int }"),
+        "1:12: @deprecated takes at most one argument, a string: @deprecated(\"use email\")"
+    );
+    assert_eq!(
+        error("@deprecated(\"a\", \"b\")\ntype A = Int"),
+        "1:1: @deprecated takes at most one argument, a string: @deprecated(\"use email\")"
+    );
+    assert_eq!(error("type A = { @deprecated @deprecated(\"x\") x: Int }"), "1:24: @deprecated is written twice here");
+    assert_eq!(
+        error("type A = { @deprecated (\"x\") x: Int }"),
+        "1:23: expected '(' right after the attribute's name, without a space, found ' '"
+    );
+    assert_eq!(
+        error("type B = { x: Int }\ntype A = { @deprecated ...B }"),
+        "2:12: a spread can't have attributes; the fields or tags of B keep their own"
+    );
+    assert_eq!(error("type A = < @deprecated() X >"), "1:23: empty parentheses: write @deprecated without them");
+    assert_eq!(
+        error("type A = < @x(1, ) X | @y(tru) Y >"),
+        "1:27: in the arguments of @y: unexpected identifier 'tru': lowercase identifiers can only be record keys"
+    );
+    assert_eq!(
+        error("type A = { @deprecated(\"x\" x: Int }"),
+        "1:23: expected ')' closing the attribute's arguments, found '('"
+    );
+    assert_eq!(
+        error("@deprecated\nimport std/time (Date)"),
+        "2:1: expected 'type' after the attributes, found 'import'"
+    );
+}
+
+#[test]
+fn prelude_and_recursion() {
+    assert_eq!(error("type Any = Int"), "1:6: Any is a prelude type and can't be redefined");
+    assert_eq!(error("type Secret a = a"), "1:6: Secret is a prelude type and can't be redefined");
+    assert_eq!(error("type A = Any Int"), "1:10: Any takes 0 argument(s), found 1");
+    assert_eq!(error("type A = { key: Secret }"), "1:17: Secret takes 1 argument(s), found 0");
+    let unguarded = "refers to itself without a record field, array element or variant payload in between";
+    assert!(error("type A = B\ntype B = A").starts_with(&format!("1:6: A {unguarded}")));
+    assert!(error("type A = Secret A").contains(unguarded));
+    assert!(error("type Id a = a\ntype A = Id A").contains(unguarded));
+    // Through a payload, a field or an element, recursion is fine.
+    for ok in
+        ["type A = Maybe A", "type A = { a?: A }", "type A = Array (Secret A)", "type Id a = a\ntype A = Id (Array A)"]
+    {
+        generate(ok, "test/schema", &[], &Packages::none()).unwrap_or_else(|e| panic!("{ok}: {e}"));
+    }
+}
+
+#[test]
+fn unknown_attributes_are_warnings() {
+    let warnings = |schema: &str| -> Vec<String> {
+        haus_build::check(schema).unwrap_or_else(|e| panic!("{e}")).iter().map(ToString::to_string).collect()
+    };
+    assert_eq!(
+        warnings("@since(\"1.2\")\ntype A = { @example(1, [True]) n: Int, @deprecated m?: Int }"),
+        [
+            "1:1: unknown attribute @since: this version of haus ignores it",
+            "2:12: unknown attribute @example: this version of haus ignores it"
+        ]
+    );
+    // An unknown attribute may be repeated: a later version may allow that.
+    assert_eq!(warnings("type A = < @x @x X >").len(), 2);
+    assert_eq!(
+        warnings("@deprecated(\"use B\")\ntype A = Int\ntype B = Int\ntype C = { a: A }"),
+        ["4:15: A is deprecated: use B"]
+    );
+    assert!(warnings("type A = Int").is_empty());
+}
+
+#[test]
+fn deprecated_items_get_rust_attributes() {
+    let code = generate(
+        "@deprecated(\"use Customer\")\ntype Client = { id: Int, @deprecated(\"use email\") mail?: String }\n\
+         type Shape = < Circle Float64 | @deprecated Square Float64 >",
+        "test/schema",
+        &[],
+        &Packages::none(),
+    )
+    .unwrap();
+    assert!(code.contains("#[deprecated(note = \"use Customer\")]\n#[derive(Debug, Clone, PartialEq)]\n#[allow(deprecated)]\npub struct Client"), "{code}");
+    assert!(
+        code.contains(
+            "#[deprecated(note = \"use email\")]\n    pub mail: ::std::option::Option<::std::string::String>"
+        ),
+        "{code}"
+    );
+    assert!(code.contains("#[deprecated]\n    Square(f64)"), "{code}");
+    assert_eq!(code.matches("#[allow(deprecated)]\nimpl").count(), 6, "{code}");
+}
+
+#[test]
+fn any_and_secret() {
+    let code = generate("type A = { key: Secret String, extra: Any }", "test/schema", &[], &Packages::none()).unwrap();
+    assert!(code.contains("pub key: ::haus::Secret<::std::string::String>"), "{code}");
+    assert!(code.contains("pub extra: ::haus::Value"), "{code}");
+    assert!(
+        code.contains("::haus::de::secret(\n                        x,\n                        \"Secret String\","),
+        "{code}"
+    );
+}

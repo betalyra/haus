@@ -43,6 +43,17 @@ let text = haus::to_string(&order);                       // back to haus (compa
 | `Maybe a`, `Result e a`, `Array a`, `Map v` | `Option<A>`, `Result<A, E>`, `Vec<A>`, `BTreeMap<String, V>` |
 | `Int`, `Decimal`, `Int8`…`UInt64`, `Float64` | `haus::Int`, `haus::Decimal` (exact text), `i8`…`u64`, `f64` |
 | `Date`, `Instant`, … (std/time) | `haus::time::Date`, … (validated text; codecs map them to `jiff` and others) |
+| `Any` | `haus::Value`: any value, as parsed |
+| `Secret a` | `haus::Secret<A>`: `Debug` and `Display` print `<redacted>`; `expose()` / `into_inner()` give the value |
+| `@deprecated("why")` on a type, field or tag | `#[deprecated(note = "why")]` |
+
+A `Secret` is written in full when encoded (the receiver needs it), but a
+decode error inside it names only its place and type
+(`.password: not a valid Secret String (the value is hidden)`), never the value.
+The generated code allows its own use of deprecated items, so a crate gets
+deprecation warnings only where it touches them. Attributes haus doesn't
+define (`@since`) are accepted and reported as Cargo warnings, as are uses of
+deprecated types in a schema; `Config::quiet()` turns them off.
 
 `haus::Int` is an integer of any size, kept as its digits and written back
 unchanged. `to_i64()` / `to_i128()` give it as a native integer when it fits; the

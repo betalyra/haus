@@ -20,6 +20,7 @@ pub mod de;
 mod error;
 mod float;
 mod parser;
+mod secret;
 pub mod ser;
 pub mod stream;
 pub mod time;
@@ -32,6 +33,7 @@ pub use codec::{Codec, same_id};
 pub use de::{AnyTag, Bytes, Decimal, Decode, Int, Unknown};
 pub use error::{DecodeError, Error, Segment, SyntaxError};
 pub use parser::{Limits, parse_with};
+pub use secret::Secret;
 pub use ser::Encode;
 pub use value::Value;
 

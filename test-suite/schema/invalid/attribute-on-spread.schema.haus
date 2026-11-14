@@ -1,0 +1,3 @@
+// An attribute on a spread is not allowed.
+type B = { x: Int }
+type A = { @deprecated ...B }

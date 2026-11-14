@@ -36,3 +36,14 @@ type Person = closed {
   shape: Shape,
   tree: Tree,
 }
+
+// Secrets are hidden when printed; Any keeps a value as parsed. A deprecated
+// field gets #[deprecated]: this crate builds without warnings as long as it
+// doesn't touch `name`.
+type Login = closed {
+  user: String,
+  password: Secret String,
+  pin?: Secret UInt16,
+  @deprecated("use user") name?: String,
+  extra?: Any,
+}

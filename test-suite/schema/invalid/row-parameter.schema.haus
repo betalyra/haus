@@ -1,0 +1,2 @@
+// Row parameters are not part of the language.
+type A r = { x: Int, ...r }
