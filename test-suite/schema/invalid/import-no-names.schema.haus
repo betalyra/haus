@@ -1,0 +1,3 @@
+// An import names at least one type.
+import std/time ()
+type A = Int

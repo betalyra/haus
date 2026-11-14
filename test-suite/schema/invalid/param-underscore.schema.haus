@@ -1,0 +1,2 @@
+// A type parameter starts with a lowercase letter, not _.
+type P _x = { a: _x }

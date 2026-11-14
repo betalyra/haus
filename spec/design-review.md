@@ -113,7 +113,7 @@ Ecosystem gotchas, documented in the examples:
 | ⬜ | Code generation from `.schema.haus` (Roc, Go, Swift, …) |
 | ⬜ | A binary encoding of the same data model |
 | ✅ | Streaming in Roc (`Stream`), and in Python |
-| ⬜ | Python: std/time checks and schema decoding |
+| ✅ | Python: std/time checks, floats, schema files and schema decoding (`haus.schema`), passing the schema suite and fuzzed against Lean |
 
 ### 3.4 Agent readiness
 
@@ -173,13 +173,10 @@ Not planned: newtypes. A single-tag variant (`closed < UserId String >`) makes t
 
 ## 5. Remaining order
 
-Done: the 1.0 spec changes (versions, `Any`, `Secret a`, `@deprecated`) in every binding, and proof phases I1–I3 and I5 (a Lean reference decoder that passes the schema suite in CI, round trip proven under a tested float law).
+Done: the 1.0 spec changes (versions, `Any`, `Secret a`, `@deprecated`) in every binding; proof phases I1–I3 and I5 (a Lean reference decoder that passes the schema suite in CI; the round trip proven, the float law included); lossless default host types everywhere (§13.4); schema decoding fuzzed in CI across Lean, TypeScript, Effect, Rust, Roc and Python; Python parity.
 
-1. **Decide the depth limit of recursive types** (§9.9 says SHOULD 64, so bindings can disagree on values 65–256 levels deep), and the open items above (raw values in Rust and Roc, deprecated-type hints in TypeScript, Roc's pass without attributes).
-2. **Fuzz the bindings' decoders against Lean** (`haus-ref --schema-batch` exists; a value generator per type and the runners are missing), and prove the float law.
-3. **Python parity:** std/time checks and schema decoding (§15 and the new types, passing the schema suite, fuzzed against the Lean reference).
-4. **JSON interop** (spec mapping with vectors, `null` decided, bindings) and registering `application/vnd.haus`; decide whether the mapping ships with 1.0.
-5. **Agent readiness, launch part** (§3.4): cheat sheet, skill, llms.txt contents, error codes with fix hints, the "Why no min/max?" page, CLI `check` and `fmt`.
-6. **Roc gaps:** `hash`/`hashAll` (SHA-256 in Roc), configurable limits, the `Stream` module clash.
-7. **1.0 release** (§3.5): sign off the irreversible decisions, governance document, final review, tag the suite, register the MIME type, announce.
-8. **After 1.0:** MCP servers, JSON Schema export, eval (§3.4); Tree-sitter and the editor pull requests; proof phases I4, I6, I7 and P; Temporal codecs, codegen for more languages, a binary encoding.
+1. **JSON interop** (spec mapping with vectors, `null` decided, bindings) and registering `application/vnd.haus`; decide whether the mapping ships with 1.0.
+2. **Agent readiness, launch part** (§3.4): cheat sheet, skill, llms.txt contents, error codes with fix hints, the "Why no min/max?" page, CLI `check` and `fmt`.
+3. **Roc gaps:** `hash`/`hashAll` (SHA-256 in Roc), configurable limits, the `Stream` module clash.
+4. **1.0 release** (§3.5): sign off the irreversible decisions, governance document, final review, tag the suite, register the MIME type, announce.
+5. **After 1.0:** MCP servers, JSON Schema export, eval (§3.4); Tree-sitter and the editor pull requests; proof phases I4, I6, I7 and P; Temporal codecs, codegen for more languages, a binary encoding.

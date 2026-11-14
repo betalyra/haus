@@ -147,3 +147,4 @@ export async function effectRunner(texts: ReadonlyMap<string, string>): Promise<
 export const lean = (types: string) => external("lean", join(root, "spec/lean/.lake/build/bin/haus-ref"), ["--schema-batch", types])
 export const rust = () => external("rust", join(root, "fuzz/schema-rust/target/release/schema_runner"))
 export const roc = () => external("roc", join(root, "fuzz/.build/roc-schema-runner"))
+export const python = () => external("python", join(root, "python/.venv/bin/python"), [join(root, "python/fuzz/schema_runner.py")])

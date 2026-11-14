@@ -152,6 +152,24 @@ class Parser:
                 "lower max_depth or raise the limit with sys.setrecursionlimit"
             )
 
+    def value_at(self, pos: int) -> tuple[Value, int]:
+        """One value starting exactly at `pos` (no whitespace before it), and the position after it.
+
+        For text that embeds haus values, such as the arguments of a schema attribute.
+        """
+        self.pos = pos
+        return self._value(), self.pos
+
+    def number_literal(self) -> str | None:
+        """The normalized literal if the whole text is one number literal within the limits, else None."""
+        if self._peek() not in _NUMBER_START:
+            return None
+        try:
+            number = self._number()
+        except HausSyntaxError:
+            return None
+        return number.text if self._eof() else None
+
     def _sequence(self) -> list[Value]:
         if self.src.startswith("\ufeff"):
             self.pos = 1
