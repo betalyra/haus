@@ -51,6 +51,34 @@ note: "Happy birthday!" }
 
 export const formatDefault = formatExamples[0]!.text;
 
+export interface HashExample {
+  readonly name: string;
+  readonly text: string;
+}
+
+export const hashExamples: readonly HashExample[] = [
+  {
+    name: "An order",
+    text: `// Layout, comments, key order and spelling don't change the hash.
+Order {
+  total: 19.90,
+  id: 0xFF,
+  "x-y": 1e+5,
+  p: Point(1, 2),
+}
+`,
+  },
+  {
+    name: "The same order, other text",
+    text: `Order { p: Point(1, 2), "x-y": 1e5, id: 255, total: 19.90 }
+`,
+  },
+  {
+    name: "A night of pages (30 entries)",
+    text: nightLog,
+  },
+];
+
 export interface CompareExample {
   readonly name: string;
   readonly a: string;

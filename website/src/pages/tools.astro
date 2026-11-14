@@ -14,6 +14,7 @@ const verdicts = [
 ];
 
 const tools = [
+  { key: "hash", label: "Hash" },
   { key: "compare", label: "Compare" },
   { key: "format", label: "Format" },
 ];
@@ -21,7 +22,7 @@ const tools = [
 
 <Base
   title="Tools · haus"
-  description="Check whether two haus documents hold the same value, and format files. Everything runs in your browser."
+  description="Hash haus files, check whether two documents hold the same value, and format them. Everything runs in your browser."
 >
   <Nav />
   <main id="main" class="mx-auto w-full max-w-7xl px-6 pt-6 pb-20 sm:pt-10">
@@ -37,7 +38,7 @@ const tools = [
       <div class="max-w-[40rem]">
         <h1 class="text-[2.2rem] leading-[1.08] sm:text-[2.8rem]">Tools</h1>
         <p class="mt-3 text-[1.05rem] text-ink-2">
-          Check whether two documents say the same thing, or tidy a file up. It all runs in your browser:
+          Hash a file, check whether two documents say the same thing, or tidy one up. It all runs in your browser:
           nothing you paste is uploaded.
         </p>
       </div>
@@ -56,8 +57,48 @@ const tools = [
       </div>
     </div>
 
+    <!-- Hash -->
+    <div id="panel-hash" data-panel="hash" role="tabpanel" class="mt-8">
+      <div class="mb-4 flex justify-end">
+        <label class="sr-only" for="hash-example">Example</label>
+        <select id="hash-example" class="play-select">
+          <option value="" disabled>Your own</option>
+        </select>
+      </div>
+      <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <section class="play-card" aria-label="Input">
+          <header class="play-card__head"><span>input.haus</span></header>
+          <div id="hash-in" class="play-editor tools-editor"></div>
+        </section>
+        <section class="play-card flex min-w-0 flex-col" aria-label="Hashes">
+          <header class="play-card__head"><span>hashes</span></header>
+          <div id="hash-file-block" class="hash-file">
+            <div class="canon-label">SHA-256 of the file</div>
+            <div id="hash-file-row" class="hash-row">
+              <code id="hash-file" class="hash-digest hash-digest--file"></code>
+            </div>
+            <p id="hash-file-note" class="hash-file__note"></p>
+          </div>
+          <div id="hash-values-head" class="hash-values-head" hidden>Each value <span>· click one to find it</span></div>
+          <ol id="hash-values" class="hash-values"></ol>
+          <div class="hash-check">
+            <label for="hash-check" class="sr-only">Check a hash</label>
+            <input id="hash-check" class="hash-check__input" type="text" spellcheck="false" autocomplete="off" placeholder="Paste a hash to check it" />
+            <p id="hash-check-status" class="hash-check__status" aria-live="polite"></p>
+          </div>
+          <p id="hash-summary" class="play-summary" aria-live="polite"></p>
+        </section>
+      </div>
+      <p class="mt-6 max-w-[48rem] text-[0.92rem] text-ink-3">
+        Layout, comments, key order and spelling don't change a hash, and every binding gives the same one:
+        <code class="inline-code">hashAll(values)</code> and <code class="inline-code">hash(value)</code> in TypeScript,
+        <code class="inline-code">haus::hash_all</code> in Rust, <code class="inline-code">hash_all</code> in Python.
+        <a class="prose-link" href="/docs/spec#12-canonical-form-equality-and-hashing">How it's defined</a>
+      </p>
+    </div>
+
     <!-- Compare -->
-    <div id="panel-compare" data-panel="compare" role="tabpanel" class="mt-8">
+    <div id="panel-compare" data-panel="compare" role="tabpanel" class="mt-8" hidden>
       <div class="mb-4 flex justify-end">
         <label class="sr-only" for="cmp-example">Example</label>
         <select id="cmp-example" class="play-select">
@@ -171,6 +212,107 @@ const tools = [
     color: var(--ink-2);
     white-space: pre-wrap;
     word-break: break-all;
+  }
+  .hash-file {
+    padding: 0.9rem 1rem 0.85rem;
+    border-bottom: 1px solid var(--line-soft, var(--line));
+    transition: background-color 160ms ease;
+  }
+  .hash-file__note {
+    margin: 0.35rem 0 0;
+    font-size: 0.82rem;
+    color: var(--ink-3);
+  }
+  .hash-values-head {
+    padding: 0.7rem 1rem 0.2rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--ink-2);
+  }
+  .hash-values-head span {
+    font-weight: 400;
+    color: var(--ink-3);
+  }
+  .hash-values {
+    flex: 1;
+    max-height: 60vh;
+    margin: 0;
+    padding: 0.2rem 0 0.4rem;
+    list-style: none;
+    overflow: auto;
+  }
+  :global(.hash-value) {
+    padding: 0.6rem 1rem;
+    cursor: pointer;
+    transition: background-color 160ms ease;
+  }
+  :global(.hash-value:hover),
+  :global(.hash-value:focus-visible) {
+    outline: none;
+    background: color-mix(in oklab, var(--ink) 3%, transparent);
+  }
+  :global(.hash-value + .hash-value) {
+    border-top: 1px solid var(--line-soft, var(--line));
+  }
+  /* A match with the pasted hash: the same gold as linked values in the editors. */
+  .hash-file[data-match],
+  :global(.hash-value[data-match]) {
+    background: color-mix(in oklab, var(--gold, #e39b16) 14%, transparent);
+  }
+  :global(.hash-value .canon-text) {
+    max-height: 3.2em;
+  }
+  :global(.hash-row) {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 0.35rem;
+  }
+  :global(.hash-digest) {
+    flex: 1;
+    min-width: 0;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--ink-2);
+    word-break: break-all;
+  }
+  .hash-digest--file {
+    font-size: 0.92rem;
+    font-weight: 500;
+    color: var(--ink);
+  }
+  .hash-check {
+    padding: 0.7rem 1rem;
+    border-top: 1px solid var(--line-soft, var(--line));
+  }
+  .hash-check__input {
+    width: 100%;
+    height: 2.2rem;
+    padding: 0 0.8rem;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--paper);
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--ink);
+  }
+  .hash-check__input:focus {
+    outline: 1.5px solid var(--ultramarine);
+    outline-offset: 1px;
+  }
+  .hash-check__status {
+    margin: 0.4rem 0 0;
+    font-size: 0.82rem;
+    color: var(--ink-2);
+  }
+  .hash-check__status:empty {
+    display: none;
+  }
+  .hash-check__status[data-state="ok"] {
+    color: var(--sap-ink);
+  }
+  .hash-check__status[data-state="error"] {
+    color: #ab2a5d;
   }
   .cmp-verdict {
     padding: 1.5rem 1.6rem 1.6rem;

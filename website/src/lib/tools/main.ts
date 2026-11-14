@@ -1,14 +1,16 @@
 /**
- * The tools page: compare two documents, format a file. Runs in
+ * The tools page: hash a file, compare two documents, format a file. Runs in
  * the browser; a shared link carries the texts in its fragment.
  */
-import type { EditorView } from "@codemirror/view";
+import { EditorView } from "@codemirror/view";
 import {
   HausSyntaxError,
   canonical,
   contextOf,
   equals,
   format,
+  hash,
+  hashAll,
   hoverAt,
   hoverText,
   parseDocument,
@@ -16,12 +18,12 @@ import {
   type Value,
 } from "../../../../typescript/packages/haus/src/index.ts";
 import { syntaxProblem, type Problem } from "../play/analyze";
-import { createEditor, lintAgain, setText } from "../play/editor";
+import { createEditor, linkRange, lintAgain, setText } from "../play/editor";
 import { copyLink, copyText, decodeState, encodeState } from "../share";
-import { compareExamples, formatDefault, formatExamples } from "./examples";
+import { compareExamples, formatDefault, formatExamples, hashExamples } from "./examples";
 import { linkEditors, pairValues } from "./sync";
 
-type Tool = "compare" | "format";
+type Tool = "hash" | "compare" | "format";
 type Style = "pretty" | "compact";
 
 const $ = <E extends HTMLElement>(sel: string) => document.querySelector<E>(sel)!;
@@ -94,6 +96,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 interface State {
   t: Tool;
+  h: string;
   a: string;
   b: string;
   f: string;
@@ -103,7 +106,8 @@ interface State {
 
 async function loadState(): Promise<State> {
   const fallback: State = {
-    t: "compare",
+    t: "hash",
+    h: hashExamples[0]!.text,
     a: compareExamples[0]!.a,
     b: compareExamples[0]!.b,
     f: formatDefault,
@@ -115,7 +119,8 @@ async function loadState(): Promise<State> {
   if (!raw) return fallback;
   const str = (v: unknown, d: string) => (typeof v === "string" ? v : d);
   return {
-    t: raw.t === "format" ? "format" : "compare",
+    t: raw.t === "compare" || raw.t === "format" ? raw.t : "hash",
+    h: str(raw.h, fallback.h),
     a: str(raw.a, fallback.a),
     b: str(raw.b, fallback.b),
     f: str(raw.f, fallback.f),
@@ -149,6 +154,120 @@ async function start() {
       showTool(tab.dataset.tool as Tool);
       save();
     });
+
+  // ── Hash ──
+  const fileDigest = $("#hash-file");
+  const fileNote = $("#hash-file-note");
+  const valueList = $("#hash-values");
+  const hashSummary = $("#hash-summary");
+  const check = $<HTMLInputElement>("#hash-check");
+  const checkStatus = $("#hash-check-status");
+  const hashExample = $<HTMLSelectElement>("#hash-example");
+  let fileHash = "";
+  let valueHashes: string[] = [];
+  let hashRun = 0;
+
+  /** Say whether the pasted hash is the file's or one of its values'. */
+  const markMatches = () => {
+    const want = check.value.trim().toLowerCase();
+    const matchFile = want !== "" && want === fileHash;
+    const matchValue = want === "" ? -1 : valueHashes.indexOf(want);
+    $("#hash-file-block").toggleAttribute("data-match", matchFile);
+    valueList.querySelectorAll<HTMLElement>("[data-digest]").forEach((item) => item.toggleAttribute("data-match", want !== "" && item.dataset.digest === want));
+    if (!want) {
+      checkStatus.textContent = "";
+      delete checkStatus.dataset.state;
+    } else if (!/^[0-9a-f]{64}$/.test(want)) {
+      checkStatus.textContent = "A SHA-256 hash is 64 hex digits.";
+      checkStatus.dataset.state = "error";
+    } else if (matchFile) {
+      checkStatus.textContent = valueHashes.length === 1 ? "Matches the file." : "Matches the whole file.";
+      checkStatus.dataset.state = "ok";
+    } else if (matchValue >= 0) {
+      valueList.querySelector<HTMLElement>("[data-match]")?.scrollIntoView({ block: "nearest" });
+      checkStatus.textContent = `Matches value ${matchValue + 1}.`;
+      checkStatus.dataset.state = "ok";
+    } else {
+      checkStatus.textContent = "Doesn't match this file or any of its values.";
+      checkStatus.dataset.state = "error";
+    }
+  };
+
+  const copyButton = (text: () => string) => {
+    const button = el("button", "play-button play-button--sm", "Copy");
+    button.type = "button";
+    button.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void copyText(button, text());
+    });
+    return button;
+  };
+  $("#hash-file-row").append(copyButton(() => fileHash));
+
+  const updateHash = async () => {
+    state.h = hashIn.reading.text;
+    save();
+    const hi = hashExamples.findIndex((e) => e.text === state.h);
+    hashExample.value = hi < 0 ? "" : String(hi);
+    const run = ++hashRun;
+    const { values } = hashIn.reading;
+    if (!values) {
+      // Keep the last hashes on screen while the text is being fixed.
+      hashSummary.textContent = syntaxSummary(hashIn.reading);
+      hashSummary.dataset.state = "error";
+      return;
+    }
+    const [all, each] = await Promise.all([hashAll(values), Promise.all(values.map((v) => hash(v)))]);
+    if (run !== hashRun) return;
+    fileHash = all;
+    valueHashes = each;
+    fileDigest.textContent = all;
+    fileNote.textContent =
+      values.length === 0
+        ? "An empty file."
+        : values.length === 1
+          ? "One value, so this is also the value's own hash."
+          : `All ${values.length} values, in order.`;
+    valueList.replaceChildren(
+      ...(values.length === 0
+        ? []
+        : values.map((v, i) => {
+            const item = el("li", "hash-value");
+            item.dataset.digest = each[i]!;
+            item.tabIndex = 0;
+            item.title = "Show it in the input";
+            item.append(el("div", "canon-label", values.length === 1 ? "Canonical form" : `Value ${i + 1}`), el("pre", "canon-text", canonical(v)));
+            if (values.length > 1) {
+              const row = el("div", "hash-row");
+              row.append(el("code", "hash-digest", each[i]!), copyButton(() => each[i]!));
+              item.append(row);
+            }
+            // Show where the value is in the input.
+            const show = () => {
+              if (v.start === undefined || v.end === undefined) return;
+              linkRange(hashIn.view, { from: v.start, to: v.end });
+              hashIn.view.dispatch({ effects: EditorView.scrollIntoView(v.start, { y: "center" }) });
+            };
+            item.addEventListener("click", show);
+            item.addEventListener("keydown", (e) => e.key === "Enter" && show());
+            return item;
+          })),
+    );
+    $("#hash-values-head").hidden = values.length < 2;
+    hashSummary.textContent = values.length < 2 ? "SHA-256 of the canonical form." : `${plural(values.length, "value")}: one hash for the file, and one for each value.`;
+    hashSummary.dataset.state = "ok";
+    markMatches();
+  };
+  const hashIn = input($("#hash-in"), state.h, () => {
+    linkRange(hashIn.view, null);
+    void updateHash();
+  });
+  check.addEventListener("input", markMatches);
+  hashExamples.forEach((e, i) => hashExample.add(new Option(e.name, String(i))));
+  hashExample.addEventListener("change", () => {
+    const e = hashExamples[Number(hashExample.value)];
+    if (e) hashIn.set(e.text);
+  });
 
   // ── Compare ──
   const verdict = $("#cmp-verdict");
@@ -297,6 +416,7 @@ async function start() {
   });
 
   showTool(state.t);
+  await updateHash();
   updateCompare();
   updateFormat();
 }
