@@ -16,12 +16,12 @@ import { canonical, parseAll, type Value } from "../../typescript/packages/haus/
 import { Rng } from "./generate.ts"
 import { Generator, type Env, type Type } from "./schema-gen.ts"
 import {
-  caseLine, effectRunner, lean, roc, rust, schemaTexts, typescriptRunner, type Outcome, type SchemaCase, type SchemaRunner,
+  caseLine, effectRunner, lean, python, roc, rust, schemaTexts, typescriptRunner, type Outcome, type SchemaCase, type SchemaRunner,
 } from "./schema-runners.ts"
 
 const root = new URL("../..", import.meta.url).pathname
 const SCHEMA_DIRS = [join(root, "test-suite/schema"), join(root, "fuzz/schema")]
-const ALL_RUNNERS = ["lean", "typescript", "effect", "rust", "roc"]
+const ALL_RUNNERS = ["lean", "typescript", "effect", "rust", "roc", "python"]
 
 export async function run(argv: readonly string[]): Promise<number> {
   const { values: args } = parseArgs({
@@ -70,6 +70,7 @@ export async function run(argv: readonly string[]): Promise<number> {
     else if (name === "effect") runners.push(await effectRunner(texts))
     else if (name === "rust") runners.push(rust())
     else if (name === "roc") runners.push(roc())
+    else if (name === "python") runners.push(python())
     else throw new Error(`unknown runner ${name} (${ALL_RUNNERS.join(", ")})`)
   }
 

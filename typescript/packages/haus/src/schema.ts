@@ -124,6 +124,19 @@ export class At {
     return new At(this.ctx, this, key, this.depth + 1)
   }
 
+  /**
+   * The record payload of `Tag { … }`: the same nesting level as the variant,
+   * as the parser counts it (one level for `Tag {`).
+   */
+  payload(key: string | number): At {
+    return new At(this.ctx, this, key, this.depth)
+  }
+
+  /** Opening a container here: fails if it would nest deeper than the limit, as in the parser. */
+  open(): void {
+    if (this.depth >= this.ctx.maxDepth) this.fail(`nesting deeper than ${this.ctx.maxDepth} levels`)
+  }
+
   /** The parser's limits for this call, for checking raw values (spec §9.8). */
   get limits(): ValueLimits {
     return this.ctx.values
@@ -747,7 +760,13 @@ const variantSchema = <C extends Cases, A>(cases: C, open: boolean): Schema<A> =
     if (typeof obj !== "object" || obj === null || typeof obj._tag !== "string") return invalid("an object with a _tag", a, at)
     // Unknown variants are written back as they were received, after checking
     // that what's there really is a haus value within the limits.
-    if (open && isUnknown(obj)) return checkedValue(obj.value, at)
+    if (open && isUnknown(obj)) {
+      const raw = checkedValue(obj.value, at)
+      // An unknown value is one whose tag the variant doesn't list (spec §15).
+      if (raw.kind !== "variant") return invalid("a variant", raw, at)
+      if (byTag.has(raw.tag)) return invalid(`a tag the variant doesn't list (${raw.tag} is one of its cases)`, raw.tag, at)
+      return raw
+    }
     const c = byTag.get(obj._tag)
     if (c === undefined) return invalid(`one of ${tagList(tags)}`, obj._tag, at)
     if (c === Unit) return variant(obj._tag)
@@ -806,11 +825,13 @@ const checkedValue = (raw: unknown, at: At): Value => {
       return raw.bytes instanceof Uint8Array ? raw : invalid("a Uint8Array", raw.bytes, at)
     case "array": {
       if (!Array.isArray(raw.items)) return invalid("an array of items", raw.items, at)
+      at.open()
       const items = mapSame(raw.items, (x, i) => checkedValue(x, at.child(i)))
       return items === raw.items ? raw : arr(items)
     }
     case "record": {
       if (!(raw.fields instanceof globalThis.Map)) return invalid("a Map of fields", raw.fields, at)
+      at.open()
       const fields = new globalThis.Map<string, Value>()
       let changed = false
       for (const [k, x] of raw.fields) {
@@ -823,7 +844,11 @@ const checkedValue = (raw: unknown, at: At): Value => {
     case "variant": {
       if (typeof raw.tag !== "string" || !TAG.test(raw.tag)) return invalid("a tag name", raw.tag, at)
       if (!Array.isArray(raw.args)) return invalid("an array of arguments", raw.args, at)
-      const args = mapSame(raw.args, (x, i) => checkedValue(x, at.child(i)))
+      if (raw.args.length > 0) at.open()
+      // `Tag { … }` is one level, as in the parser; `Tag(a, b)` nests its arguments.
+      const [first] = raw.args
+      const single = raw.args.length === 1 && isValueNode(first) && first.kind === "record"
+      const args = mapSame(raw.args, (x, i) => checkedValue(x, single ? at.payload(i) : at.child(i)))
       return args === raw.args ? raw : variant(raw.tag, args)
     }
   }

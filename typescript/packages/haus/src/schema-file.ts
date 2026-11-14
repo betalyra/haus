@@ -543,6 +543,7 @@ class SchemaParser {
       names.push({ name: t.value, pos: t.pos })
       if (!this.is(")")) this.expect(",")
     }
+    if (names.length === 0) this.unexpected("a type name (an import names at least one type)")
     this.advance()
     return { module: parts.join("/"), names, pos }
   }
@@ -553,6 +554,7 @@ class SchemaParser {
     const name = this.advance().value
     const params: { name: string; pos: number }[] = []
     while (this.cur().t === "lower" && !this.keyword()) {
+      if (this.cur().value.startsWith("_")) this.unexpected("a type parameter (starting with a lowercase letter)")
       const t = this.advance()
       params.push({ name: t.value, pos: t.pos })
     }

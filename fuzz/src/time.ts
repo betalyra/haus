@@ -1,7 +1,7 @@
 /**
  * Differential testing of the std/time checkers: generated strings through
- * the Lean model (spec/lean/Haus/Time) and the TypeScript, Rust and Roc
- * checkers, reporting where they disagree. See ../README.md.
+ * the Lean model (spec/lean/Haus/Time) and the TypeScript, Rust, Roc and
+ * Python checkers, reporting where they disagree. See ../README.md.
  *
  *   node fuzz/src/time.ts [--count N] [--seed S] [--out DIR]
  */
@@ -166,6 +166,7 @@ const runners: ReadonlyArray<{ readonly name: string; run(file: string, cases: r
   { name: "typescript", run: (_f, cases) => cases.map((c) => (checkStdTime(c.type, c.text) === undefined ? "ok" : "no")) },
   { name: "rust", run: external(join(root, "rust/target/release/examples/time_runner")) },
   { name: "roc", run: external(join(root, "fuzz/.build/roc-time-runner")) },
+  { name: "python", run: external(join(root, "python/.venv/bin/python"), [join(root, "python/fuzz/time_runner.py")]) },
 ]
 
 /** results[case][runner] */

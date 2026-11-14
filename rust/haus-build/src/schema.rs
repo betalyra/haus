@@ -312,9 +312,12 @@ fn lower(i: &mut Input) -> ModalResult<String> {
     word(|c| c.is_ascii_lowercase() || c == '_').parse_next(i)
 }
 
-/// A type parameter: a lower-case word that isn't a keyword.
+/// A type parameter: a word starting with a lower-case letter (not `_`) that isn't a keyword.
 fn param(i: &mut Input) -> ModalResult<String> {
-    lower.verify(|w: &String| !KEYWORDS.contains(&w.as_str())).context(expected("a type parameter")).parse_next(i)
+    lower
+        .verify(|w: &String| w.starts_with(|c: char| c.is_ascii_lowercase()) && !KEYWORDS.contains(&w.as_str()))
+        .context(expected("a type parameter"))
+        .parse_next(i)
 }
 
 fn string(i: &mut Input) -> ModalResult<String> {

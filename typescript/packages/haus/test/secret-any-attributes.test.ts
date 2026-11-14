@@ -3,7 +3,7 @@ import { inspect } from "node:util"
 import { describe, expect, it } from "vitest"
 import {
   canonical, checkData, compileSchemaFile, deprecation, equals, hoverAt, hoverContext, hoverMarkdown, hoverText, parse, parseAll,
-  parseSchemaFile, parseWithLocations, schemaDeclarations, Secret, StreamReader, withoutAttributes, type RecordType, type Value, type VariantType,
+  arr, num, parseSchemaFile, parseWithLocations, schemaDeclarations, Secret, StreamReader, variant, withoutAttributes, type RecordType, type Value, type VariantType,
 } from "../src/index.js"
 import * as h from "../src/schema.js"
 
@@ -400,5 +400,25 @@ describe("#haus version directive (spec §10)", () => {
     expect(() => parseAll("#hello")).toThrow(/expected a value, found '#'/)
     expect(() => parseAll("1,\n#haus 2")).toThrow(/expected a value, found '#'/)
     expect(() => parseAll(" #haus 2")).toThrow(/expected a value, found '#'/)
+  })
+})
+
+describe("raw values are checked like the parser counts them (spec §7, §9.8)", () => {
+  it("counts Tag { … } as one nesting level, so any parsed value re-encodes", () => {
+    const text = "T{a:".repeat(255) + "1" + "}".repeat(255)
+    const value = h.parse(h.Any, text)
+    expect(canonical(h.encode(h.Any, value))).toBe(canonical(parse(text)))
+  })
+
+  it("rejects an empty container nested deeper than the parser allows", () => {
+    let deep: Value = arr([])
+    for (let i = 0; i < 256; i++) deep = arr([deep])
+    expect(() => h.encode(h.Any, deep)).toThrow(h.HausEncodeError)
+  })
+
+  it("rejects an unknown value whose tag the variant lists", () => {
+    const Shape = h.OpenVariant({ Circle: h.Record({ r: h.Float64 }) })
+    expect(() => h.encode(Shape, { _tag: "@unknown", tag: "Circle", value: variant("Circle", [num("1")]) } as never)).toThrow(h.HausEncodeError)
+    expect(canonical(h.encode(Shape, { _tag: "@unknown", tag: "Square", value: variant("Square") } as never))).toBe("Square")
   })
 })

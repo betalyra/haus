@@ -66,7 +66,7 @@ through `haus-ref --canonical-batch`, the others through their runners with
 The same idea for the std/time checkers (spec §13.2,
 [`std/time.md`](../spec/std/time.md)): generated strings through the Lean
 model ([`spec/lean/Haus/Time`](../spec/lean/Haus/Time), proven to compute
-the rules) and the TypeScript, Rust and Roc checkers, which must agree on
+the rules) and the TypeScript, Rust, Roc and Python checkers, which must agree on
 every one.
 
 ```sh
@@ -89,6 +89,7 @@ above.
 | Rust | [`rust/haus/examples/time_runner.rs`](../rust/haus/examples/time_runner.rs) |
 | Roc | [`roc/fuzz/time_runner.roc`](../roc/fuzz/time_runner.roc) |
 | TypeScript | in this process |
+| Python | [`python/fuzz/time_runner.py`](../python/fuzz/time_runner.py) |
 
 ## Schema decoding
 
@@ -132,6 +133,7 @@ reported too.
 | Effect | in this process: `Haus.compileSchemaFile`, `decodeValue`, `encodeValue` |
 | Rust | [`schema-rust`](schema-rust): the code haus-build generates for each schema |
 | Roc | [`roc/schema_runner.roc`](roc/schema_runner.roc), with the modules `haus-gen roc` generates ([`roc/gen_schemas.ts`](roc/gen_schemas.ts)) |
+| Python | [`python/fuzz/schema_runner.py`](../python/fuzz/schema_runner.py): `haus.schema.compile_schema`, `decode`, `encode` |
 
 Nothing is masked: every binding's default host types keep the value (spec
 §13.4), so every runner must agree with Lean exactly. Lossy host types (Effect's
