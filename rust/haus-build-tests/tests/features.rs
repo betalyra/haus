@@ -123,3 +123,11 @@ fn deprecated_fields_still_decode() {
     let login: Login = from_str(r#"{ user: "ada", password: "x", name: "Ada" }"#).unwrap();
     assert_eq!(login.name.as_deref(), Some("Ada"));
 }
+
+#[test]
+#[allow(deprecated)]
+fn deprecated_single_tag_variants_still_decode() {
+    let legacy: features::Legacy = from_str("Only(7)").unwrap();
+    assert_eq!(legacy.0.to_i128(), Some(7));
+    assert_eq!(to_string(&legacy), "Only(7)");
+}

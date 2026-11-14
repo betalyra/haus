@@ -104,6 +104,15 @@ fn known_ids(file: &File, input: &Input) -> Vec<String> {
     own.chain(input.imports.values().map(|i| i.id.clone())).collect()
 }
 
+/// `unknown type Money`, with how to import it if it's a well-known type.
+pub(crate) fn unknown_type(name: &str) -> String {
+    match name {
+        "Money" | "Currency" => format!("unknown type {name} (import it with: import @haus/money ({name}))"),
+        _ if STD_TIME.contains(&name) => format!("unknown type {name} (import it with: import std/time ({name}))"),
+        _ => format!("unknown type {name}"),
+    }
+}
+
 /// A Rust path or type, as written in a codec or an import: `crate::codecs::Cents`.
 fn rust_path(path: &str) -> Option<TokenStream> {
     syn::parse_str::<syn::Type>(path).ok().map(|t| quote!(#t))
@@ -293,8 +302,10 @@ impl<'a> At<'a> {
 struct Item<'a> {
     name: Ident,
     params: Vec<Ident>,
-    /// Doc comments, and `#[deprecated]` if it is.
+    /// Doc comments.
     doc: TokenStream,
+    /// Its attributes: `@deprecated` becomes `#[deprecated]`.
+    attrs: &'a [Attribute],
     at: At<'a>,
 }
 
@@ -311,12 +322,26 @@ impl Item<'_> {
         if params.is_empty() { quote!() } else { quote!(<#(#params: ::haus::#bound),*>) }
     }
 
-    /// The type definition, and its `Decode` and `Encode` implementations.
-    fn implement(&self, definition: TokenStream, decode: TokenStream, encode: TokenStream) -> TokenStream {
-        let (doc, name, g) = (&self.doc, &self.name, self.generics());
+    /// Doc comments and `#[deprecated]`, if the item or `also` (the
+    /// attributes of the only tag of `closed < Tag … >`) say so: Rust allows
+    /// one `#[deprecated]`.
+    fn header(&self, also: &[Attribute]) -> TokenStream {
+        let (doc, deprecated) = (&self.doc, deprecated([self.attrs, also]));
+        quote!(#doc #deprecated)
+    }
+
+    /// The type definition, after `header`, and its `Decode` and `Encode` implementations.
+    fn implement(
+        &self,
+        header: TokenStream,
+        definition: TokenStream,
+        decode: TokenStream,
+        encode: TokenStream,
+    ) -> TokenStream {
+        let (name, g) = (&self.name, self.generics());
         let (de_g, en_g) = (self.bounded("Decode"), self.bounded("Encode"));
         quote! {
-            #doc
+            #header
             #[derive(Debug, Clone, PartialEq)]
             #[allow(deprecated)]
             #definition
@@ -357,11 +382,8 @@ impl<'a> Gen<'a> {
         let item = Item {
             name: format_ident!("{}", def.name),
             params: def.params.iter().map(|p| param(p)).collect(),
-            doc: {
-                let doc = docs(def.doc.lines().chain(["", &format!("haus type `{id}`.")]).skip_while(|l| l.is_empty()));
-                let deprecated = deprecated(&def.attrs);
-                quote!(#doc #deprecated)
-            },
+            doc: docs(def.doc.lines().chain(["", &format!("haus type `{id}`.")]).skip_while(|l| l.is_empty())),
+            attrs: &def.attrs,
             at: At { owner: def, hint: def.name.clone(), contained: false },
         };
         self.define(&item, &def.ty, Some(&id))
@@ -369,17 +391,17 @@ impl<'a> Gen<'a> {
 
     /// The item for a type, with its id if it has one.
     fn define(&mut self, item: &Item<'a>, ty: &'a Ty, id: Option<&str>) -> Result<(), Error> {
-        let (doc, name, g) = (&item.doc, &item.name, item.generics());
+        let (header, name, g) = (item.header(&[]), &item.name, item.generics());
         let (code, nominal) = match ty {
             Ty::Record { closed, fields, .. } => (self.record(item, *closed, fields)?, true),
             Ty::Variant { closed: false, cases, .. } if cases.is_empty() => {
-                (quote! { #doc pub type #name #g = ::haus::AnyTag; }, false)
+                (quote! { #header pub type #name #g = ::haus::AnyTag; }, false)
             }
             Ty::Variant { closed: true, cases, .. } if cases.len() == 1 => (self.single(item, &cases[0])?, true),
             Ty::Variant { closed, cases, .. } => (self.variant(item, *closed, cases)?, true),
             ty => {
                 let target = self.lower(ty, &item.at)?.ty;
-                (quote! { #doc #[allow(deprecated)] pub type #name #g = #target; }, false)
+                (quote! { #header #[allow(deprecated)] pub type #name #g = #target; }, false)
             }
         };
         // Structs and enums carry their id; aliases can't.
@@ -427,12 +449,7 @@ impl<'a> Gen<'a> {
                 None => self.prelude(name, args, pos, at),
             };
         } else {
-            let hint = match name {
-                "Money" | "Currency" => format!(" (import it with: import @haus/money ({name}))"),
-                _ if STD_TIME.contains(&name) => format!(" (import it with: import std/time ({name}))"),
-                _ => String::new(),
-            };
-            return self.fail(pos, format!("unknown type {name}{hint}"));
+            return self.fail(pos, unknown_type(name));
         };
         if let Some(reason) = arity(params) {
             return self.fail(pos, reason);
@@ -511,6 +528,7 @@ impl<'a> Gen<'a> {
             name: format_ident!("{name}"),
             params: at.owner.params.iter().filter(|p| used.contains(p.as_str())).map(|p| param(p)).collect(),
             doc: docs([format!("`{name}`, inline in {}.", at.owner.name).as_str()].into_iter()),
+            attrs: &[],
             at: At { hint: name, ..at.clone() },
         };
         self.define(&item, ty, None)?;
@@ -528,7 +546,7 @@ impl<'a> Gen<'a> {
                     key: f.key.clone(),
                     optional: f.optional,
                     rs,
-                    deprecated: deprecated(&f.attrs),
+                    deprecated: deprecated([f.attrs.as_slice()]),
                 })
             })
             .collect::<Result<Vec<_>, Error>>()?;
@@ -570,6 +588,7 @@ impl<'a> Gen<'a> {
         });
         let bind = bind_record(quote!(::haus::de::Record::new(v, #label)), closed, fields);
         Ok(item.implement(
+            item.header(&[]),
             quote!(pub struct #name #g { #(#decls),* }),
             quote! {
                 #bind
@@ -623,9 +642,9 @@ impl<'a> Gen<'a> {
                 )
             }
         };
-        let deprecated = deprecated(&case.attrs);
         Ok(item.implement(
-            quote!(#deprecated #definition),
+            item.header(&case.attrs),
+            definition,
             quote! {
                 let (tag, args) = ::haus::de::variant(v, #label)?;
                 if tag != #tag {
@@ -650,7 +669,7 @@ impl<'a> Gen<'a> {
             .iter()
             .map(|case| {
                 let (tag, v) = (&case.tag, format_ident!("{}", case.tag));
-                let deprecated = deprecated(&case.attrs);
+                let deprecated = deprecated([case.attrs.as_slice()]);
                 Ok(match self.payload(case, &item.at)? {
                     Payload::None => (
                         quote!(#deprecated #v),
@@ -705,6 +724,7 @@ impl<'a> Gen<'a> {
             )
         };
         Ok(item.implement(
+            item.header(&[]),
             quote!(pub enum #name #g { #(#decls,)* #other_decl }),
             quote! {
                 let (tag, args) = ::haus::de::variant(v, #label)?;
@@ -768,12 +788,18 @@ fn docs<'s>(lines: impl Iterator<Item = &'s str>) -> TokenStream {
     quote!(#(#[doc = #lines])*)
 }
 
-/// `#[deprecated(note = "…")]` if the attributes say so (spec §14), or nothing.
-fn deprecated(attrs: &[Attribute]) -> TokenStream {
-    match deprecation(attrs) {
-        Some(Some(note)) => quote!(#[deprecated(note = #note)]),
-        Some(None) => quote!(#[deprecated]),
-        None => quote!(),
+/// `#[deprecated(note = "…")]` if any of the attribute lists say so (spec
+/// §14), or nothing. Their messages are joined: Rust allows one `#[deprecated]`.
+fn deprecated<'a>(lists: impl IntoIterator<Item = &'a [Attribute]>) -> TokenStream {
+    let deprecations: Vec<Option<&str>> = lists.into_iter().filter_map(deprecation).collect();
+    if deprecations.is_empty() {
+        return quote!();
+    }
+    let mut notes: Vec<&str> = deprecations.into_iter().flatten().collect();
+    notes.dedup();
+    match notes.join("; ") {
+        note if note.is_empty() => quote!(#[deprecated]),
+        note => quote!(#[deprecated(note = #note)]),
     }
 }
 

@@ -9,12 +9,15 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "sideEffects": false,
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lint": "effect-tsgo tsc@7.0.2 -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@haus-fmt/haus": "workspace:*"
@@ -23,6 +26,7 @@
     "effect": "^4.0.6"
   },
   "devDependencies": {
+    "@effect/tsgo": "0.69.0",
     "@effect/vitest": "4.0.6",
     "@types/node": "24.10.1",
     "effect": "4.0.6",

@@ -161,13 +161,11 @@ impl Config {
     fn emit(&self, schema: &Path, id: &str, name: &str) -> Result<()> {
         rerun_if_changed(schema);
         let text = read(schema)?;
-        let mut file = schema::parse(&text).map_err(|e| Error::from(e).in_file(schema))?;
-        if self.without_attributes {
-            file = schema::without_attributes(file);
-        }
+        let file = schema::parse(&text).map_err(|e| Error::from(e).in_file(schema))?;
+        let file = if self.without_attributes { schema::without_attributes(file) } else { file };
         if !self.quiet {
             for w in &file.warnings {
-                println!("cargo::warning={}", Error::from(w.clone()).in_file(schema));
+                println!("cargo::warning={}:{w}", schema.display());
             }
         }
         let code =

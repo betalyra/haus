@@ -9,5 +9,15 @@ allowBuilds:
   esbuild: true
 
 # @effect/platform-node 4.0.6 accepts any platform-node-shared 4.x, but 4.1 needs effect 4.1.
+minimumReleaseAgeExclude:
+  - '@effect/tsgo-darwin-arm64@0.69.0'
+  - '@effect/tsgo-darwin-x64@0.69.0'
+  - '@effect/tsgo-linux-arm64@0.69.0'
+  - '@effect/tsgo-linux-arm@0.69.0'
+  - '@effect/tsgo-linux-x64@0.69.0'
+  - '@effect/tsgo-win32-arm64@0.69.0'
+  - '@effect/tsgo-win32-x64@0.69.0'
+  - '@effect/tsgo@0.69.0'
+
 overrides:
   "@effect/platform-node-shared": 4.0.6

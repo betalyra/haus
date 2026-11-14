@@ -92,7 +92,20 @@ describe("Any", () => {
 
   it("checks a value before writing it", () => {
     const e = failure(Haus.encodeValue(Haus.Any)({ kind: "number", text: "1; 2" } as Value))
-    expect(e.message).toContain("normalized literal")
+    expect(e.message).toContain("expected a number literal")
+    // Number literals built in code are normalized as the parser would.
+    expect(Effect.runSync(Haus.encodeValue(Haus.Any)({ kind: "number", text: "1E5" }))).toEqual({ kind: "number", text: "1e5" })
+    // A 900-digit hex literal (over 1000 decimal digits) is written again.
+    const big = parse("0x" + "f".repeat(900))
+    expect(Effect.runSync(Haus.encodeValue(Haus.Any)(big))).toBe(big)
+  })
+
+  it("checks the raw value of an unknown variant the same way", () => {
+    const Event = Haus.OpenUnion([Schema.TaggedStruct("Known", {})])
+    const decoded = Effect.runSync(Haus.decode(Event)("Other(1E5, [2])"))
+    expect(Effect.runSync(Haus.encode(Event)(decoded, { style: "compact" }))).toBe("Other(1e5, [2])")
+    const forged = { _tag: "@unknown", tag: "Other", value: { kind: "variant", tag: "lower", args: [] } } as const
+    expect(failure(Haus.encode(Event)(forged as never)).message).toContain("expected a tag name")
   })
 })
 

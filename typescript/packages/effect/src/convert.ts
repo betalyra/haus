@@ -9,8 +9,8 @@
  * the error with its path.
  */
 import {
-  arr as vArr, bytes as vBytes, checkStdTime, equals, floatText, num as vNum, rec as vRec, str as vStr, toFloat32, toFloat64, variant as vVariant,
-  type HVariant, type StdTimeType, type Value,
+  arr as vArr, bytes as vBytes, checkStdTime, equals, floatValue as coreFloatValue, num as vNum, rec as vRec, specialFloat, str as vStr, toFloat,
+  variant as vVariant, type FloatType, type HVariant, type StdTimeType, type Value,
 } from "@haus-fmt/haus"
 import * as h from "@haus-fmt/haus/schema"
 import { Array as Arr, BigDecimal, DateTime, Match, Option, Predicate, Redacted, SchemaAST } from "effect"
@@ -56,7 +56,7 @@ export const SECRET = "hausSecret"
  */
 export const NUMBER = "hausNumber"
 
-export type NumberType = "Int" | "Float32" | "Float64"
+export type NumberType = "Int" | FloatType
 
 /** Thrown during conversion; `decodeValue` turns it into a HausSchemaError. `path` is where, as in Effect's issues. */
 export class ConversionError {
@@ -235,11 +235,6 @@ const tagOf = (ast: AST): Option.Option<string> => {
     : Option.none()
 }
 
-const isOptionDeclaration = (ast: AST) => {
-  const a = resolve(ast)
-  return a._tag === "Declaration" && Option.contains(declarationId(a), "effect/schema/Option")
-}
-
 /**
  * Set an own property. Plain `out[key] = …` with key "__proto__" would
  * replace the object's prototype, letting data inject fields it doesn't
@@ -322,13 +317,9 @@ const numberType = (ast: AST): NumberType => {
 function compileNumber(ast: SchemaAST.Number): Converter {
   const type = numberType(ast)
   if (type === "Int") return (v) => (v.kind === "number" && INTEGER.test(v.text) ? Number(v.text) + 0 : mismatch("a whole number", v))
-  const toFloat = type === "Float32" ? toFloat32 : toFloat64
   return (v) =>
-    v.kind === "number" ? (toFloat(v.text) ?? fail(`${describe(v)} is too large for ${type}`))
-    : Option.isSome(variant(v, "NaN", 0)) ? NaN
-    : Option.isSome(variant(v, "Infinity", 0)) ? Infinity
-    : Option.isSome(variant(v, "NegInfinity", 0)) ? -Infinity
-    : generic(v)
+    v.kind === "number" ? (toFloat(v.text, type) ?? fail(`${describe(v)} is too large for ${type}`))
+    : (specialFloat(v) ?? generic(v))
 }
 
 const fail = (message: string): never => {
@@ -503,14 +494,7 @@ export type Encoder = (js: unknown) => Value
 const TAG_NAME = /^[A-Z][A-Za-z0-9_]*$/
 
 /** A float in its one spelling (spec §15); a Float32 as the nearest binary32 value. */
-const floatValue = (n: number, type: "Float64" | "Float32" = "Float64"): Value => {
-  if (Number.isNaN(n)) return vVariant("NaN")
-  if (n === Infinity) return vVariant("Infinity")
-  if (n === -Infinity) return vVariant("NegInfinity")
-  const x = type === "Float32" ? Math.fround(n) : n
-  if (!Number.isFinite(x)) throw new ConversionError(`${n} is too large for ${type}`)
-  return vNum(floatText(x, type))
-}
+const floatValue = (n: number, type: FloatType = "Float64"): Value => coreFloatValue(n, type) ?? fail(`${n} is too large for ${type}`)
 
 const numberValue = (n: number): Value => floatValue(n)
 
@@ -653,8 +637,9 @@ function encodeObject(ast: SchemaAST.Objects): Encoder {
   return (js) => {
     if (typeof js !== "object" || js === null) return encodeGeneric(js)
     const obj = js as Record<string, unknown>
-    // The raw value of an unknown variant is written back as it was received.
-    if (tag === UNKNOWN_TAG) return obj["value"] as Value
+    // The raw value of an unknown variant is written back as it was received,
+    // after the same checks as an `Any` (spec §9.8).
+    if (tag === UNKNOWN_TAG) return encodeValue(obj["value"])
     if (values && tag !== undefined) {
       const items = props.find((p) => p.name === "values")?.encode(obj["values"])
       return vVariant(tag, items?.kind === "array" ? items.items : [])

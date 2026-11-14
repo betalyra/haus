@@ -17,14 +17,15 @@
  * dispatch on the tag, depth is limited, and every call has a work budget.
  * Types that contain themselves are declared with `h.Recursive`.
  */
+import { START } from "./errors.js"
 import { format, stringify as stringifyValue, type FormatOptions } from "./format.js"
-import { Parser } from "./parser.js"
+import { INTEGER, normalizeNumber, numberLimitIssue } from "./number.js"
+import { longerThan, Parser, withDefaults, type Limits as ValueLimits } from "./parser.js"
 import { parseStream, type ChunkSource } from "./stream.js"
 import { checkStdTime, type StdTimeType } from "./std-time.js"
-import { floatText, toFloat32, toFloat64 } from "./float.js"
-import { arr, bytes as bytesValue, num, rec, str, variant, type HRecord, type HVariant, type Value } from "./value.js"
+import { floatValue, specialFloat, toFloat, type FloatType } from "./float.js"
+import { arr, bytes as bytesValue, num, rec, str, variant, type HNumber, type HRecord, type HVariant, type Value } from "./value.js"
 import { issuesOf, type StandardSchemaV1 } from "./standard.js"
-import { DEFAULT_LIMITS } from "./parser.js"
 import { Secret as SecretValue } from "./secret.js"
 
 export type { Value }
@@ -66,7 +67,7 @@ export const formatPath = (path: Path) =>
  * like, so a mistake in a schema (or a hostile input meeting a recursive one)
  * ends in an error instead of exhausting CPU, memory or the stack.
  */
-export interface Limits {
+export interface Limits extends Partial<ValueLimits> {
   /** Deepest nesting of values (default 256, the parser's limit). */
   readonly maxDepth?: number
   /**
@@ -76,6 +77,10 @@ export interface Limits {
    * share sub-objects (a DAG of depth 64 would otherwise expand to 2^64 nodes).
    */
   readonly maxSteps?: number
+  // The parser's limits (maxNumberLength, maxExponent, maxStringLength, default
+  // DEFAULT_LIMITS) apply when `parse` reads the text, and when a raw value
+  // (an `Any`, an unknown variant) is written again (spec §9.8): pass the same
+  // limits to both, and a parsed value always encodes again.
 }
 
 const DEFAULT_MAX_DEPTH = 256
@@ -84,6 +89,8 @@ const DEFAULT_ENCODE_STEPS = 16 * 1024 * 1024
 
 interface Context {
   readonly mode: "decode" | "encode"
+  /** The parser's limits, for raw values. */
+  readonly values: ValueLimits
   readonly maxDepth: number
   readonly maxSteps: number
   steps: number
@@ -115,6 +122,11 @@ export class At {
   child(key: string | number): At {
     if (this.depth >= this.ctx.maxDepth) this.fail(`nesting deeper than ${this.ctx.maxDepth} levels`, key)
     return new At(this.ctx, this, key, this.depth + 1)
+  }
+
+  /** The parser's limits for this call, for checking raw values (spec §9.8). */
+  get limits(): ValueLimits {
+    return this.ctx.values
   }
 
   /** Count one schema step. Fails when the budget is used up. */
@@ -164,6 +176,7 @@ const NOTHING = Symbol("nothing")
 
 const context = (mode: "decode" | "encode", maxSteps: number, limits: Limits): Context => ({
   mode,
+  values: withDefaults(limits),
   maxDepth: limits.maxDepth ?? DEFAULT_MAX_DEPTH,
   maxSteps: limits.maxSteps ?? maxSteps,
   steps: 0,
@@ -258,7 +271,6 @@ const describeJs = (value: unknown): string => {
 
 const mismatch = (expected: string, v: Value, at: At): never => at.fail(`expected ${expected}, found ${describe(v)}`)
 
-/** A schema from its decoder and encoder; every application counts one step. */
 /** The `~standard` property of a schema: validate haus text or a parsed Value. */
 const standard = <A>(self: () => Schema<A>): StandardSchemaV1.Props<string | Value, A> => ({
   version: 1,
@@ -266,9 +278,7 @@ const standard = <A>(self: () => Schema<A>): StandardSchemaV1.Props<string | Val
   validate: (input) => {
     try {
       if (typeof input === "string") return { value: parse(self(), input) }
-      if (typeof input === "object" && input !== null && VALUE_KINDS.has((input as { kind?: unknown }).kind as string)) {
-        return { value: decode(self(), input as Value) }
-      }
+      if (isValueNode(input)) return { value: decode(self(), input) }
       return { issues: [{ message: "expected haus text or a parsed haus Value" }] }
     } catch (e) {
       return issuesOf(e)
@@ -282,6 +292,7 @@ export const withStandard = <A, S extends Omit<Schema<A>, "~standard">>(schema: 
   return self
 }
 
+/** A schema from its decoder and encoder; every application counts one step. */
 const make = <A>(expected: string, decode: (value: Value, at: At) => A, encode: (value: A, at: At) => Value): Schema<A> => {
   const self: Schema<A> = {
   "~standard": standard(() => self),
@@ -307,8 +318,6 @@ const string_ = make(
   (v, p) => (v.kind === "string" ? v.value : mismatch("String", v, p)),
   (s, p) => (typeof s === "string" ? str(s) : invalid("a string", s, p)),
 )
-
-const INTEGER = /^-?\d+$/
 
 const short = (text: string) => (text.length > 30 ? text.slice(0, 30) + "…" : text)
 
@@ -352,28 +361,17 @@ const bigint_ = int
  * Also `NaN`, `Infinity`, `NegInfinity` (prelude). Written in one spelling:
  * the fewest digits that read back as the same value.
  */
-const float = (name: "Float64" | "Float32", convert: (text: string) => number | undefined) => make(name, (v, p) => {
-  if (v.kind === "number") return convert(v.text) ?? p.fail(`${short(v.text)} is too large for ${name}`)
-  if (v.kind === "variant" && v.args.length === 0) {
-    if (v.tag === "NaN") return NaN
-    if (v.tag === "Infinity") return Infinity
-    if (v.tag === "NegInfinity") return -Infinity
-  }
-  return mismatch(name, v, p)
-}, (n, p) => {
-  if (typeof n !== "number") return invalid("a number", n, p)
-  if (Number.isNaN(n)) return variant("NaN")
-  if (n === Infinity) return variant("Infinity")
-  if (n === -Infinity) return variant("NegInfinity")
-  // A Float32 is written as the nearest binary32 value of the number given.
-  const x = name === "Float32" ? Math.fround(n) : n
-  if (!Number.isFinite(x)) return invalid(`a number within the range of ${name}`, n, p)
-  return num(floatText(x, name))
-})
+const float = (name: FloatType) => make(
+  name,
+  (v, p) =>
+    v.kind === "number" ? (toFloat(v.text, name) ?? p.fail(`${short(v.text)} is too large for ${name}`))
+    : (specialFloat(v) ?? mismatch(name, v, p)),
+  (n, p) => (typeof n === "number" ? (floatValue(n, name) ?? invalid(`a number within the range of ${name}`, n, p)) : invalid("a number", n, p)),
+)
 
-const float64 = float("Float64", toFloat64)
+const float64 = float("Float64")
 /** A binary32 value, as a JS number (an exact `Math.fround` value). */
-const float32 = float("Float32", toFloat32)
+const float32 = float("Float32")
 
 /**
  * Exact decimal, returned as its normalized literal text (e.g. "19.90",
@@ -382,20 +380,19 @@ const float32 = float("Float32", toFloat32)
 const decimal = make(
   "Decimal",
   (v, p) => (v.kind === "number" ? v.text : mismatch("Decimal", v, p)),
-  (d, p) => {
-    const literal = typeof d === "string" ? numberLiteral(d) : undefined
-    return literal ?? invalid('a decimal string like "19.90"', d, p)
-  },
+  (d, p) => numberFromText(d, 'a decimal string like "19.90"', p),
 )
 
-/** A haus number literal as a Value with its normalized text, or undefined. */
-const numberLiteral = (text: string): Value | undefined => {
-  try {
-    const values = new Parser(text).parseSequence()
-    return values.length === 1 && values[0]!.kind === "number" ? values[0] : undefined
-  } catch {
-    return undefined
-  }
+/**
+ * A number given as literal text (a `Decimal`, a number in a raw value) as a
+ * number value: normalized as the parser would (`1E5` → `1e5`, `0xFF` →
+ * `255`), and within the call's limits (spec §9.8).
+ */
+const numberFromText = (text: unknown, expected: string, at: At): HNumber => {
+  const normalized = typeof text === "string" ? normalizeNumber(text, at.limits) : undefined
+  if (normalized === undefined) return invalid(expected, text, at)
+  const issue = numberLimitIssue(normalized, at.limits)
+  return issue === undefined ? num(normalized) : at.fail(issue)
 }
 
 const bool = make(
@@ -666,6 +663,13 @@ export interface Unknown {
   readonly value: HVariant
 }
 
+/** The unknown value for a variant an open type doesn't list: the tag, and the variant as it was parsed. */
+const unknownOf = (v: HVariant): Unknown => ({ _tag: "@unknown", tag: v.tag, value: v })
+
+/** Whether `u` is an `Unknown` (to encode: its raw value, after `checkedValue`). */
+const isUnknown = (u: unknown): u is { readonly _tag: "@unknown"; readonly value: unknown } =>
+  typeof u === "object" && u !== null && (u as { readonly _tag?: unknown })._tag === "@unknown"
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const isRecordSchema = (c: Case): c is RecordSchema<any> => "kind" in c && c.kind === "record"
 const isTuple = (c: Case): c is TupleSchema<readonly AnySchema[]> => "kind" in c && c.kind === "tuple"
@@ -682,7 +686,7 @@ const variantSchema = <C extends Cases, A>(cases: C, open: boolean): Schema<A> =
     if (v.kind !== "variant") return mismatch(expected, v, at)
     const c = byTag.get(v.tag)
     if (c === undefined) {
-      if (open) return { _tag: "@unknown", tag: v.tag, value: v } as A
+      if (open) return unknownOf(v) as A
       return at.fail(`unknown tag '${v.tag}', expected one of ${tagList(tags)}`)
     }
     const arity = (n: number, shape: string) => {
@@ -710,7 +714,7 @@ const variantSchema = <C extends Cases, A>(cases: C, open: boolean): Schema<A> =
     if (typeof obj !== "object" || obj === null || typeof obj._tag !== "string") return invalid("an object with a _tag", a, at)
     // Unknown variants are written back as they were received, after checking
     // that what's there really is a haus value within the limits.
-    if (open && obj._tag === "@unknown") return checkedValue(obj.value, at)
+    if (open && isUnknown(obj)) return checkedValue(obj.value, at)
     const c = byTag.get(obj._tag)
     if (c === undefined) return invalid(`one of ${tagList(tags)}`, obj._tag, at)
     if (c === Unit) return variant(obj._tag)
@@ -730,59 +734,66 @@ const variantSchema = <C extends Cases, A>(cases: C, open: boolean): Schema<A> =
   })
 }
 
-const VALUE_KINDS = new Set(["number", "string", "bytes", "array", "record", "variant"])
+const VALUE_KINDS: ReadonlySet<unknown> = new Set<Value["kind"]>(["number", "string", "bytes", "array", "record", "variant"])
 
-/** A number literal as the parser writes it (spec §2): no separators, hex or `+`; `1e5`, `-0`, `19.90`. */
-const NUMBER_TEXT = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:e(-?)([0-9]+))?$/
+/** Whether `u` looks like a haus `Value` at its top (its kind); `checkedValue` checks the rest. */
+const isValueNode = (u: unknown): u is Value => typeof u === "object" && u !== null && VALUE_KINDS.has((u as { readonly kind?: unknown }).kind)
+
+/** `xs` mapped with `f`, or `xs` itself when `f` changed nothing. */
+const mapSame = <T>(xs: readonly T[], f: (x: T, i: number) => T): readonly T[] => {
+  const ys = xs.map(f)
+  return ys.every((y, i) => y === xs[i]) ? xs : ys
+}
 
 /**
- * A raw `Value` handed to the encoder (an Unknown's payload, an `Any`): check
- * that it is a haus value the parser could have produced, within the limits
- * (spec §9.5, §9.8): its shape, depth and size, number literals, tags, keys.
- * It is written back unchanged.
+ * A raw `Value` handed to the encoder (an `Any`, an Unknown's payload): a
+ * haus value within the call's limits (spec §9.5, §9.8), checked node by
+ * node: shape, depth, work, number literals, string lengths, tags. It is
+ * written back as it is, except that number literals are normalized as the
+ * parser would (`1E5` → `1e5`); parts without such a change are kept as they
+ * are (the same objects), so a parsed value comes back unchanged.
  */
 const checkedValue = (raw: unknown, at: At): Value => {
-  const stack: [unknown, At][] = [[raw, at]]
-  while (stack.length > 0) {
-    const [v, here] = stack.pop()!
-    here.step()
-    const kind = typeof v === "object" && v !== null ? (v as { kind?: unknown }).kind : undefined
-    if (typeof kind !== "string" || !VALUE_KINDS.has(kind)) return invalid("a haus value", v, here)
-    const value = v as Value
-    switch (value.kind) {
-      case "number": {
-        const m = typeof value.text === "string" ? NUMBER_TEXT.exec(value.text) : null
-        if (!m) return invalid("a number with a normalized literal (spec §2)", value.text, here)
-        if (value.text.length > DEFAULT_LIMITS.maxNumberLength) here.fail(`number literal longer than ${DEFAULT_LIMITS.maxNumberLength} characters`)
-        if (m[2] !== undefined && (m[2].length > 5 || Number(m[2]) > DEFAULT_LIMITS.maxExponent)) here.fail(`exponent larger than ${DEFAULT_LIMITS.maxExponent}`)
-        break
+  at.step()
+  if (!isValueNode(raw)) return invalid("a haus value", raw, at)
+  const { maxStringLength } = at.limits
+  const checkedString = (s: unknown, what: string): string => {
+    if (typeof s !== "string") return invalid(what, s, at)
+    return longerThan(s, maxStringLength) ? at.fail(`string longer than ${maxStringLength} characters`) : s
+  }
+  switch (raw.kind) {
+    case "number": {
+      const n = numberFromText(raw.text, "a number literal", at)
+      return n.text === raw.text ? raw : n
+    }
+    case "string":
+      checkedString(raw.value, "a string value")
+      return raw
+    case "bytes":
+      return raw.bytes instanceof Uint8Array ? raw : invalid("a Uint8Array", raw.bytes, at)
+    case "array": {
+      if (!Array.isArray(raw.items)) return invalid("an array of items", raw.items, at)
+      const items = mapSame(raw.items, (x, i) => checkedValue(x, at.child(i)))
+      return items === raw.items ? raw : arr(items)
+    }
+    case "record": {
+      if (!(raw.fields instanceof globalThis.Map)) return invalid("a Map of fields", raw.fields, at)
+      const fields = new globalThis.Map<string, Value>()
+      let changed = false
+      for (const [k, x] of raw.fields) {
+        const y = checkedValue(x, at.child(checkedString(k, "a string key")))
+        changed ||= y !== x
+        fields.set(k, y)
       }
-      case "string":
-        if (typeof value.value !== "string") return invalid("a string value", value.value, here)
-        if (value.value.length > DEFAULT_LIMITS.maxStringLength) here.fail(`string longer than ${DEFAULT_LIMITS.maxStringLength} characters`)
-        break
-      case "bytes":
-        if (!(value.bytes instanceof Uint8Array)) return invalid("a Uint8Array", value.bytes, here)
-        break
-      case "array":
-        if (!Array.isArray(value.items)) return invalid("an array of items", value.items, here)
-        value.items.forEach((x, i) => stack.push([x, here.child(i)]))
-        break
-      case "record":
-        if (!(value.fields instanceof globalThis.Map)) return invalid("a Map of fields", value.fields, here)
-        for (const [k, x] of value.fields) {
-          if (typeof k !== "string") return invalid("a string key", k, here)
-          stack.push([x, here.child(k)])
-        }
-        break
-      case "variant":
-        if (typeof value.tag !== "string" || !TAG.test(value.tag)) return invalid("a tag name", value.tag, here)
-        if (!Array.isArray(value.args)) return invalid("an array of arguments", value.args, here)
-        value.args.forEach((x, i) => stack.push([x, here.child(i)]))
-        break
+      return changed ? rec(fields) : raw
+    }
+    case "variant": {
+      if (typeof raw.tag !== "string" || !TAG.test(raw.tag)) return invalid("a tag name", raw.tag, at)
+      if (!Array.isArray(raw.args)) return invalid("an array of arguments", raw.args, at)
+      const args = mapSame(raw.args, (x, i) => checkedValue(x, at.child(i)))
+      return args === raw.args ? raw : variant(raw.tag, args)
     }
   }
-  return raw as Value
 }
 
 /** A closed variant: any other tag is an error. */
@@ -811,16 +822,11 @@ export const Enum = <const T extends readonly string[]>(...tags: T): Schema<T[nu
  */
 export const AnyTag: Schema<string | Unknown> = make(
   "< >",
-  (v, at) => {
-    if (v.kind !== "variant") return mismatch("a variant", v, at)
-    return v.args.length === 0 ? v.tag : { _tag: "@unknown", tag: v.tag, value: v }
-  },
-  (a, at) => {
-    if (typeof a === "string") return TAG.test(a) ? variant(a) : invalid("a tag name", a, at)
-    const obj = a as { _tag?: unknown; value?: unknown }
-    if (typeof obj === "object" && obj !== null && obj._tag === "@unknown") return checkedValue(obj.value, at)
-    return invalid("a tag name or an Unknown", a, at)
-  },
+  (v, at) => (v.kind !== "variant" ? mismatch("a variant", v, at) : v.args.length === 0 ? v.tag : unknownOf(v)),
+  (a, at) =>
+    typeof a === "string" ? (TAG.test(a) ? variant(a) : invalid("a tag name", a, at))
+    : isUnknown(a) ? checkedValue(a.value, at)
+    : invalid("a tag name or an Unknown", a, at),
 )
 
 const TAG = /^[A-Z][A-Za-z0-9_]*$/
@@ -838,13 +844,18 @@ const any_: Schema<Value> = make("Any", (v) => v, (a, at) => checkedValue(a, at)
 export { any_ as Any }
 
 /**
- * A secret's own errors: its place and its type, never the value or any part
- * of it (spec §15). Errors from inside (including paths, which may hold map
- * keys from the data) are replaced by one at the secret's place.
+ * `f`, for the secret at `at` of type `expected`. A secret's own errors give
+ * its place and its type, never the value or any part of it (spec §15):
+ * errors from inside (including paths, which may hold map keys from the
+ * data) are replaced by one at the secret's place.
  */
-const secretFailure = (expected: string, at: At, e: unknown): never => {
-  if (e instanceof HausDecodeError || e instanceof HausEncodeError) at.fail(`expected ${expected} (a Secret: the value is not shown)`)
-  throw e
+const concealed = <R>(expected: string, at: At, f: () => R): R => {
+  try {
+    return f()
+  } catch (e) {
+    if (e instanceof HausDecodeError || e instanceof HausEncodeError) at.fail(`expected ${expected} (a Secret: the value is not shown)`)
+    throw e
+  }
 }
 
 /**
@@ -862,28 +873,17 @@ export const Secret = Object.assign(
   <A>(inner: Schema<A>): Schema<SecretValue<A>> =>
     make(
       `Secret ${inner.expected}`,
-      (v, at) => {
-        try {
-          return new SecretValue(inner.decode(v, at))
-        } catch (e) {
-          return secretFailure(inner.expected, at, e)
-        }
-      },
-      (s, at) => {
+      (v, at) => new SecretValue(concealed(inner.expected, at, () => inner.decode(v, at))),
+      (s, at) =>
         // Not even a short description of what was given instead: it may be the secret itself.
-        if (!(s instanceof SecretValue)) return at.fail(`expected a Secret (h.Secret.make(…)), got ${s === null ? "null" : Array.isArray(s) ? "an array" : typeof s}`)
-        try {
-          return inner.encode(s.expose(), at)
-        } catch (e) {
-          return secretFailure(inner.expected, at, e)
-        }
-      },
+        s instanceof SecretValue ? concealed(inner.expected, at, () => inner.encode(s.expose(), at))
+        : at.fail(`expected a Secret (h.Secret.make(…)), got ${s === null ? "null" : Array.isArray(s) ? "an array" : typeof s}`),
     ),
   {
     /** A secret holding `value`, to encode. */
-    make: <A>(value: A): SecretValue<A> => new SecretValue(value),
+    make: SecretValue.make,
     /** Whether `u` is a Secret. */
-    is: (u: unknown): u is SecretValue<unknown> => u instanceof SecretValue,
+    is: SecretValue.is,
   },
 )
 
@@ -963,7 +963,7 @@ export const decode = <A>(schema: Schema<A>, value: Value, limits: Limits = {}):
 
 /** Parse a text holding exactly one value and decode it. */
 export const parse = <A>(schema: Schema<A>, text: string, limits: Limits = {}): A => {
-  const values = new Parser(text).parseSequence()
+  const values = new Parser(text, START, withDefaults(limits)).parseSequence()
   if (values.length !== 1) throw new HausDecodeError(`expected exactly one value, found ${values.length}`, [])
   return decode(schema, values[0]!, limits)
 }
@@ -971,7 +971,7 @@ export const parse = <A>(schema: Schema<A>, text: string, limits: Limits = {}): 
 /** Parse and decode a stream; each element's errors carry its index in the path. Limits apply per element. */
 export async function* decodeStream<A>(schema: Schema<A>, source: ChunkSource, limits: Limits = {}): AsyncGenerator<A, void, undefined> {
   let i = 0
-  for await (const value of parseStream(source)) {
+  for await (const value of parseStream(source, { limits })) {
     yield schema.decode(value, decodeAt(value, limits, i))
     i++
   }

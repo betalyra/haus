@@ -162,6 +162,19 @@ describe("decodeStream", () => {
       expect(error._tag).toBe("HausSchemaError")
       if (error._tag === "HausSchemaError") expect(error.index).toBe(1)
     }))
+
+  it.effect("syntax errors are HausParseErrors; other exceptions of the source are defects", () =>
+    Effect.gen(function* () {
+      const error = yield* Stream.runCollect(Haus.decodeStream(AppEvent)(["Heartbeat, {"])).pipe(Effect.flip)
+      expect(error._tag).toBe("HausParseError")
+      const bug = new Error("boom")
+      async function* broken() {
+        yield "Heartbeat,"
+        throw bug
+      }
+      const exit = yield* Stream.runCollect(Haus.decodeStream(AppEvent)(broken())).pipe(Effect.exit)
+      expect(exit._tag === "Failure" && exit.cause.reasons.some((r) => r._tag === "Die" && r.defect === bug)).toBe(true)
+    }))
 })
 
 describe("errors", () => {

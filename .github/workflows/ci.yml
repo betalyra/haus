@@ -89,6 +89,9 @@ jobs:
       - name: Test
         working-directory: typescript
         run: pnpm test
+      - name: Effect lint (@effect/tsgo)
+        working-directory: typescript/packages/effect
+        run: pnpm lint
       - name: Lean schema types are up to date
         run: |
           node spec/lean/scripts/schema-types.ts > spec/lean/schema-suite.json

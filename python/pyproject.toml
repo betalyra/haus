@@ -48,3 +48,7 @@ typeCheckingMode = "strict"
 strict = true
 python_version = "3.11"
 files = ["src", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "src"]
+addopts = "--doctest-modules"
