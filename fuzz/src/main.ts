@@ -3,12 +3,14 @@
  * reporting where they disagree. See ../README.md.
  *
  *   node fuzz/src/main.ts [--count N] [--seed S] [--out DIR] [--canonical]
+ *   node fuzz/src/main.ts --schema [--count N] [--seed S] [--runners …]   schema decoding (schema.ts)
  */
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { parseArgs } from "node:util"
 import { input, Rng } from "./generate.ts"
 import { activeRunners, runAll, useCanonical, type Result } from "./runners.ts"
+import { run as runSchema } from "./schema.ts"
 
 const { values: args } = parseArgs({
   options: {
@@ -17,6 +19,10 @@ const { values: args } = parseArgs({
     out: { type: "string", default: "fuzz/.out" },
     // Compare the canonical forms (spec §12) instead of the parsed values.
     canonical: { type: "boolean", default: false },
+    // Decode generated values with the schema suite's types instead (schema.ts).
+    schema: { type: "boolean", default: false },
+    runners: { type: "string" },
+    batch: { type: "string" },
   },
 })
 if (args.canonical) useCanonical()
@@ -67,46 +73,51 @@ function describe(bytes: Uint8Array): string {
 
 // ── run ──────────────────────────────────────────────────────
 
-const suite = join(new URL("../..", import.meta.url).pathname, "test-suite")
-const seeds = ["valid", "invalid"].flatMap((d) =>
-  readdirSync(join(suite, d)).filter((f) => f.endsWith(".haus")).map((f) => new Uint8Array(readFileSync(join(suite, d, f)))))
+if (args.schema) process.exitCode = await runSchema(process.argv.slice(2))
+else runParsers()
 
-const rng = new Rng(seed)
-const failures: Uint8Array[] = []
-const seen = new Set<string>()
-let accepted = 0
-let positionMismatches = 0
-const positionExamples: Uint8Array[] = []
+function runParsers() {
+  const suite = join(new URL("../..", import.meta.url).pathname, "test-suite")
+  const seeds = ["valid", "invalid"].flatMap((d) =>
+    readdirSync(join(suite, d)).filter((f) => f.endsWith(".haus")).map((f) => new Uint8Array(readFileSync(join(suite, d, f)))))
 
-console.log(`seed ${seed}: ${count} cases through ${runners.map((r) => r.name).join(", ")}`)
-for (let done = 0; done < count; done += BATCH) {
-  const cases = Array.from({ length: Math.min(BATCH, count - done) }, () => input(rng, seeds))
-  const results = runAll(join(out, "cases"), cases)
-  results.forEach((rs, i) => {
-    if (rs[0]!.ok) accepted++
-    if (disagrees(rs)) {
-      const small = shrink(cases[i]!)
-      const key = show(small)
-      if (!seen.has(key)) {
-        seen.add(key)
-        failures.push(small)
+  const rng = new Rng(seed)
+  const failures: Uint8Array[] = []
+  const seen = new Set<string>()
+  let accepted = 0
+  let positionMismatches = 0
+  const positionExamples: Uint8Array[] = []
+
+  console.log(`seed ${seed}: ${count} cases through ${runners.map((r) => r.name).join(", ")}`)
+  for (let done = 0; done < count; done += BATCH) {
+    const cases = Array.from({ length: Math.min(BATCH, count - done) }, () => input(rng, seeds))
+    const results = runAll(join(out, "cases"), cases)
+    results.forEach((rs, i) => {
+      if (rs[0]!.ok) accepted++
+      if (disagrees(rs)) {
+        const small = shrink(cases[i]!)
+        const key = show(small)
+        if (!seen.has(key)) {
+          seen.add(key)
+          failures.push(small)
+        }
+      } else if (positionsDiffer(rs)) {
+        positionMismatches++
+        if (positionExamples.length < 5) positionExamples.push(cases[i]!)
       }
-    } else if (positionsDiffer(rs)) {
-      positionMismatches++
-      if (positionExamples.length < 5) positionExamples.push(cases[i]!)
-    }
-  })
-}
+    })
+  }
 
-console.log(`${accepted} accepted, ${count - accepted} rejected (by lean)`)
-mkdirSync(join(out, "failures"), { recursive: true })
-if (failures.length === 0) console.log("no disagreements")
-failures.forEach((f, i) => {
-  const report = describe(f)
-  writeFileSync(join(out, "failures", `${i}.haus`), f)
-  writeFileSync(join(out, "failures", `${i}.txt`), report + "\n")
-  console.log(`\nDISAGREEMENT ${i} (shrunk, saved to ${join(out, "failures", `${i}.haus`)}):\n${report}`)
-})
-console.log(`\n${positionMismatches} cases rejected by all, at different positions`)
-for (const p of positionExamples) console.log(describe(p))
-process.exitCode = failures.length ? 1 : 0
+  console.log(`${accepted} accepted, ${count - accepted} rejected (by lean)`)
+  mkdirSync(join(out, "failures"), { recursive: true })
+  if (failures.length === 0) console.log("no disagreements")
+  failures.forEach((f, i) => {
+    const report = describe(f)
+    writeFileSync(join(out, "failures", `${i}.haus`), f)
+    writeFileSync(join(out, "failures", `${i}.txt`), report + "\n")
+    console.log(`\nDISAGREEMENT ${i} (shrunk, saved to ${join(out, "failures", `${i}.haus`)}):\n${report}`)
+  })
+  console.log(`\n${positionMismatches} cases rejected by all, at different positions`)
+  for (const p of positionExamples) console.log(describe(p))
+  process.exitCode = failures.length ? 1 : 0
+}

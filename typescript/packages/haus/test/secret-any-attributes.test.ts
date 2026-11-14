@@ -184,6 +184,12 @@ describe("Any", () => {
     const small = { maxNumberLength: 20 }
     const fits = parse("0xFFFFFFFFFFFFFFFFFF", small)
     expect(h.encode(h.Any, fits, small)).toBe(fits)
+    // … and is written in hex under those limits, so that the same reader takes it.
+    const written = h.stringify(h.Any, fits, small)
+    expect(written).toBe("0xffffffffffffffffff")
+    expect(h.parse(h.Any, written, small)).toEqual(fits)
+    expect(h.stringify(h.Int, 2n ** 72n - 1n, small)).toBe("0xffffffffffffffffff")
+    expect(h.stringify(h.Int, 2n ** 72n - 1n)).toBe("4722366482869645213695")
     // Decimal takes the same literals and limits.
     expect(h.encode(h.Decimal, "1E5")).toEqual({ kind: "number", text: "1e5" })
     expect(h.encode(h.Decimal, "1".repeat(2500), limits)).toEqual({ kind: "number", text: "1".repeat(2500) })

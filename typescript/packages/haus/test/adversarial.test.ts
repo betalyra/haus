@@ -50,11 +50,19 @@ describe("recursive schemas", () => {
     expect(h.stringify(Expr, e)).toBe("Add(Num(1), Add(Num(2), Num(3)))")
   })
 
-  it("each recursive type has its own depth limit (default 64)", () => {
-    expect(h.parse(Tree, nestedTree(63)).name).toBe("n")
-    const e = errorOf(() => h.parse(Tree, nestedTree(64)))
-    expect(e).toBeInstanceOf(h.HausDecodeError)
-    expect(e.message).toContain("Tree nested deeper than 64 levels")
+  it("recursive types are limited by the call's depth limit, and optionally a smaller one of their own", () => {
+    // Each level of the tree is two levels of the value (the record and its array).
+    expect(h.parse(Tree, nestedTree(127)).name).toBe("n")
+    expect(errorOf(() => h.parse(Tree, nestedTree(128))).message).toContain("nesting deeper than 256 levels")
+    // The same when encoding a tree built in code.
+    let deep: Tree = { name: "leaf", children: [] }
+    for (let i = 0; i < 127; i++) deep = { name: "n", children: [deep] }
+    expect(h.stringify(Tree, deep, { style: "compact" })).toBe(nestedTree(127))
+    const deeper: Tree = { name: "n", children: [deep] }
+    const e = errorOf(() => h.encode(Tree, deeper))
+    expect(e).toBeInstanceOf(h.HausEncodeError)
+    expect(e.message).toContain("nesting deeper than 256 levels")
+    expect(errorOf(() => h.parse(Tree, nestedTree(20), { maxDepth: 30 })).message).toContain("nesting deeper than 30 levels")
     const Shallow = h.Recursive<Tree>("Shallow", (self) => h.Record({ name: h.String, children: h.Array(self) }), { maxDepth: 3 })
     expect(errorOf(() => h.parse(Shallow, nestedTree(3))).message).toContain("Shallow nested deeper than 3 levels")
   })
@@ -69,18 +77,20 @@ describe("recursive schemas", () => {
     const same = <A>(inner: h.Schema<A>): h.Schema<A> => ({ "~standard": inner["~standard"], expected: inner.expected, decode: inner.decode, encode: inner.encode })
     const P = h.Recursive<unknown>("P", (self) => same(self))
     expect(within(100, () => errorOf(() => h.parse(P, "1"))).message).toContain("unguarded recursion in P")
-    // Maybe(self) consumes Some(…) when decoding, but encodes a value with itself again.
+    // Maybe(self) consumes Some(…) when decoding and its value when encoding; a cycle fails.
     const M = h.Recursive<unknown>("M", (self) => h.Maybe(self) as h.Schema<unknown>)
-    expect(h.parse(M, "Some(Some(None))")).toBeNull()
-    expect(errorOf(() => h.encode(M, 5)).message).toContain("unguarded recursion in M")
+    expect(h.parse(M, "Some(Some(None))")).toEqual(h.Maybe.some(h.Maybe.some(h.Maybe.none)))
+    const cyclic: { _tag: "Some"; value: unknown } = { _tag: "Some", value: undefined }
+    cyclic.value = cyclic
+    expect(errorOf(() => h.encode(M, cyclic)).message).toContain("cyclic value")
   })
 
   it("mutual recursion", () => {
-    interface A { readonly b: B | null }
+    interface A { readonly b: h.Maybe<B> }
     interface B { readonly a: A }
     const A: h.Schema<A> = h.Recursive<A>("A", () => h.Record({ b: h.Maybe(B) }))
     const B: h.Schema<B> = h.Record({ a: A })
-    expect(h.parse(A, "{ b: Some({ a: { b: None } }) }")).toEqual({ b: { a: { b: null } } })
+    expect(h.parse(A, "{ b: Some({ a: { b: None } }) }")).toEqual({ b: { _tag: "Some", value: { a: { b: { _tag: "None" } } } } })
   })
 })
 

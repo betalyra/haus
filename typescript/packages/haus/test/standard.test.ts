@@ -21,7 +21,7 @@ describe("the plain view", () => {
       total: "30.30",
       status: { _tag: "Shipped", at: "2026-11-08" },
       gift: true,
-      note: null,
+      note: { _tag: "None" },
     })
   })
 
@@ -39,7 +39,7 @@ describe("parseWith: haus text into any Standard Schema", () => {
       z.object({ _tag: z.literal("Pending") }),
     ]),
     gift: z.boolean(),
-    note: z.string().nullable(),
+    note: z.discriminatedUnion("_tag", [z.object({ _tag: z.literal("None") }), z.object({ _tag: z.literal("Some"), value: z.string() })]),
   })
 
   it("validates with Zod and returns its output type", () => {

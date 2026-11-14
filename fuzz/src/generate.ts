@@ -35,7 +35,7 @@ export class Rng {
 const COMMENTS = ["// note\n", "// café 😀\t\n", "/* c */", "/* a /* nested */ b */", "/* multi\n   line */", "/**/", "// x\r\n"]
 
 /** Whitespace between tokens: usually none or a space, sometimes line breaks and comments. */
-function ws(r: Rng): string {
+export function ws(r: Rng): string {
   const x = r.next()
   if (x < 0.45) return ""
   if (x < 0.75) return " "
@@ -74,7 +74,7 @@ function basicString(r: Rng): string {
   return '"' + r.times(5, () => r.pick(STRING_PARTS)).join("") + '"'
 }
 
-function blockString(r: Rng, indent: string): string {
+export function blockString(r: Rng, indent: string): string {
   const nl = r.chance(0.2) ? "\r\n" : "\n"
   const inner = indent + r.pick(["", "  ", "\t"])
   const lines = r.times(3, () => r.pick(["", inner + "line", inner + 'say "hi" \\"""', inner + "  deeper", inner + "tab\there", inner + "😀 \\u{1B}"]))
@@ -114,7 +114,7 @@ function record(r: Rng, depth: number): string {
   return list(r, "{", "}", fields)
 }
 
-function value(r: Rng, depth: number): string {
+export function value(r: Rng, depth: number): string {
   const leaf = depth > 4 || r.chance(0.35)
   const x = r.int(leaf ? 5 : 9)
   switch (x) {

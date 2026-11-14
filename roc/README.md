@@ -68,6 +68,15 @@ names (`decode_list`).
 A `Secret` is written in full when encoded, but a decode error inside it names
 only its place and type (`.pin: not a valid Secret Int (the value is hidden)`).
 
+`Encode.to_str` (and `Encode.stream`) check what they write, so they return
+a `Try(Str, Encode.Error)`. What a generated encoder gives is always fine;
+what can fail is a `Value` built in code, the raw value of an `Any` or an
+unknown variant (spec §9.8): `Num("abc")` is an error (`.extra: not a number
+literal`), as are a tag that isn't a tag name, a key used twice in a record,
+and nesting, strings and numbers beyond the parser's limits. Number literals
+are written as the parser reads them (`Num("1E5")` as `1e5`).
+`Encode.message(e)` gives the error with its path.
+
 A float is written in one spelling (spec §15): the fewest digits that read
 back as the same `F64` or `F32`, laid out like JavaScript (`0.1`, `1e21`,
 `1.5e-7`, `-0`). A number too large for the type is a decode error.
@@ -97,8 +106,10 @@ cases as the TypeScript and Rust bindings.
 [`schema-test/`](schema-test) runs the schema conformance suite
 (`../test-suite/schema`, spec §15): `scripts/gen_schema_conformance.py`
 generates a module per schema with `haus-gen` (so it needs Rust) and
-`SchemaTest.roc` with one `expect` per case. Re-run it after changing the
-suite or the generator:
+`SchemaTest.roc` with one `expect` per case. A schema with attributes also
+gets a module generated without them (`AttributesBare.roc`), which must give
+the same results (attributes don't matter, spec §15). Re-run it after changing
+the suite or the generator:
 
 ```sh
 python3 scripts/gen_schema_conformance.py

@@ -84,7 +84,7 @@ import thread from "./thread.haus"     // checked against its schema
 import { Comment } from "./thread.schema.haus"
 
 thread.author      // String        → string
-thread.at          // Instant       → DateTime.Utc
+thread.at          // Instant       → string, checked and exact
 thread.likes       // Int           → bigint, no size limit
 thread.replies     // Array Comment → Comment[]
 
@@ -135,7 +135,7 @@ thread.replies     // Array Comment → Vec<Comment>
 
 let likes = thread.likes.to_i128().unwrap_or_default() + 1;
 let liked = Comment { likes: likes.into(), ..thread };
-println!("{}", haus::to_string(&liked));
+println!("{}", haus::to_string(&liked)?);
 `;
 
 export const codeRoc = `
@@ -154,7 +154,7 @@ thread = Decode.one(path.read_utf8!()?, Thread.decode_root)?
 liked = match thread {
     Comment(c) => Comment({ ..c, likes: c.likes + 1 })
 }
-Stdout.line!(Encode.to_str(Thread.encode_comment(liked)))?
+Stdout.line!(Encode.to_str(Thread.encode_comment(liked))?)?
 `;
 
 export const features = [

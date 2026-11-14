@@ -25,17 +25,20 @@ Two parts make an import work, and both come from one generator
 | `"effect"` | Effect schemas | decoded with Effect | plain JS values | `effect`, `@haus-fmt/effect` |
 
 Plain, without a schema: strings, `bigint` for whole numbers, `string` for decimals
-(exact), `boolean`, `Uint8Array`, `T | null` for `Maybe`, string literal unions for
-tags without payload, `{ _tag, … }` for other variants, `key?:` for fields only some
-records have.
+(exact), `boolean`, `Uint8Array`, string literal unions for tags without payload,
+`{ _tag, … }` for other variants, `None` and `Some(x)` included (`{ _tag: "None" }`,
+`{ _tag: "Some", value: x }`, so `Some(None)` stays apart from `None`), `key?:` for
+fields only some records have.
 
 Plain, with a schema: the same, plus `Int8` … `UInt32` and floats → `number`, std/time values → their text as written,
-`Map` → `ReadonlyMap`, open variants add `Unknown`, `Any` → `Value` (the parsed
+`Maybe a` → `Maybe<A>` (the same tagged form), `Map` → `ReadonlyMap`, open variants add `Unknown`, `Any` → `Value` (the parsed
 value, unchanged) and `Secret a` → `Secret<A>`
 (see [`@haus-fmt/haus`](../haus)).
-With Effect: `Int` → `bigint`, `Decimal` → `BigDecimal`, `Maybe` → `Option`,
-`Instant` → `DateTime.Utc`, which don't keep every spelling, `Any` → `Haus.Value`
-and `Secret a` → `Redacted<A>` (see [`@haus-fmt/effect`](../effect)).
+With Effect: `Int` → `bigint`, `Decimal` → `string` (exact), std/time values → their text as written,
+`Maybe` → `Option`, `Any` → `Haus.Value` and `Secret a` → `Redacted<A>`
+(see [`@haus-fmt/effect`](../effect)). Every target keeps the value as
+written; Effect's `BigDecimal` and `DateTime`, which don't, are codecs you
+pass when decoding (`Haus.decimalAsBigDecimal`, `Haus.instantAsDateTime`).
 
 A secret shows `<redacted>` when logged, and errors about one (at load time,
 or in the editor) never show its value. Types, fields and tags marked

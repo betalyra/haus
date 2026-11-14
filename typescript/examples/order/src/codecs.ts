@@ -16,16 +16,25 @@ export const iso = Haus.codec(money.Currency, (base) =>
     ),
   ));
 
+/** 4440n → "44.40": cents as a haus Decimal with two places. */
+const centsText = (cents: bigint): string => {
+  const digits = (cents < 0n ? -cents : cents).toString().padStart(3, "0");
+  return `${cents < 0n ? "-" : ""}${digits.slice(0, -2)}.${digits.slice(-2)}`;
+};
+
 /** Integer cents, as payment APIs want them; more than 2 decimal places is an error. */
 export const Cents = Schema.Struct({ cents: Schema.BigInt, currency: Schema.String });
 export const cents = Haus.codec(money.Money, (base) =>
   base.pipe(
     Schema.decodeTo(Cents, SchemaTransformation.transformEffect({
-      decode: ({ values: [amount, currency] }) =>
-        BigDecimal.normalize(amount).scale > 2
-          ? Effect.fail(new SchemaIssue.InvalidValue({ message: `${BigDecimal.format(amount)} has more than 2 decimal places` }))
-          : Effect.succeed({ cents: BigDecimal.scale(amount, 2).value, currency: typeof currency === "string" ? currency : currency.tag }),
-      encode: ({ cents, currency }) => Effect.succeed({ _tag: "Money" as const, values: [BigDecimal.make(cents, 2), currency] as const }),
+      // The amount is the Decimal's exact text ("44.40"); BigDecimal does the arithmetic.
+      decode: ({ values: [amount, currency] }) => {
+        const value = BigDecimal.fromStringUnsafe(amount);
+        return BigDecimal.normalize(value).scale > 2
+          ? Effect.fail(new SchemaIssue.InvalidValue({ message: `${amount} has more than 2 decimal places` }))
+          : Effect.succeed({ cents: BigDecimal.scale(value, 2).value, currency: typeof currency === "string" ? currency : currency.tag });
+      },
+      encode: ({ cents, currency }) => Effect.succeed({ _tag: "Money" as const, values: [centsText(cents), currency] as const }),
     })),
   ));
 

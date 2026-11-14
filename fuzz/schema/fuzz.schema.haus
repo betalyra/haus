@@ -1,0 +1,29 @@
+// Types that the conformance suite's schemas (test-suite/schema) leave out,
+// for the schema fuzzer (fuzz/README.md): the other integer sizes and
+// std/time types, and built-in types nested in each other.
+import std/time (Time, DateTime, Instant, ZonedDateTime, YearMonth, TimeZone)
+
+type I16 = Int16
+type I32 = Int32
+type U16 = UInt16
+type U32 = UInt32
+type Clock = Time
+type Local = DateTime
+type Zoned = ZonedDateTime
+type Month = YearMonth
+type Zone = TimeZone
+type Nested = Maybe (Maybe Int)
+type Color = < Red | Green | Blue >
+type Generic a b = < One a | Two a b | Rec { a: a, b?: b } >
+type Gen = Generic Int8 String
+type Tree = closed < Leaf | Node Tree Tree | Wrap { inner: Maybe Tree } >
+type Login = { user: String, pin: UInt16 }
+type Hidden = Secret Login
+type Floats = { f32: Float32, f64: Float64, all?: Array Float32 }
+type Mixed = closed {
+  list: Array (Maybe Decimal),
+  map: Map (Secret Bytes),
+  result: Result Int (Array String),
+  at?: Instant,
+  any?: Map Any,
+}

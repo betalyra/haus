@@ -19,7 +19,7 @@
 
 use crate::error::Position;
 use crate::parser::{parse_rest, parse_single};
-use crate::{Decode, Encode, Error, Limits, SyntaxError, Value, to_string};
+use crate::{Decode, Encode, Error, Limits, Segment, SyntaxError, Value, to_string_with};
 use std::collections::VecDeque;
 use std::io::{self, Read, Write};
 
@@ -325,8 +325,22 @@ pub fn decode<T: Decode, R: Read>(input: R) -> impl Iterator<Item = Result<T, Er
     values(input).enumerate().map(|(i, value)| Ok(T::decode(&value?).map_err(|e| e.index(i))?))
 }
 
-/// Write `values` as a stream: one per line, each followed by a comma.
-pub fn encode<T: Encode, W: Write>(mut output: W, values: impl IntoIterator<Item = T>) -> io::Result<()> {
-    values.into_iter().try_for_each(|v| writeln!(output, "{},", to_string(&v)))?;
-    output.flush()
+/// Write `values` as a stream: one per line, each followed by a comma. A
+/// value that can't be written (see [`crate::to_string`]) stops the stream
+/// before it, with an error that says which: `[3].total: …`.
+pub fn encode<T: Encode, W: Write>(output: W, values: impl IntoIterator<Item = T>) -> Result<(), Error> {
+    encode_with(output, values, &Limits::default())
+}
+
+/// [`encode`], for a reader with `limits` (see [`crate::to_string_with`]).
+pub fn encode_with<T: Encode, W: Write>(
+    mut output: W,
+    values: impl IntoIterator<Item = T>,
+    limits: &Limits,
+) -> Result<(), Error> {
+    for (i, v) in values.into_iter().enumerate() {
+        let line = to_string_with(&v, limits).map_err(|e| e.within(Segment::Index(i)))?;
+        writeln!(output, "{line},")?;
+    }
+    Ok(output.flush()?)
 }

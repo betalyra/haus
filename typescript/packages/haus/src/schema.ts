@@ -513,21 +513,54 @@ const map_ = <A>(value: Schema<A>): Schema<ReadonlyMap<string, A>> =>
 export { map_ as Map }
 
 /**
- * `None` → null, `Some(x)` → x. Always written out in the data: `Maybe` is an
- * ordinary variant, and a missing field is not `None` (use `h.Optional`).
- * `null` rather than `undefined`, so that `h.Optional(h.Maybe(T))` keeps all
- * three states apart: key missing, `null` (None) and a value.
+ * `Maybe a`: `None` → `{ _tag: "None" }`, `Some(x)` → `{ _tag: "Some", value: x }`,
+ * like every other variant with one argument. Tagged, never `x | null`, so
+ * that `Maybe (Maybe Int)` keeps `None` and `Some(None)` apart. Always written
+ * out in the data: `Maybe` is an ordinary variant, and a missing field is not
+ * `None` (use `h.Optional`: `h.Optional(h.Maybe(T))` has three states, key
+ * missing, None and Some).
+ *
+ *   const note = h.parse(h.Maybe(h.String), `Some("gift")`)   // { _tag: "Some", value: "gift" }
+ *   h.Maybe.toNullable(note)                                   // "gift"
+ *   h.stringify(h.Maybe(h.String), h.Maybe.none)               // "None"
  */
-export const Maybe = <A>(inner: Schema<A>): Schema<A | null> =>
+export type Maybe<A> = { readonly _tag: "None" } | { readonly _tag: "Some"; readonly value: A }
+
+const none: Maybe<never> = Object.freeze({ _tag: "None" })
+
+const isMaybe = (u: unknown): u is Maybe<unknown> =>
+  typeof u === "object" && u !== null &&
+  ((u as { _tag?: unknown })._tag === "None" || ((u as { _tag?: unknown })._tag === "Some" && Object.hasOwn(u, "value")))
+
+const maybe_ = <A>(inner: Schema<A>): Schema<Maybe<A>> =>
   make(
     `Maybe ${inner.expected}`,
     (v, p) => {
-      if (v.kind === "variant" && v.tag === "None" && v.args.length === 0) return null
-      if (v.kind === "variant" && v.tag === "Some" && v.args.length === 1) return inner.decode(v.args[0]!, p.child(0))
+      if (v.kind === "variant" && v.tag === "None" && v.args.length === 0) return none
+      if (v.kind === "variant" && v.tag === "Some" && v.args.length === 1) return { _tag: "Some", value: inner.decode(v.args[0]!, p.child(0)) }
       return mismatch(`None | Some(${inner.expected})`, v, p)
     },
-    (a, p) => (a === null ? variant("None") : variant("Some", [inner.encode(a, p.child(0))])),
+    (a, p) => {
+      if (!isMaybe(a)) return invalid(`a Maybe ({ _tag: "None" } or { _tag: "Some", value })`, a, p)
+      if (a._tag === "None") return variant("None")
+      return p.enter(a, () => variant("Some", [inner.encode((a as { readonly value: A }).value, p.child(0))]))
+    },
   )
+
+export const Maybe = Object.assign(maybe_, {
+  /** `None`. */
+  none,
+  /** `Some(value)`. */
+  some: <A>(value: A): Maybe<A> => ({ _tag: "Some", value }),
+  /** `Some(value)` for a value, `None` for null and undefined. */
+  fromNullable: <A>(value: A | null | undefined): Maybe<A> => (value === null || value === undefined ? none : { _tag: "Some", value }),
+  /** The value of a `Some`, or null for `None`. Collapses `Some(None)` and `None` of a nested Maybe: use it at the edge only. */
+  toNullable: <A>(m: Maybe<A>): A | null => (m._tag === "Some" ? m.value : null),
+  /** The value of a `Some`, or `orElse()` for `None`. */
+  getOrElse: <A, B>(m: Maybe<A>, orElse: () => B): A | B => (m._tag === "Some" ? m.value : orElse()),
+  /** Whether `u` is a Maybe: `{ _tag: "None" }` or `{ _tag: "Some", value }`. */
+  is: isMaybe,
+})
 
 /**
  * A record field that may be missing: `name?: T` in a schema. In the decoded
@@ -540,7 +573,7 @@ export const Maybe = <A>(inner: Schema<A>): Schema<A | null> =>
  *
  * For a partial update that can also clear a value, combine it with Maybe:
  * `h.Optional(h.Maybe(h.String))` reads a missing key (not given), `None`
- * (`null`: clear) and `Some(x)` (set).
+ * (`{ _tag: "None" }`: clear) and `Some(x)` (`{ _tag: "Some", value: x }`: set).
  */
 export const Optional = <A>(inner: Schema<A>): OptionalSchema<A> => {
   const self: OptionalSchema<A> = { ...inner, "~standard": standard(() => self), optional: true }
@@ -894,9 +927,10 @@ export type Secret<A> = SecretValue<A>
 
 export interface RecursiveOptions {
   /**
-   * How deeply this type may be nested in itself (default 64). Kept well
-   * below the overall depth limit: recursion is where a small input can
-   * make a schema do the most work, so it gets its own, explicit bound.
+   * How deeply this type may be nested in itself. By default only the call's
+   * nesting depth limit (`Limits.maxDepth`, 256) applies, so every binding
+   * accepts the same values (spec §9.9); set a smaller limit here for a type
+   * whose values should stay shallower.
    */
   readonly maxDepth?: number
 }
@@ -915,7 +949,8 @@ export interface RecursiveOptions {
  * with itself again, fails instead of looping.
  */
 export const Recursive = <A>(name: string, build: (self: Schema<A>) => Schema<A>, options: RecursiveOptions = {}): Schema<A> => {
-  const maxDepth = options.maxDepth ?? 64
+  // Each level consumes a level of the value, so the call's depth limit bounds it too.
+  const maxDepth = options.maxDepth ?? Infinity
   let body: Schema<A> | undefined
   let building = false
   // Built on first use, so it may refer to schemas defined after it (mutual recursion).

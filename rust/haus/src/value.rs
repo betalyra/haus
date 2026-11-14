@@ -6,7 +6,8 @@
 pub enum Value {
     /// The exact literal, digit separators removed and the exponent marker
     /// lower-cased. Hex and binary literals are converted to decimal integers:
-    /// `"19.90"`, `"-1e10"`, `"255"`.
+    /// `"19.90"`, `"-1e10"`, `"255"`. A value built in code may hold any
+    /// text here: the writer checks it (and normalizes it) before writing.
     Number(String),
     String(String),
     /// A byte string, written `x"0b34ff"`.

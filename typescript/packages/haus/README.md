@@ -17,14 +17,16 @@ import { parse, parsePlain } from "@haus-fmt/haus"
 const text = `{ id: 1042, total: 30.30, status: Shipped, note: None }`
 
 parse(text)        // the haus data model: { kind: "record", fields: Map { … } }
-parsePlain(text)   // plain JS values: { id: 1042n, total: "30.30", status: "Shipped", note: null }
+parsePlain(text)   // plain JS values: { id: 1042n, total: "30.30", status: "Shipped", note: { _tag: "None" } }
 ```
 
 The plain view: strings, `bigint` for whole numbers (any size, so a field's type
 never depends on its values), `string` for decimals (exact),
-`boolean`, `Uint8Array` for bytes, `null` for `None`, string literals for tags
-without payload, `{ _tag, … }` for other variants. A file with several values
-(a stream) is an array.
+`boolean`, `Uint8Array` for bytes, string literals for tags without payload,
+`{ _tag, … }` for other variants. `None` and `Some(x)` are tagged too,
+`{ _tag: "None" }` and `{ _tag: "Some", value: x }`, as with `h.Maybe`, so
+`Some(None)` stays apart from `None`. A file with several values (a stream) is
+an array.
 
 ## Validate with any schema library
 
@@ -78,12 +80,26 @@ const order = h.parse(schemas.Order!, data)
 | `Int`, `Int64`, `UInt64` | `h.Int`, `h.Int64`, `h.UInt64` | `bigint` |
 | `Int8` … `UInt32`, `Float32`, `Float64` | `h.Int8` …, `h.Float64` | `number` |
 | `Decimal` | `h.Decimal` | `string`, the exact literal (`"19.90"`) |
-| `Maybe a`, `Array a`, `Map v` | `h.Maybe`, `h.Array`, `h.Map` | `A \| null`, `readonly A[]`, `ReadonlyMap<string, V>` |
+| `Maybe a`, `Array a`, `Map v` | `h.Maybe`, `h.Array`, `h.Map` | `h.Maybe<A>`, `readonly A[]`, `ReadonlyMap<string, V>` |
 | `Date`, `Instant`, … (std/time) | `h.Date`, `h.StdTime("Instant")`, … | `string`, as written |
 | `{ a: T, b?: T }` | `h.Record({ a, b: h.Optional(…) })` | `{ readonly a: T; readonly b?: T }` |
 | `< A \| B { x: T } >` | `h.Variant`, `h.OpenVariant`, `h.Enum` | `{ _tag: "B"; x: T } \| …`, open: `\| Unknown` |
 | `Any` | `h.Any` | `Value`: the parsed value, unchanged |
 | `Secret a` | `h.Secret(a)` | `Secret<A>`: prints `<redacted>`, `expose()` gives the value |
+
+`h.Maybe<A>` is `{ _tag: "None" } | { _tag: "Some"; value: A }`, tagged like
+every other variant, so `Maybe (Maybe Int)` keeps `None` and `Some(None)`
+apart. A missing optional field stays missing (`b?:`), never `None`: an
+`h.Optional(h.Maybe(T))` field has three states. `h.Maybe.none`,
+`h.Maybe.some(x)`, `h.Maybe.fromNullable(x)`, `h.Maybe.toNullable(m)` and
+`h.Maybe.getOrElse(m, () => d)` convert from and to `null`-style values.
+
+Every type above keeps the value: encoding what it decoded writes an equal
+haus value, except where spec §15 drops information by design (the spelling
+of a float, `-0` as an integer, fields an open record ignores). `h.InstantAsDate` is the one lossy choice, for a JS
+`Date`: it keeps the instant to the millisecond, and drops digits below the
+millisecond, the offset and the fraction as written (`10:00:00.250+01:00` is
+written back as `09:00:00.250Z`, another value with another hash).
 
 A `Secret` hides its value from `console.log`, `String()` and
 `JSON.stringify`, and errors inside one name its place and type, never the
@@ -98,6 +114,8 @@ as parsing: pass the parser's limits to both if you raise them,
 `h.parse(h.Any, text, { maxNumberLength: 5000 })` and
 `h.encode(h.Any, value, { maxNumberLength: 5000 })`. Number literals built in
 code are normalized as the parser would (`"1E5"` is written `1e5`).
+`h.stringify` writes for a reader with the limits it is given: an integer
+longer than `maxNumberLength` is written in hex, so that the reader takes it.
 
 ## Write haus
 

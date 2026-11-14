@@ -169,7 +169,7 @@ Not planned: newtypes. A single-tag variant (`closed < UserId String >`) makes t
 
 ---
 
-**Open from the 1.0 spec changes:** Rust and Roc write raw values (`Any`, unknown variants) without checking them against the limits and value syntax first, because their encoding can't fail (§9.8, §15); they need a fallible encode or a value type that can't hold invalid data. Tools don't yet mark a schema's use of a deprecated type in TypeScript (Rust's `haus-build` does). The Roc schema test doesn't run the "without attributes" pass that the Rust and TypeScript runners do.
+**Open from the 1.0 spec changes:** an encode error inside a `Secret` that holds an `Any` can name a map key in its path in Rust and Roc, whose writer checks raw values without knowing the type (§15 now covers encoding too). Roc and the Effect adapter don't let users configure limits (§7). Rust and Roc encoders recurse over native values, so a native value nested millions of levels deep overflows the stack before the writer's depth check.
 
 ## 5. Remaining order
 

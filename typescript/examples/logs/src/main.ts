@@ -3,7 +3,7 @@
 // rust/examples/logs, on the same files. Run: pnpm start
 import * as Haus from "@haus-fmt/effect";
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
-import { Console, DateTime, Effect, FileSystem, Path, Stdio, Stream } from "effect";
+import { Console, Effect, FileSystem, Path, Stdio, Stream } from "effect";
 import { Entry } from "../../../../examples/logs.schema.haus";
 
 /** One line per entry. Entries of kinds the schema doesn't know are "@unknown". */
@@ -22,8 +22,8 @@ const isProblem = (entry: Entry): boolean =>
   (entry._tag === "Log" && (entry.level === "Warn" || entry.level === "Error")) ||
   (entry._tag === "Request" && entry.status >= 500);
 
-/** `09:00:02` of `2026-11-11T09:00:02Z`. */
-const time = (at: DateTime.Utc) => DateTime.formatIso(at).slice(11, 19);
+/** `09:00:02` of `2026-11-11T09:00:02Z`: an Instant is its text, as written. */
+const time = (at: string) => at.slice(11, 19);
 
 const program = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;

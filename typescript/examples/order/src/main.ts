@@ -2,7 +2,7 @@
 // codecs. The same steps as rust/examples/order, on the same files.
 // Run: pnpm start
 import * as Haus from "@haus-fmt/effect";
-import { BigDecimal, Console, Effect } from "effect";
+import { Console, Effect } from "effect";
 import { readFileSync } from "node:fs";
 import { cents, geojson, iso, jsDate, userId } from "./codecs.ts";
 import { Root } from "../../../../examples/order.schema.haus";
@@ -13,10 +13,10 @@ const text = readFileSync(new URL("../../../../examples/order.haus", import.meta
 const reason = (e: Error) => e.message.split("\n")[0];
 
 const program = Effect.gen(function* () {
-  // Without codecs: Money is { _tag: "Money", values: [BigDecimal, "EUR"] }.
+  // Without codecs: Money is { _tag: "Money", values: ["44.40", "EUR"] }, the Decimal as its exact text.
   const plain = yield* Haus.decode(Root)(text);
   const [amount, currency] = plain.total.values;
-  yield* Console.log(`plain:  ${plain.customer.values[0]} pays ${BigDecimal.format(amount)} ${String(currency)}`);
+  yield* Console.log(`plain:  ${plain.customer.values[0]} pays ${amount} ${String(currency)}`);
 
   // With codecs: the fields have the codecs' types (hover `typed`).
   const typed = yield* Haus.decode(Root, userId, cents, geojson, jsDate, iso)(text);

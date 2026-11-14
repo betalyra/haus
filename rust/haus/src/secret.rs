@@ -7,7 +7,7 @@
 //! let key: Secret<String> = haus::from_str(r#""sk-123""#).unwrap();
 //! assert_eq!(format!("{key:?}"), "<redacted>");
 //! assert_eq!(key.expose(), "sk-123");
-//! assert_eq!(haus::to_string(&key), r#""sk-123""#);
+//! assert_eq!(haus::to_string(&key).unwrap(), r#""sk-123""#);
 //! ```
 
 use crate::{Decode, DecodeError, Value};

@@ -137,7 +137,7 @@ named references into an environment, generic types applied. Attributes
 which decoding never reads. `decode` recurses on the value, so it always
 terminates; a reference that comes up again before any input is consumed
 is an error. Floats are rounded and spelled exactly, with integer
-arithmetic ([`Float.lean`](Haus/Schema/Float.lean)). All 250 cases of
+arithmetic ([`Float.lean`](Haus/Schema/Float.lean)). All cases of
 `test-suite/schema` pass.
 
 | Theorem | Says |
@@ -145,14 +145,18 @@ arithmetic ([`Float.lean`](Haus/Schema/Float.lean)). All 250 cases of
 | `decode_iff` | The decoder computes the rules of §15, written as an inductive relation (`Dec`, one rule per row of §15's tables): `decode env t v = .ok x ↔ Dec env t v x` |
 | `decode_encode` | Decode, encode, decode is decode: when `t` accepts `v` as `x`, it accepts `encode x`, again as `x` |
 | `encode_agree` | `encode x` is `v`, except for the fields an open record ignores, the spelling of floats and `-0` decoded as an integer (`Agree`) |
+| `floatLaw` | The spelling of a decoded float (`Float64` or `Float32`) decodes to the same float |
 | `secret_error` | An error inside a `Secret` is the same for every value: its place and type, nothing of the value |
 | `Schema.decode_erase` | Attributes don't matter: decoding with the schema without its attributes is decoding with the schema (`rfl`) |
 
-`decode_encode` and `encode_agree` assume `FloatLaw`: the spelling of a
-decoded float rounds back to the same float. It is checked, not proven: by
-the suite, by `#guard`s at the edges of both formats, and on 20,000 random
-literals, where rounding and spelling also matched JavaScript's `Number`
-and `toString` exactly.
+`floatLaw` ([`FloatLaw.lean`](Haus/Schema/FloatLaw.lean)) is what makes
+the round trip hold for floats: rounding depends only on the value of the
+fraction (`roundMag_cross`), a float rounds to itself (`roundMag_self`), so
+the search for the shortest spelling always finds one within its 1100 tries
+(`shortest_float`), and the text `layout` writes reads back as the digits
+and exponent it was given (`decBody_layout`). Rounding and spelling also
+matched JavaScript's `Number` and `toString` exactly on 20,000 random
+literals.
 
 **About versions** (spec §10), in [`Haus/Version.lean`](Haus/Version.lean).
 A `Version` is what a version fixes: its files, its canonical form, its

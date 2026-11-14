@@ -9,10 +9,8 @@
 
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import {
-  BigDecimal,
   BigInt,
   Console,
-  DateTime,
   Effect,
   FileSystem,
   Match,
@@ -35,7 +33,7 @@ const likes = (c: Comment): bigint =>
 const depth = (c: Comment): number => 1 + Math.max(0, ...c.replies.map(depth));
 
 const threadSummary = Console.log(
-  `thread "${thread.text}" (${DateTime.formatIso(thread.at)}): ${depth(thread)} levels, ${likes(thread)} likes`,
+  `thread "${thread.text}" (${thread.at}): ${depth(thread)} levels, ${likes(thread)} likes`,
 );
 
 /** Comment is also an Effect schema: decode and encode any haus text with it. */
@@ -87,7 +85,7 @@ const tourSummary = Effect.gen(function* () {
     onSome: (s) => `${s}s`,
   });
   yield* Console.log(
-    `${tour.name} costs ${BigDecimal.format(tour.price)}, timeout ${timeout}, ${heartbeats} heartbeat(s)`,
+    `${tour.name} costs ${tour.price}, timeout ${timeout}, ${heartbeats} heartbeat(s)`,
   );
 });
 

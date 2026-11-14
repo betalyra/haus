@@ -42,7 +42,7 @@ the other. Two separate things exist, each with exactly one spelling:
 - `x?: Maybe T` has three states: not given, `None`, `Some(…)`. That is how a partial update says "leave it", "clear it" and "set it" (§1.1).
 - The parser never invents values for missing fields, and neither does any decoder: what "not given" means (a default, "unchanged", "unknown") is up to the application.
 
-Bindings MUST represent a missing optional field and `None` differently in their language (in TypeScript: a missing key and `null`), so the two can't be confused when encoding.
+Bindings MUST represent a missing optional field and `None` differently in their language (in TypeScript: a missing key and `{ _tag: "None" }`), so the two can't be confused when encoding.
 
 ### 1.1 Partial updates
 
@@ -134,7 +134,7 @@ Errors report a 1-based line and column. Columns count **Unicode code points**, 
    - when encoding, detect values that contain themselves, and limit the total work, since objects shared many times (a DAG) expand when written out;
    - check a raw value kept for an unknown variant (item 5) with the same limits before writing it again;
    - build error messages in constant time: no printing of whole schemas or values.
-9. **Recursive types** (a type that contains itself, like a tree) are allowed but MUST be explicit (e.g. `h.Recursive`). Every cycle MUST pass through a record field, array element or variant payload, so that each level of recursion consumes a level of input. A schema that applies itself to the same value again MUST fail. Each recursive type SHOULD have its own, smaller depth limit (default 64).
+9. **Recursive types** (a type that contains itself, like a tree) are allowed but MUST be explicit (e.g. `h.Recursive`). Every cycle MUST pass through a record field, array element or variant payload, so that each level of recursion consumes a level of input. A schema that applies itself to the same value again MUST fail. By default, recursive values are limited only by the nesting depth of §7 (256), so every binding accepts the same values; bindings MAY let applications set a smaller limit for a recursive type.
 10. **Schemas are declarative.** The schema language describes structure only: records, arrays, variants, prelude types and recursion. Generic types MAY refer to themselves only with the same parameters (`type List a = < Nil | Cons a (List a) >`; not `T (Pair a a)`). There are no type-level functions, conditions on values, references between values, or user code in schemas, and no syntax for rules about values: the only such rules are those of built-in types (§13.1), which run in linear time. Checking a value against a schema then always terminates in linear time; anything more belongs in application code, where the work budget (item 8) still applies.
 
 ## 10. Evolution and versions
@@ -329,7 +329,7 @@ What this means for users:
 - **Copies in several languages.** A package published to several registries SHOULD be published from one source, so that equal versions have equal files.
 - **Discovery.** There is no index. The official extensions are listed in [`../extensions`](../extensions).
 
-**Identity.** Every named type has an id, the same in every language: `@haus/money@1#Money` is the type `Money` of the package `@haus/money`, major version 1. Other files of a package are `@haus/money@1/path#Type`. Files outside a package get an id from the binding (the JavaScript binding uses the nearest `package.json` name and the file's path). Codecs (§13.4) and tools refer to types by their id.
+**Identity.** Every named type has an id, the same in every language: `@haus/money@1#Money` is the type `Money` of the package `@haus/money`, major version 1. Other files of a package are `@haus/money@1/path#Type`. Types of the prelude and the standard modules have the ids `prelude#Decimal` and `std/time#Instant`. Files outside a package get an id from the binding (the JavaScript binding uses the nearest `package.json` name and the file's path). Codecs (§13.4) and tools refer to types by their id.
 
 **Imports.** `import M (A, B)` makes the types `A` and `B` defined in `M` available under their names; a file can't re-export types it imports. Implementations MUST reject:
 
@@ -361,7 +361,7 @@ A schema binding MAY let applications choose the host type of a named type witho
 - encodes back to the type's values, so that decoding what it encoded gives the same result: decode, encode, decode is the same as decode;
 - never changes what a value means: the same text means the same thing with and without it, the same instant or the same amount.
 
-A host type may keep less than the haus value: `Temporal.Instant` or a JavaScript `Date` keeps the instant but not the offset it was written with, and a decimal type may forget `-0` or exponent notation. Encoding through it then writes a value that means the same but is not equal (§2), with another canonical form and hash. Such a codec, or a binding whose default host type is one, MUST say so in its documentation, and SHOULD offer a host type that keeps the value (the checked text, for example). Hash and sign parsed values, not re-encoded ones (§12).
+A host type may keep less than the haus value: `Temporal.Instant` or a JavaScript `Date` keeps the instant but not the offset it was written with, and a decimal type may forget `-0` or exponent notation. Encoding through it then writes a value that means the same but is not equal (§2), with another canonical form and hash. A binding's default host types MUST keep the value, so that encoding what the defaults decoded always gives back an equal value, with the exceptions of §15 only. A host type that keeps less is offered only as a choice the application makes explicitly (a codec, or a schema variant such as `InstantAsDate`), and its documentation MUST say what it drops. Hash and sign parsed values, not re-encoded ones (§12).
 
 Codecs are part of the application, not of the schema. Two applications reading the same file with different codecs agree on what the file says, and may disagree only on what they accept. A codec for a standard type changes the host type only (§13.1).
 
@@ -396,7 +396,7 @@ type Shape = < Circle { r: Float64 } | @deprecated Square { side: Float64 } >
 
 Attributes are metadata: they never change which data a type accepts or what it decodes to (§15). There is one:
 
-- `@deprecated` or `@deprecated("why, and what to use instead")`: the type, field or tag will be removed in a later major version of its package (§13.3). Tools that check data against a schema SHOULD mark a deprecated field or tag the data uses with a hint (not an error); tools SHOULD mark a schema's use of a deprecated type; code generators SHOULD emit the language's own marker, such as `#[deprecated]` in Rust or `@deprecated` in JSDoc. A field or tag copied by a spread keeps its attributes.
+- `@deprecated` or `@deprecated("why, and what to use instead")`: the type, field or tag will be removed in a later major version of its package (§13.3). Tools that check data against a schema SHOULD mark a deprecated field or tag the data uses with a hint (not an error); tools SHOULD mark a schema's use of a deprecated type, a spread of it (`...OldEvent`) included, once where it is written; code generators SHOULD emit the language's own marker, such as `#[deprecated]` in Rust or `@deprecated` in JSDoc. A field or tag copied by a spread keeps its attributes.
 
 An attribute is added to this list only if it passes three tests: it doesn't change which data is valid or what it decodes to; tools act on it the same way in every language (text for people belongs in comments); and most target languages have a counterpart for it. Rules about values (`@min`, `@pattern`, `@default`) never pass the first test (§9.10).
 
@@ -483,7 +483,7 @@ How it is represented is up to the binding. For example, a binding MAY represent
 **Secrets.** `Secret a` marks a value that must not end up in logs, such as an API key or a password. The data is the same as for `a`: it is written in full, since the receiver needs it, and its canonical form and hash (§12) don't change. What changes is the host side. Bindings MUST:
 
 - decode it to a type that hides the value when printed, logged, inspected or converted to JSON (showing something like `<redacted>`), and gives it out only through an explicit call;
-- leave the value out of error messages: an error inside a `Secret` is reported at the secret itself (`$.apiKey`), with its type, never with the value found or any part of it. A path into the secret could itself reveal it, through the keys of a `Map`.
+- leave the value out of error messages, when decoding and when encoding: an error inside a `Secret` is reported at the secret itself (`$.apiKey`), with its type, never with the value found or any part of it. A path into the secret could itself reveal it, through the keys of a `Map` or an `Any`.
 
 Tools that show data, such as editors and `haus check`, SHOULD mask values of a `Secret` type.
 

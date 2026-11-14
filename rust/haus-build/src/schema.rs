@@ -780,8 +780,8 @@ fn guarded(file: &File) -> Result<(), Fail> {
 }
 
 /// Warnings for uses of deprecated types, outside deprecated types (spec §14),
-/// in the file as written: a field or tag that is spread elsewhere is still
-/// one use.
+/// in the file as written: a spread of a deprecated type (`...OldEvent`) is a
+/// use, and a field or tag that is spread elsewhere is still one use.
 fn deprecated_uses(file: &File) -> Vec<Fail> {
     fn walk(t: &Ty, f: &mut impl FnMut(&str, usize)) {
         match t {
@@ -790,8 +790,14 @@ fn deprecated_uses(file: &File) -> Vec<Fail> {
                 args.iter().for_each(|a| walk(a, f));
             }
             Ty::Param { .. } => {}
-            Ty::Record { fields, .. } => fields.iter().for_each(|x| walk(&x.ty, f)),
-            Ty::Variant { cases, .. } => cases.iter().flat_map(|c| &c.payload).for_each(|p| walk(p, f)),
+            Ty::Record { fields, spreads, .. } => {
+                spreads.iter().for_each(|s| f(&s.name, s.pos));
+                fields.iter().for_each(|x| walk(&x.ty, f));
+            }
+            Ty::Variant { cases, spreads, .. } => {
+                spreads.iter().for_each(|s| f(&s.name, s.pos));
+                cases.iter().flat_map(|c| &c.payload).for_each(|p| walk(p, f));
+            }
         }
     }
     let deprecated: HashMap<&str, Option<&str>> =

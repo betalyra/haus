@@ -11,7 +11,8 @@
  *
  *   String → string             Int, Int64, UInt64 → bigint                    Int8 … UInt32 → number
  *   Decimal → string ("19.90")  Float32, Float64 → number                     Bool → boolean
- *   Bytes → Uint8Array          Maybe a → A | null                            Array a → readonly A[]
+ *   Bytes → Uint8Array          Array a → readonly A[]
+ *   Maybe a → Maybe<A>: { _tag: "None" } | { _tag: "Some"; value: A }   (tagged, like other variants)
  *   Map v → ReadonlyMap<string, V>                                            std/time types → string (as written)
  *   { a: T, b?: T } → { readonly a: T; readonly b?: T }                       (closed { … } rejects other fields)
  *   < Debug | Info > → "Debug" | "Info"                                       (closed, only tags without payload)
@@ -70,8 +71,9 @@ export const fromSchemaFile = (file: SchemaFile): CompiledSchemaFile => {
   const ref = (inst: Instance): h.AnySchema => {
     const done = built.get(inst)
     if (done) return done
-    // A back edge of a recursive type (the checker made sure it is guarded).
-    if (building.has(inst)) return h.Recursive(inst.key, () => built.get(inst)!, { maxDepth: 256 })
+    // A back edge of a recursive type (the checker made sure it is guarded),
+    // limited only by the call's nesting depth (spec §9.9).
+    if (building.has(inst)) return h.Recursive(inst.key, () => built.get(inst)!)
     building.add(inst)
     const schema = build(inst.body)
     building.delete(inst)
@@ -237,7 +239,7 @@ export const schemaDeclarations = (file: SchemaFile, options: DeclarationOptions
       case "map":
         return `ReadonlyMap<string, ${print(t.value)}>`
       case "maybe":
-        return `${print(t.item)} | null`
+        return `h$.Maybe<${print(t.item)}>`
       case "secret":
         return `h$.Secret<${print(t.item)}>`
       case "record":

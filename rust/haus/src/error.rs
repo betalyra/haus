@@ -132,20 +132,58 @@ fn is_identifier(key: &str) -> bool {
         && key.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_')
 }
 
+/// `path: reason`, or just the reason at the root.
+fn at_path(path: &[Segment], reason: &str, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    path.iter().try_for_each(|s| fmt::Display::fmt(s, f))?;
+    if path.is_empty() { f.write_str(reason) } else { write!(f, ": {reason}") }
+}
+
 impl fmt::Display for DecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.path.iter().try_for_each(|s| s.fmt(f))?;
-        if self.path.is_empty() { f.write_str(&self.reason) } else { write!(f, ": {}", self.reason) }
+        at_path(&self.path, &self.reason, f)
     }
 }
 
 impl std::error::Error for DecodeError {}
 
-/// Reading a typed value: the input can't be read, isn't haus, or doesn't match its type.
+/// A value that can't be written, with where it is: `.data[3]: not a number
+/// literal`. Writing checks the whole value against the syntax and the limits
+/// (spec §7, §9.8), since a [`Value`](crate::Value) built in code, such as the
+/// raw value of an `Any` or an unknown variant, may hold anything.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EncodeError {
+    /// Where in the value, outermost first; empty at the root.
+    pub path: Vec<Segment>,
+    pub reason: String,
+}
+
+impl EncodeError {
+    pub(crate) fn new(reason: impl Into<String>) -> EncodeError {
+        EncodeError { path: Vec::new(), reason: reason.into() }
+    }
+
+    /// The same error, one step further out (errors are built from the inside out).
+    pub(crate) fn within(mut self, segment: Segment) -> EncodeError {
+        self.path.insert(0, segment);
+        self
+    }
+}
+
+impl fmt::Display for EncodeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        at_path(&self.path, &self.reason, f)
+    }
+}
+
+impl std::error::Error for EncodeError {}
+
+/// Reading or writing a typed value: the input can't be read, isn't haus or
+/// doesn't match its type, or a value can't be written.
 #[derive(Debug)]
 pub enum Error {
     Syntax(SyntaxError),
     Decode(DecodeError),
+    Encode(EncodeError),
     Io(std::io::Error),
 }
 
@@ -154,6 +192,7 @@ impl fmt::Display for Error {
         match self {
             Error::Syntax(e) => e.fmt(f),
             Error::Decode(e) => e.fmt(f),
+            Error::Encode(e) => e.fmt(f),
             Error::Io(e) => e.fmt(f),
         }
     }
@@ -164,8 +203,15 @@ impl std::error::Error for Error {
         match self {
             Error::Syntax(e) => Some(e),
             Error::Decode(e) => Some(e),
+            Error::Encode(e) => Some(e),
             Error::Io(e) => Some(e),
         }
+    }
+}
+
+impl From<EncodeError> for Error {
+    fn from(e: EncodeError) -> Self {
+        Error::Encode(e)
     }
 }
 

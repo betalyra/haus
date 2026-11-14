@@ -40,6 +40,9 @@ export const CLOSED = "hausClosed"
 /** Annotation on a string schema: only a haus string, never a number or `Tag("…")` (a schema file's `String`). */
 export const STRICT = "hausStrict"
 
+/** Annotation on a string schema (`Haus.Decimal`): a haus number, as its exact normalized literal (`"19.90"`, `"1.5e3"`, `"-0"`). */
+export const DECIMAL = "hausDecimal"
+
 /** Annotation on an `Any` schema (`Haus.Any`): the value is the parsed haus `Value`, unchanged. */
 export const VALUE = "hausValue"
 
@@ -301,6 +304,8 @@ function compileString(ast: SchemaAST.String | SchemaAST.TemplateLiteral): Conve
   // `< >` (only ever a member of a union, which hands it bare tags).
   if (ast.annotations?.[BARE_TAG] === true) return (v) => (v.kind === "variant" && v.args.length === 0 ? v.tag : mismatch("a tag", v))
   if (ast.annotations?.[STRICT] === true) return (v) => (v.kind === "string" ? v.value : mismatch("a string", v))
+  // `Decimal`: the literal exactly as parsed (normalized, spec §2), scale, exponent and `-0` included.
+  if (ast.annotations?.[DECIMAL] === true) return (v) => (v.kind === "number" ? v.text : mismatch("a number (Decimal)", v))
   return (v) =>
     v.kind === "string" ? v.value
     : v.kind === "number" ? v.text // exact, for BigDecimalFromString, NumberFromString, …
@@ -510,19 +515,30 @@ const literalValue = (js: unknown): Value =>
 
 /**
  * Exact text of a BigDecimal, keeping its scale (7.90 stays "7.90"). A
- * negative scale is written with an exponent and one digit before the point,
- * as `1.5e3` decodes (value 15, scale -2): not as `1500`, a different haus value (§2).
+ * negative scale, or a long run of leading zeros, is written with an exponent
+ * and one digit before the point, as `1.5e3` decodes (value 15, scale -2):
+ * not as `1500`, a different haus value (§2), and within the number limit.
  */
-const decimalText = ({ value, scale }: BigDecimal.BigDecimal): string => {
+export const decimalText = ({ value, scale }: BigDecimal.BigDecimal): string => {
   const sign = value < 0n ? "-" : ""
   const digits = (value < 0n ? -value : value).toString()
   if (scale === 0) return sign + digits
-  if (scale < 0) {
+  if (scale < 0 || scale - digits.length > 6) {
     const exponent = digits.length - 1 - scale
     return `${sign}${digits[0]}${digits.length > 1 ? `.${digits.slice(1)}` : ""}e${exponent}`
   }
   const padded = digits.padStart(scale + 1, "0")
   return `${sign}${padded.slice(0, -scale)}.${padded.slice(-scale)}`
+}
+
+/** A decimal's text as a number value: a number literal within the limits (spec §9.8), normalized as the parser would. */
+const decimalValue = (text: string): Value => {
+  try {
+    return h.encode(h.Decimal, text)
+  } catch (e) {
+    if (e instanceof h.HausEncodeError) throw new ConversionError(e.reason, e.path)
+    throw e
+  }
 }
 
 /** Schema-less conversion of plain JS data. */
@@ -544,7 +560,7 @@ const encodeGenericNode = (js: unknown): Value => {
   if (js === null || js === undefined) return vVariant("None")
   if (Array.isArray(js)) return vArr(js.map(encodeGeneric))
   if (Option.isOption(js)) return Option.match(js, { onNone: () => vVariant("None"), onSome: (x) => vVariant("Some", [encodeGeneric(x)]) })
-  if (BigDecimal.isBigDecimal(js)) return vNum(decimalText(js))
+  if (BigDecimal.isBigDecimal(js)) return decimalValue(decimalText(js))
   if (DateTime.isDateTime(js)) return dateTimeValue(js)
   const entries = Object.entries(js as Record<string, unknown>).filter(([, v]) => v !== undefined)
   const tag = (js as { _tag?: unknown })._tag
@@ -558,10 +574,34 @@ const encodeGenericNode = (js: unknown): Value => {
 /** Without a zero fraction: `…T09:00:00Z`, not `…T09:00:00.000Z` (the same instant, as written). */
 const noZeroFraction = (iso: string) => iso.replace(/\.000(?=Z|[+-]\d{2}:\d{2})/, "")
 
-const dateTimeValue = (d: DateTime.DateTime): Value =>
-  DateTime.isZoned(d)
-    ? vVariant("ZonedDateTime", [vStr(noZeroFraction(DateTime.formatIsoZoned(d)))])
-    : vVariant("Instant", [vStr(noZeroFraction(DateTime.formatIso(d)))])
+/**
+ * An Effect DateTime as std/time text: `DateTime.Utc` as an Instant,
+ * `DateTime.Zoned` as a ZonedDateTime. A zone that is an offset is written in
+ * brackets too (`…+01:00[+01:00]`), as std/time requires one zone. Text that
+ * std/time doesn't accept (a year beyond 9999, an offset with seconds) is an
+ * error, never written.
+ */
+export const dateTimeText = (d: DateTime.DateTime): { readonly type: "Instant" | "ZonedDateTime"; readonly text: string } => {
+  const utc = noZeroFraction(DateTime.formatIso(d))
+  if (!DateTime.isZoned(d)) return { type: "Instant", text: stdTimeText("Instant", utc) }
+  const zone = DateTime.zoneToString(d.zone)
+  // Effect rounds an offset with seconds (local mean time before 1900) when formatting, which
+  // would move the instant: such a time is written in UTC, with its zone.
+  const text = DateTime.zonedOffset(d) % 60_000 !== 0 ? `${utc}[${zone}]` : `${noZeroFraction(DateTime.formatIsoOffset(d))}[${zone}]`
+  return { type: "ZonedDateTime", text: stdTimeText("ZonedDateTime", text) }
+}
+
+/** `text` when std/time accepts it as `type`, else a ConversionError. */
+const stdTimeText = (type: StdTimeType, text: string): string => {
+  const reason = checkStdTime(type, text)
+  if (reason !== undefined) throw new ConversionError(`can't write ${type}("${text}"): ${reason}`)
+  return text
+}
+
+const dateTimeValue = (d: DateTime.DateTime): Value => {
+  const { type, text } = dateTimeText(d)
+  return vVariant(type, [vStr(text)])
+}
 
 const encCache = new WeakMap<AST, Encoder>()
 
@@ -601,6 +641,7 @@ const encodeByTag: (ast: AST) => Encoder = Match.type<AST>().pipe(
   Match.tag("String", "TemplateLiteral", (ast): Encoder => {
     const tag = ast.annotations?.[PRELUDE_TAG]
     const bare = ast.annotations?.[BARE_TAG] === true
+    if (ast.annotations?.[DECIMAL] === true) return (js) => (typeof js === "string" ? decimalValue(js) : encodeGeneric(js))
     return (js) =>
       typeof js !== "string" ? encodeGeneric(js)
       : bare && TAG_NAME.test(js) ? vVariant(js)
@@ -705,7 +746,7 @@ function encodeUnion(ast: SchemaAST.Union): Encoder {
 function encodeDeclaration(ast: SchemaAST.Declaration): Encoder {
   switch (Option.getOrUndefined(declarationId(ast))) {
     case "effect/schema/BigDecimal":
-      return (js) => (BigDecimal.isBigDecimal(js) ? vNum(decimalText(js)) : encodeGeneric(js))
+      return (js) => (BigDecimal.isBigDecimal(js) ? decimalValue(decimalText(js)) : encodeGeneric(js))
     case "effect/schema/DateTimeUtc":
     case "effect/schema/DateTimeZoned":
       return (js) => (DateTime.isDateTime(js) ? dateTimeValue(js) : encodeGeneric(js))

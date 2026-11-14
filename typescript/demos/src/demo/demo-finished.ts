@@ -8,7 +8,7 @@ import { Root, type Line, type Status } from "./order.schema.haus";
 
 const lineTotal = (line: Line) =>
   BigDecimal.multiply(
-    line.price.values[0],
+    BigDecimal.fromStringUnsafe(line.price.values[0]),
     BigDecimal.fromNumberUnsafe(line.quantity),
   );
 

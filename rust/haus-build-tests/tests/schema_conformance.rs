@@ -58,7 +58,10 @@ impl Case {
             return Some(format!("no type {}", self.ty));
         };
         match (self.ok, result) {
-            (true, Ok(encoded)) if canonical(&encoded) == canonical(&self.output) => None,
+            (true, Ok(encoded)) if canonical(&encoded) == canonical(&self.output) => {
+                // The writer takes it too (it checks what it writes).
+                haus::ser::write(&encoded).err().map(|e| format!("encoded, but can't be written: {e}"))
+            }
             (true, Ok(encoded)) => {
                 Some(format!("encoded as {}, expected {}", canonical(&encoded), canonical(&self.output)))
             }

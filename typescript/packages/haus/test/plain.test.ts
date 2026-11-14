@@ -20,3 +20,24 @@ describe("plain view", () => {
     expect(plainDeclarations(text)).toContain("x: bigint | string")
   })
 })
+
+describe("plain view: Maybe", () => {
+  it("is tagged like h.Maybe, so Some(None) stays apart from None", () => {
+    const text = `None,\nSome(None),\nSome(Some(1)),`
+    expect(toPlain(parseAll(text))).toEqual([
+      { _tag: "None" },
+      { _tag: "Some", value: { _tag: "None" } },
+      { _tag: "Some", value: { _tag: "Some", value: 1n } },
+    ])
+    const types = plainDeclarations(text)
+    expect(types).not.toContain("null")
+    expect(types).toContain(`{ readonly _tag: "None" } | { readonly _tag: "Some"; readonly value: { readonly _tag: "None" } | { readonly _tag: "Some"; readonly value: bigint } }`)
+    expect(types).toContain("Maybe (Maybe Int)")
+  })
+
+  it("None and Some with other payloads are ordinary variants", () => {
+    const text = `Some(1, 2),\nNone,`
+    expect(toPlain(parseAll(text))).toEqual([{ _tag: "Some", values: [1n, 2n] }, { _tag: "None" }])
+    expect(plainDeclarations(text)).not.toContain("Maybe")
+  })
+})

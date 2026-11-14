@@ -153,7 +153,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: rust
+          workspaces: |
+            rust
+            fuzz/schema-rust
       - uses: astral-sh/setup-uv@v6
       - uses: pnpm/action-setup@v4
         with:
@@ -173,9 +175,9 @@ jobs:
         id: budget
         run: |
           if [ "${{ github.event_name }}" = schedule ]; then
-            echo "parser=1000000" >> "$GITHUB_OUTPUT"; echo "time=20000000" >> "$GITHUB_OUTPUT"
+            echo "parser=1000000" >> "$GITHUB_OUTPUT"; echo "time=20000000" >> "$GITHUB_OUTPUT"; echo "schema=500000" >> "$GITHUB_OUTPUT"
           else
-            echo "parser=100000" >> "$GITHUB_OUTPUT"; echo "time=2000000" >> "$GITHUB_OUTPUT"
+            echo "parser=100000" >> "$GITHUB_OUTPUT"; echo "time=2000000" >> "$GITHUB_OUTPUT"; echo "schema=20000" >> "$GITHUB_OUTPUT"
           fi
           # A new seed every run, printed in the log.
           echo "seed=$(( ${{ github.run_id }} % 1000000 ))" >> "$GITHUB_OUTPUT"
@@ -187,6 +189,9 @@ jobs:
       - name: std/time checkers
         if: ${{ !cancelled() }}
         run: node fuzz/src/time.ts --count ${{ steps.budget.outputs.time }} --seed ${{ steps.budget.outputs.seed }}
+      - name: Schema decoding
+        if: ${{ !cancelled() }}
+        run: node fuzz/src/main.ts --schema --count ${{ steps.budget.outputs.schema }} --seed ${{ steps.budget.outputs.seed }}
       - name: Keep the failures
         if: failure()
         uses: actions/upload-artifact@v4

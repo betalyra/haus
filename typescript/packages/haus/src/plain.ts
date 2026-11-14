@@ -7,14 +7,14 @@
  *
  *   String            → string            Bytes          → Uint8Array
  *   whole numbers     → bigint (any size) decimals       → string (exact: "19.90")
- *   True / False      → boolean           None / Some(x) → T | null
+ *   True / False      → boolean           None / Some(x) → { _tag: "None" } | { _tag: "Some"; value: T }
  *   bare tags only    → "A" | "B"         Date("…") etc. → string
  *   other variants    → { _tag: "Circle"; radius: string } | { _tag: "Point"; values: [bigint, bigint] }
  *   fields missing from some records → key?: T
  *   types nested in themselves       → named type aliases (type Comment = …)
  */
 import { Parser } from "./parser.js"
-import { infer, printShape, recursiveNames, resolve, type RecordShape, type Shape, type VariantShape } from "./infer.js"
+import { infer, isMaybeShape, printShape, recursiveNames, resolve, type RecordShape, type Shape, type VariantShape } from "./infer.js"
 import type { Value } from "./value.js"
 
 const parseAll = (text: string): Value[] => new Parser(text).parseSequence()
@@ -22,7 +22,6 @@ const INTEGER = /^-?\d+$/
 
 const TIME_TAGS = new Set(["Date", "Time", "DateTime", "Instant", "ZonedDateTime", "Duration", "YearMonth", "TimeZone"])
 const BOOL = new Set(["True", "False"])
-const MAYBE = new Set(["None", "Some"])
 
 type VariantMode =
   | { readonly kind: "bool" }
@@ -42,7 +41,8 @@ function variantMode(shape: Shape): VariantMode {
   const tags = [...shape.variants.keys()]
   const cases = [...shape.variants.values()]
   if (tags.every((t) => BOOL.has(t)) && cases.every(isBare)) return { kind: "bool" }
-  if (tags.every((t) => MAYBE.has(t))) return { kind: "maybe", some: shape.variants.get("Some")?.positional[0] }
+  // A Maybe is tagged like the schema's `h.Maybe`, so `Some(None)` stays apart from `None`.
+  if (isMaybeShape(shape)) return { kind: "maybe", some: shape.variants.get("Some")?.positional[0] }
   if (tags.length === 1) {
     const [tag] = tags as [string]
     const v = shape.variants.get(tag)!
@@ -93,7 +93,10 @@ class TypePrinter {
     const mode = variantMode(s)
     switch (mode.kind) {
       case "bool": return "boolean"
-      case "maybe": return `${mode.some ? this.type(mode.some) : "never"} | null`
+      case "maybe": return [
+        ...(s.variants.has("None") ? [`{ readonly _tag: "None" }`] : []),
+        ...(mode.some ? [`{ readonly _tag: "Some"; readonly value: ${this.type(mode.some)} }`] : []),
+      ].join(" | ")
       case "string-tag": return "string"
       case "enum": return [...s.variants.keys()].map((t) => JSON.stringify(t)).join(" | ")
       case "tagged": {
@@ -159,7 +162,7 @@ function plain(v: Value, shape: Shape): unknown {
       const vs = s.variants.get(v.tag)!
       switch (mode.kind) {
         case "bool": return v.tag === "True"
-        case "maybe": return v.tag === "None" ? null : plain(v.args[0]!, vs.positional[0]!)
+        case "maybe": return v.tag === "None" ? { _tag: "None" } : { _tag: "Some", value: plain(v.args[0]!, vs.positional[0]!) }
         case "string-tag": return (v.args[0] as Extract<Value, { kind: "string" }>).value
         case "enum": return v.tag
         case "tagged": {
