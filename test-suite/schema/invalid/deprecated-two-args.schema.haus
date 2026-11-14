@@ -1,0 +1,3 @@
+// deprecated takes at most one message.
+@deprecated("a", "b")
+type A = Int

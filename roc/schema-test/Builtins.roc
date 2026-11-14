@@ -3,6 +3,7 @@ import haus.Value
 import haus.Decode
 import haus.Encode
 import haus.Int
+import haus.Secret
 
 Builtins := [].{
 
@@ -95,5 +96,36 @@ Builtins := [].{
 
 	encode_span : Span -> Value
 	encode_span = |v| Encode.time("Duration")(v)
+
+	## haus type `builtins#Payload`.
+	Payload : Value
+
+	decode_payload : Value -> Try(Payload, Decode.Error)
+	decode_payload = |v| Decode.any(v)
+
+	encode_payload : Payload -> Value
+	encode_payload = |v| Encode.any(v)
+
+	## haus type `builtins#Key`.
+	Key : Secret(Str)
+
+	decode_key : Value -> Try(Key, Decode.Error)
+	decode_key = |v| Decode.secret(v, "Secret String", Decode.str)
+
+	encode_key : Key -> Value
+	encode_key = |v| Encode.secret(v, Encode.str)
+
+	## haus type `builtins#Config`.
+	Config : { name : Str, key : Secret(Str), pin : [Missing, Present(Secret(Int))], extra : Value }
+
+	decode_config : Value -> Try(Config, Decode.Error)
+	decode_config = |v| {
+		fs = Decode.strict_record(v)?
+		Decode.closed(fs, ["name", "key", "pin", "extra"])?
+		Ok({ name: Decode.field(fs, "name", Decode.str)?, key: Decode.field(fs, "key", |x1| Decode.secret(x1, "Secret String", Decode.str))?, pin: Decode.optional_field(fs, "pin", |x2| Decode.secret(x2, "Secret Int", Decode.int))?, extra: Decode.field(fs, "extra", Decode.any)? })
+	}
+
+	encode_config : Config -> Value
+	encode_config = |v| Encode.record([("name", Present(Encode.str(v.name))), ("key", Present(Encode.secret(v.key, Encode.str))), ("pin", Encode.optional(v.pin, |x3| Encode.secret(x3, Encode.int))), ("extra", Present(Encode.any(v.extra)))])
 
 }

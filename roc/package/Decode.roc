@@ -16,6 +16,7 @@
 ##         Ok({ id: Decode.field(fields, "id", Decode.u64)?, email: Decode.field(fields, "email", Decode.str)? })
 ##     }
 import Int
+import Secret
 import Value
 import Time
 
@@ -162,6 +163,19 @@ Decode := [].{
 		Tag(name, []) => Ok(Bare(name))
 		Tag(name, args) => Ok(Other(name, args))
 		_ => expected("a tag", v)
+	}
+
+	## `Any`: any value, kept as parsed.
+	any : Value -> Try(Value, Error)
+	any = |v| Ok(v)
+
+	## `Secret a`: decoded with `decoder`, but an error says only that the
+	## value isn't a valid `what` (`"Secret String"`), never what was found or
+	## where in it (spec §15). The path to the secret is added on the way out.
+	secret : Value, Str, (Value -> Try(a, Error)) -> Try(Secret(a), Error)
+	secret = |v, what, decoder| match decoder(v) {
+		Ok(x) => Ok(Secret.new(x))
+		Err(_) => fail("not a valid ${what} (the value is hidden)")
 	}
 
 	# ── containers ──────────────────────────────────────────
@@ -398,3 +412,12 @@ expect Decode.one("-1", Decode.u8) == Err(Decode({ reason: "-1 is out of range f
 # A variant with a record payload is not a record.
 expect Decode.one("User { id: 1 }", |v| Decode.strict_record(v).map_ok(|fs| fs.len())) == Err(Decode({ reason: "expected a record, found variant User", path: "" }))
 expect Decode.one("{ id: 1 }", |v| Decode.strict_record(v).map_ok(|fs| fs.len())) == Ok(1)
+
+# Any keeps the value; Secret hides it, from inspection and from errors.
+expect Decode.one("[1, Some({ a: 19.90 })]", Decode.any).map_ok(Value.to_test_json) == Ok("[{\"num\":\"1\"},{\"tag\":\"Some\",\"args\":[{\"rec\":{\"a\":{\"num\":\"19.90\"}}}]}]")
+expect Decode.one("\"sk-1\"", |v| Decode.secret(v, "Secret String", Decode.str)).map_ok(|s| s.expose()) == Ok("sk-1")
+expect Decode.one("\"sk-1\"", |v| Decode.secret(v, "Secret String", Decode.str)).map_ok(Str.inspect) == Ok("<redacted>")
+expect {
+	pin = |v| Decode.field(Decode.record(v)?, "pin", |p| Decode.secret(p, "Secret UInt8", Decode.u8))
+	Decode.one("{ pin: 9999 }", pin).map_ok(|s| s.expose()) == Err(Decode({ reason: "not a valid Secret UInt8 (the value is hidden)", path: ".pin" }))
+}

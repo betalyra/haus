@@ -55,12 +55,18 @@ examples/gen.sh
 | `Decimal`, `Date`, `Instant`, … | `Str`: exact text, std/time checked by its profile |
 | `< >` | `[Bare(Str), Other(Str, List(Value))]`: any variant, kept as it was |
 | `type Pair a = …` | `Pair(a)`, decoded with `decode_pair(v, decode_a)` |
+| `Any` | `Value`: any value, as parsed |
+| `Secret a` | `Secret(a)`: `Str.inspect` and `dbg` show `<redacted>`; `.expose()` gives the value |
+| `@deprecated("why")` | a `## Deprecated…: why` line in the type's doc comment (Roc has no deprecation marker) |
 
 Named variants are nominal (`:=`), and so are records that refer to
 themselves (`Tree := { name : Str, children : List(Tree) }`). A type named
 like a Roc builtin or an imported module gets a `_` in Roc (`type List a`
 is `List_(a)`, `type F64 = Float64` is `F64_`); its functions keep their
 names (`decode_list`).
+
+A `Secret` is written in full when encoded, but a decode error inside it names
+only its place and type (`.pin: not a valid Secret Int (the value is hidden)`).
 
 A float is written in one spelling (spec §15): the fewest digits that read
 back as the same `F64` or `F32`, laid out like JavaScript (`0.1`, `1e21`,

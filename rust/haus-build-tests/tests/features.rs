@@ -4,7 +4,7 @@ mod features {
     haus::include_schema!("features");
 }
 
-use features::{AppEvent, Item, Kind, Person, Scores, Shape, Tree};
+use features::{AppEvent, Item, Kind, Login, Person, Scores, Shape, Tree};
 use haus::{DecodeError, Error, Unknown, Value, from_str, to_string};
 
 const ADA: &str = r#"{ name: "Ada", email: Some("ada@example.com"), type: Member { since: Date("1843-01-01") }, createdAt: Instant("2026-11-09T14:30:00Z"), address: { street: "St James's Square", city: "London" }, scores: { maths: 100 }, check: Ok(7), friends: [], shape: Circle(1.5), tree: Node(Leaf, Node(Leaf, Leaf)) }"#;
@@ -96,4 +96,30 @@ fn spreads_copy_tags_and_fields() {
     assert_eq!(item.label, "a");
     assert_eq!(to_string(&item), r#"{ id: 1, label: "a" }"#);
     assert!(from_str::<Item>(r#"{ id: 1, label: "a", extra: 2 }"#).is_err());
+}
+
+#[test]
+fn secrets_stay_hidden() {
+    let text = r#"{ user: "ada", password: "hunter2", pin: 1234, extra: [1, Some { a: 19.90 }] }"#;
+    let login: Login = from_str(text).unwrap();
+    assert_eq!(login.password.expose(), "hunter2");
+    assert_eq!(login.pin.as_ref().map(|p| *p.expose()), Some(1234));
+    let debug = format!("{login:?}");
+    assert!(debug.contains("password: <redacted>") && !debug.contains("hunter2") && !debug.contains("1234"), "{debug}");
+    // Encoding writes secrets in full, and Any as it was.
+    assert_eq!(to_string(&login), text);
+
+    // Errors name the place and the type, never the value.
+    let e = decode_error::<Login>(r#"{ user: "ada", password: 4711 }"#);
+    assert_eq!(e.to_string(), ".password: not a valid Secret String (the value is hidden)");
+    let e = decode_error::<Login>(r#"{ user: "ada", password: "x", pin: 98765 }"#);
+    assert_eq!(e.to_string(), ".pin: not a valid Secret UInt16 (the value is hidden)");
+    assert!(!e.to_string().contains("98765"));
+}
+
+#[test]
+#[allow(deprecated)]
+fn deprecated_fields_still_decode() {
+    let login: Login = from_str(r#"{ user: "ada", password: "x", name: "Ada" }"#).unwrap();
+    assert_eq!(login.name.as_deref(), Some("Ada"));
 }

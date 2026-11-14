@@ -4,7 +4,7 @@
 //! Decoding is linear in the input (spec §9): records are indexed once, and a
 //! variant's case is chosen by its tag, never by trying cases in turn.
 
-use crate::{Codec, DecodeError, Value};
+use crate::{Codec, DecodeError, Secret, Value};
 use std::collections::{BTreeMap, HashMap};
 
 type R<T> = Result<T, DecodeError>;
@@ -189,6 +189,13 @@ pub fn result<A, E>(v: &Value, ok: impl FnOnce(&Value) -> R<A>, err: impl FnOnce
         ("Err", [x]) => err(x).map(Err).map_err(|e| e.index(0).tag("Err")),
         _ => Err(mismatch("Ok(…) or Err(…)", v)),
     }
+}
+
+/// `Secret a`: decoded as `a` decodes, but an error says only that the value
+/// isn't a valid `what` (`Secret String`), never what was found or where in
+/// it (spec §15). The path to the secret itself is added on the way out.
+pub fn secret<T>(v: &Value, what: &str, f: impl FnOnce(&Value) -> R<T>) -> R<Secret<T>> {
+    f(v).map(Secret::new).map_err(|_| DecodeError::new(format!("not a valid {what} (the value is hidden)")))
 }
 
 /// A type decoded by a codec: its base type first, then the codec (spec §13.4).

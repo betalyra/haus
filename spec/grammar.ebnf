@@ -111,7 +111,11 @@ module      ::= "std/" ident                              (* a standard module: 
               | ( "./" | "../" ) path                     (* a schema file, without .schema.haus: ./common *)
 segment     ::= [A-Za-z0-9_.-]+
 path        ::= [A-Za-z0-9_./-]*
-typedef     ::= "type" ws type_name ( ws param )* ws "=" ws type
+typedef     ::= ( attribute ws )* "type" ws type_name ( ws param )* ws "=" ws type
+attribute   ::= "@" ident [ "(" ws value ( ws "," ws value )* ws [ "," ws ] ")" ]
+                (* metadata for tools, never for decoding: @deprecated("use email").
+                   No space between the name and "(". The attributes are listed
+                   in spec/README.md §14. *)
 
 type        ::= type_name ( ws atom )+                    (* application: Array Point *)
               | atom
@@ -119,11 +123,11 @@ atom        ::= type_name | param | "(" ws type ws ")"
               | [ "closed" ws ] record_type               (* open unless closed: other fields are ignored *)
               | [ "closed" ws ] variant_type              (* open unless closed: other tags become Unknown *)
 record_type ::= "{" ws [ member ( ws "," ws member )* ws [ "," ws ] ] "}"
-member      ::= field | spread
+member      ::= ( attribute ws )* field | spread
 field       ::= key [ "?" ] ws ":" ws type                (* key?: the field may be missing *)
 variant_type ::= "<" ws [ "|" ws ] [ alt ( ws "|" ws alt )* ] ws ">"
                 (* < > is a variant with any tags *)
-alt         ::= case | spread
+alt         ::= ( attribute ws )* case | spread
 case        ::= tag ( ws atom )*                          (* Tag { … }: named fields; Tag A B: positional *)
 spread      ::= "..." type_name                           (* ...UserEvent: copy the named type's tags or fields *)
 type_name   ::= [A-Z] [A-Za-z0-9_]*

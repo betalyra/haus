@@ -28,6 +28,10 @@ type Result e a = closed < Err e | Ok a >
 //   Map v                  a record used as a dictionary: any string keys,
 //                          values of one type: { en: "Hello", "pt-BR": "Olá" }
 //   { name: T, … }         a record with known fields
+//   Any                    any value, kept as parsed: a payload this schema
+//                          passes on without knowing its shape
+//   Secret a               the same data as `a`, for API keys and passwords:
+//                          bindings hide it from logs and error messages
 //
 // Records and variants are open: a reader ignores fields it doesn't know and
 // keeps unknown tags as Unknown values. `closed { … }` and `closed < … >`

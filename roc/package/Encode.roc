@@ -3,6 +3,7 @@
 ##
 ##     Encode.to_str(Rec([("name", Text("Ada"))]))   # { name: "Ada" }
 import Int
+import Secret
 import Value
 
 Encode := [].{
@@ -126,6 +127,14 @@ Encode := [].{
 		}
 		Rec($out)
 	}
+
+	## `Any`: the value as it was.
+	any : Value -> Value
+	any = |v| v
+
+	## `Secret a`: the value in full (the receiver needs it).
+	secret : Secret(a), (a -> Value) -> Value
+	secret = |s, encoder| encoder(s.expose())
 
 	## `< >`: a bare tag, or any other variant kept as it was.
 	any_tag : [Bare(Str), Other(Str, List(Value))] -> Value

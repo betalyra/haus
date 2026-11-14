@@ -41,111 +41,46 @@ New kinds of events can show up later: a reader that only cares about users just
 - 🌊 **Streaming by default:** every file is a sequence of values, so logs and event streams need no extra format.
 - 🩹 **Fix the typical JSON issues:** no float surprises with money, no `null` vs missing-field confusion, real dates.
 
-## Quick start: try it in VS Code
+## Get started
 
-From a clone of this repository (needs Node 20+ and pnpm):
+- **Try it in the browser:** the [playground](https://haus-fmt.org/play) needs nothing installed.
+- **VS Code:** install **haus** from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=betalyra.haus), or run `code --install-extension betalyra.haus`. You get highlighting, errors as you type, types on hover, formatting and schema inference.
+- **In your code:** libraries for [TypeScript](typescript/packages/haus) (with an [Effect adapter](typescript/packages/effect) and [typed imports](typescript/packages/import)), [Rust](rust), [Roc](roc) and [Python](python). See [Install](https://haus-fmt.org/docs/install).
 
-```sh
-cd editors/vscode
-pnpm install
-pnpm run package                            # builds haus.vsix
-code --install-extension haus.vsix --force
-```
+## Learn more
 
-Reload VS Code (**Developer: Reload Window**) and open [`examples/person.haus`](examples/person.haus). Hover any key to see its inferred type, press Shift+Alt+F to format, or run **haus: Infer Schema from This File**. More in the [extension README](editors/vscode/README.md).
+The documentation lives at [haus-fmt.org/docs](https://haus-fmt.org/docs):
 
-## Features
-
-- 🏷️ **Variants:** `None`, `Some(30)`, `Circle { radius: 5 }`. Booleans are just `True` / `False`.
-- 🧩 **Open records and variants:** unknown fields are ignored, unknown tags decode as "unknown" instead of failing.
-- 🔢 **Exact numbers:** `19.90` stays `19.90`; there's no silent float rounding and no 2⁵³ limit.
-- 📅 **Standard modules and packages:** dates and times are built in (`Date("2026-11-07")`, `Instant(…)`, `Duration("PT30S")`, `import std/time`); money (`Money(19.99, EUR)`) and geo come as schema packages (`import @haus/money`), imported when you need them. The always-present prelude stays small.
-- 🧱 **Bytes:** binary data as hex, `x"9f86d081 884c7d65"`, instead of base64 inside a string.
-- 🚫 **No `null`:** leave out what you don't have (`nickname?: String`), or say "no value" explicitly with `None`. Each has exactly one meaning, so updates can send just the fields that change.
-- ✍️ **Pleasant to write:** unquoted keys, `//` and `/* */` comments, trailing commas, `"""` multi-line strings.
-- 🌊 **Streams built in:** a file is a sequence of values, so appending, `tail -f` and line-by-line processing just work.
-- 🎨 **One official format:** pretty (one entry per line) or compact (one item per line), like `gofmt`.
-- 🔍 **Type inference:** derive a schema from example data.
-- 🧩 **Open by default:** readers ignore fields and keep tags they don't know, so writers can add both without breaking anyone. `closed { … }` / `closed < … >` where only the listed ones are allowed.
-- ✅ **Checked in the editor:** a data file is checked against `x.schema.haus` next to it, or the schema named in a `// schema: ./api.schema.haus#Order` comment. Errors where something is wrong, a quiet hint on fields the schema doesn't know.
-- 🛡️ **Hardened:** depth, number and string limits, rejection of invisible bidi control characters, and schema decoding that stays linear in the input, even with recursive types.
-
-## The same order in JSON
-
-```json
-{
-  "order": 1042,
-  "total": { "amount": "30.30", "currency": "EUR" },
-  "status": { "type": "shipped", "at": "2026-11-08T09:12:00Z" },
-  "gift": true,
-  "note": null
-}
-```
-
-It works, but every one of these choices is a convention you have to explain and everyone has to follow. In haus they are part of the format.
-
-## Using it from TypeScript
-
-```ts
-import * as h from "@haus-fmt/haus/schema"
-
-const Status = h.Variant({
-  Pending: h.Unit,
-  Shipped: h.Record({ at: h.Instant }),
-})
-const Order = h.Record({ id: h.Int, total: h.Decimal, status: Status, note: h.Maybe(h.String) })
-type Order = h.Infer<typeof Order>
-
-const order = h.parse(Order, text)   // typed; mismatches fail with e.g. `expected Int, found string "2" at $.id`
-const back = h.stringify(Order, order)
-```
-
-Or bring your own schema library: every Standard Schema (Zod, Valibot, ArkType, Effect Schema) works with `parseWith`:
-
-```ts
-import { parseWith } from "@haus-fmt/haus"
-const order = parseWith(OrderZod, text)   // the plain JS view of the data, validated by Zod
-```
-
-There is also an [Effect adapter](typescript/packages/effect) (`Haus.decode(schema)`, `Haus.encodeStream(schema)`), and bindings for [Rust](rust) and [Roc](roc), with the same examples on the same files.
-
-### Typed imports (TypeScript 7.1, experimental)
-
-With [`@haus-fmt/import`](typescript/packages/import) (a TypeScript content mapper, a Node loader and a Vite plugin), `.haus` files are imported like modules:
-
-```ts
-import { Comment } from "./thread.schema.haus"   // the type and its Effect schema
-import thread from "./thread.haus"               // typed by thread.schema.haus (type Root), checked against it
-
-thread.replies[0].likes                          // bigint
-Haus.decode(Comment)(text)                       // the schema works for any input
-```
-
-Data that doesn't match its schema is an error in the editor, at the value that's wrong. A data file without a schema next to it gets a type inferred from its data. See the [quickstart](typescript/examples/quickstart).
+- [A tour of haus](https://haus-fmt.org/docs/tour): model the data of a small tool, one problem at a time.
+- [Coming from JSON](https://haus-fmt.org/docs/from-json): the same data in JSON and in haus, and what changes.
+- Guided tours: [evolving your data](https://haus-fmt.org/docs/tours/evolving), [logs and streams](https://haus-fmt.org/docs/tours/streams), [from schema to code](https://haus-fmt.org/docs/tours/typed), [time and money](https://haus-fmt.org/docs/tours/time-money).
+- The [specification](spec/README.md), its [grammar](spec/grammar.ebnf), and the [Lean proofs](spec/lean) of the parser, the canonical form and std/time.
 
 ## Repository
 
 | Path | Contents |
 |---|---|
-| [`spec/`](spec) | Grammar, semantics, standard format, prelude types, design review |
-| [`test-suite/`](test-suite) | Conformance files every parser must pass |
-| [`typescript/`](typescript) | Parser, schemas, formatter, type inference, Standard Schema, Effect adapter, typed imports (content mapper, Node, Vite), examples, demos |
-| [`rust/`](rust) | Parser, `haus-build` (Rust types from schemas, with codecs), examples |
-| [`extensions/`](extensions) | Official schema packages (`@haus/money`, `@haus/geo`), for npm and crates.io |
-| [`roc/`](roc) | Parser, decoding, encoding, streams; modules generated from schemas; examples |
-| [`editors/vscode/`](editors/vscode) | VS Code extension: highlighting, errors, hover with inferred types, formatting |
-| [`examples/`](examples) | Sample `.haus` and `.schema.haus` files, shared by the TypeScript and Rust examples |
-| [`docs/`](docs) | The documentation at [haus-fmt.org/docs](https://haus-fmt.org/docs) |
+| [`spec/`](spec) | The specification: grammar, semantics, prelude, std/time, design review |
+| [`spec/lean/`](spec/lean) | The Lean model and proofs, and `haus-ref`, the reference parser |
+| [`test-suite/`](test-suite) | Conformance files every parser and schema binding must pass |
+| [`typescript/`](typescript) | Parser, schemas, formatter, type inference, Standard Schema, Effect adapter, typed imports, examples |
+| [`rust/`](rust) | Parser, `haus-build` (Rust and Roc types from schemas, with codecs), examples |
+| [`roc/`](roc) | Parser, decoding, encoding, streams, examples |
+| [`python/`](python) | Parser, streams, canonical form and hashing |
+| [`extensions/`](extensions) | Official schema packages (`@haus/money`, `@haus/geo`) |
+| [`editors/vscode/`](editors/vscode) | The VS Code extension |
+| [`fuzz/`](fuzz) | Differential fuzzing of all implementations against each other and `haus-ref` |
+| [`examples/`](examples) | Sample `.haus` and `.schema.haus` files shared by the examples |
+| [`docs/`](docs), [`website/`](website) | The documentation and [haus-fmt.org](https://haus-fmt.org) |
+
+## Development
 
 ```sh
 cd typescript && pnpm install && pnpm test        # TypeScript packages
-cd typescript/examples/quickstart && pnpm start   # typed data, decode, encode, errors
-cd typescript/examples/order && pnpm start        # schema packages and codecs
-cd typescript/examples/logs && pnpm start         # a stream, entry by entry
-cd rust && cargo test                             # Rust crates and the conformance suite
-cd rust && cargo run -p haus-example-quickstart   # the same quickstart in Rust
-cd rust && cargo run -p haus-example-order        # the same order example in Rust
-cd rust && cargo run -p haus-example-logs         # the same stream example in Rust
-cd roc/package && roc test ConformanceTest.roc    # Roc conformance suite
-cd roc/examples/quickstart && roc main.roc        # the same quickstart in Roc (also order, logs)
+cd rust && cargo test --workspace --all-features  # Rust crates, conformance and schema suites
+cd roc/package && roc test ConformanceTest.roc    # Roc conformance suite (also roc/schema-test)
+cd python && uv run pytest                        # Python
+cd spec/lean && lake build --wfail                # the proofs and haus-ref
 ```
+
+TypeScript, Rust and Roc have the same three examples (quickstart, order, logs); see their READMEs for how to run them.

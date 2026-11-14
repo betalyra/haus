@@ -14,6 +14,8 @@
 //! | `Float32`, `Float64`       | `F32`, `F64`                                  |
 //! | `Decimal`, std/time        | `Str` (exact text; std/time checked)          |
 //! | `< >`                      | `[Bare(Str), Other(Str, List(Value))]`        |
+//! | `Any`                      | `Value`                                       |
+//! | `Secret a`                 | `Secret(a)` (`<redacted>` when inspected)     |
 //! | `type Pair a = …`          | `Pair(a)`, with `decode_pair(v, decode_a)`    |
 //!
 //! Named variants are nominal (`:=`), so they can be recursive, and so are
@@ -22,10 +24,13 @@
 //! (`List`, `F64`, `Box`, `Value`) gets a `_` at the end in Roc (`List_`);
 //! its functions keep their names (`decode_list`). A codec is a Roc module
 //! with `Target`, `decode : Base -> Try(Target, Str)` and `encode : Target -> Base`.
+//!
+//! Roc has no deprecation marker: a `@deprecated` type, field or tag gets a
+//! line in the type's doc comment (`## Deprecated field `mail`: use email.`).
 
 use crate::codegen::STD_TIME;
 use crate::packages::{Manifest, Package, Packages};
-use crate::schema::{self, Case, Field, Ty, TypeDef, error};
+use crate::schema::{self, Attribute, Case, Field, Ty, TypeDef, deprecation, error};
 use crate::{Error, Result, read};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
@@ -166,11 +171,15 @@ pub fn generate(
         helpers: Vec::new(),
         names: file.types.iter().map(|d| d.name.clone()).collect(),
         uses_int: false,
+        uses_secret: false,
         roc_names,
         recursive,
         params: Vec::new(),
     };
     let items = file.types.iter().map(|d| g.define(d)).collect::<Result<Vec<_>>>()?;
+    if g.uses_secret {
+        roc_imports.insert(3, "haus.Secret".to_owned());
+    }
     if g.uses_int {
         roc_imports.insert(3, "haus.Int".to_owned());
     }
@@ -225,6 +234,8 @@ struct Gen<'a> {
     names: HashSet<String>,
     /// Whether the module needs `haus.Int`.
     uses_int: bool,
+    /// Whether the module needs `haus.Secret`.
+    uses_secret: bool,
     /// Each schema type's name in Roc (`List` → `List_`).
     roc_names: HashMap<String, String>,
     /// Types that refer to themselves, so they are nominal in Roc.
@@ -263,10 +274,12 @@ impl Gen<'_> {
     /// The type, decoder and encoder of a definition.
     fn define(&mut self, def: &TypeDef) -> Result<String> {
         self.params = def.params.iter().map(|p| (p.clone(), self.param_name(p))).collect();
+        let deprecations = deprecations(def);
         let doc: String = def
             .doc
             .lines()
             .chain(["", &format!("haus type `{}#{}`.", self.id, def.name)])
+            .chain(deprecations.iter().map(String::as_str))
             .skip_while(|l| l.is_empty())
             .fold(String::new(), |mut out, l| {
                 let _ = writeln!(out, "\t##{}{l}", if l.is_empty() { "" } else { " " });
@@ -444,6 +457,18 @@ impl Gen<'_> {
             "Decimal" => R::named("Str", "Decode.decimal", "Encode.decimal"),
             "Float32" => R::named("F32", "Decode.f32", "Encode.f32"),
             "Float64" => R::named("F64", "Decode.f64", "Encode.f64"),
+            "Any" => R::named("Value", "Decode.any", "Encode.any"),
+            "Secret" if expect(1).is_ok() => {
+                self.uses_secret = true;
+                let a = self.lower(&args[0], hint)?;
+                let (de, en) = (self.value(&a.de), self.value(&a.en));
+                let what = escape(&format!("Secret {}", args[0]));
+                R {
+                    ty: format!("Secret({})", a.ty),
+                    de: F::Template(format!("Decode.secret({{x}}, \"{what}\", {de})")),
+                    en: F::Template(format!("Encode.secret({{x}}, {en})")),
+                }
+            }
             "Int" => {
                 self.uses_int = true;
                 R::named("Int", "Decode.int", "Encode.int")
@@ -478,7 +503,9 @@ impl Gen<'_> {
                     en: F::Template(format!("Encode.result({{x}}, {aen}, {een})")),
                 }
             }
-            "Array" | "Map" | "Maybe" | "Result" => return self.fail(pos, format!("{name} takes arguments")),
+            "Array" | "Map" | "Maybe" | "Result" | "Secret" => {
+                return self.fail(pos, format!("{name} takes arguments"));
+            }
             "Stream" => return self.fail(pos, "Stream is only allowed as the whole type of a definition"),
             _ => {
                 let hint = match name {
@@ -489,7 +516,7 @@ impl Gen<'_> {
                 return self.fail(pos, format!("unknown type {name}{hint}"));
             }
         };
-        if !args.is_empty() && !matches!(name, "Array" | "Map" | "Maybe" | "Result") {
+        if !args.is_empty() && !matches!(name, "Array" | "Map" | "Maybe" | "Result" | "Secret") {
             return self.fail(pos, format!("{name} takes no arguments"));
         }
         Ok(r)
@@ -766,6 +793,39 @@ fn refers_to_itself(def: &TypeDef, defs: &HashMap<&str, &TypeDef>) -> bool {
     false
 }
 
+/// Doc lines for what is deprecated in a definition (spec §14), since Roc has
+/// no marker for it: the type itself, and its fields and tags, inline ones too.
+fn deprecations(def: &TypeDef) -> Vec<String> {
+    fn line(what: &str, attrs: &[Attribute]) -> Option<String> {
+        deprecation(attrs).map(|why| match why {
+            Some(why) => format!("Deprecated{what}: {why}"),
+            None => format!("Deprecated{what}."),
+        })
+    }
+    fn ty(t: &Ty, path: &str, out: &mut Vec<String>) {
+        match t {
+            Ty::Name { args, .. } => args.iter().for_each(|a| ty(a, path, out)),
+            Ty::Param { .. } => {}
+            Ty::Record { fields, .. } => fields.iter().for_each(|f| {
+                let at = format!("{path}{}", f.key);
+                out.extend(line(&format!(" field `{at}`"), &f.attrs));
+                ty(&f.ty, &format!("{at}."), out);
+            }),
+            Ty::Variant { cases, .. } => cases.iter().for_each(|c| {
+                let at = format!("{path}{}", c.tag);
+                out.extend(line(&format!(" tag `{at}`"), &c.attrs));
+                c.payload.iter().for_each(|p| ty(p, &format!("{at}."), out));
+            }),
+        }
+    }
+    let mut out: Vec<String> = line("", &def.attrs).into_iter().collect();
+    ty(&def.ty, "", &mut out);
+    if !out.is_empty() {
+        out.insert(0, String::new());
+    }
+    out
+}
+
 /// Roc's builtin types: a schema type with one of these names gets a `_` in Roc.
 const BUILTIN_TYPES: &[&str] = &[
     "Str",
@@ -881,6 +941,35 @@ mod tests {
         );
         assert!(code.contains("encode_pair : Pair(a), (a -> Value) -> Value"), "{code}");
         assert!(code.contains("decode_ints = |v| decode_pair(v, Decode.int)"), "{code}");
+    }
+
+    #[test]
+    fn any_and_secret() {
+        let code = roc("type A = { key: Secret String, pins: Array (Secret UInt16), extra: Any }");
+        assert!(code.contains("import haus.Secret\n"), "{code}");
+        assert!(code.contains("A : { key : Secret(Str), pins : List(Secret(U16)), extra : Value }"), "{code}");
+        assert!(
+            code.contains("Decode.field(fs, \"key\", |x4| Decode.secret(x4, \"Secret String\", Decode.str))?"),
+            "{code}"
+        );
+        assert!(code.contains("Decode.field(fs, \"extra\", Decode.any)?"), "{code}");
+        assert!(code.contains("(\"key\", Present(Encode.secret(v.key, Encode.str)))"), "{code}");
+        assert!(!roc("type A = Int").contains("haus.Secret"));
+    }
+
+    #[test]
+    fn deprecations_are_doc_comments() {
+        let code = roc(
+            "// A client.\n@deprecated(\"use Customer\")\ntype Client = { id: Int, @deprecated(\"use email\") mail?: String, \
+             shape: < Circle | @deprecated Square > }",
+        );
+        assert!(
+            code.contains(
+                "\t## A client.\n\t##\n\t## haus type `m#Client`.\n\t##\n\t## Deprecated: use Customer\n\
+                 \t## Deprecated field `mail`: use email\n\t## Deprecated tag `shape.Square`.\n"
+            ),
+            "{code}"
+        );
     }
 
     #[test]

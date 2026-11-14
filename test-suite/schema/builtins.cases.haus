@@ -70,3 +70,22 @@ Ok { type: "Span", input: Duration("PT0S") },
 Ok { type: "Span", input: Duration("-P1DT12H") },
 Err { type: "Span", input: Duration("P01D") },
 Err { type: "Span", input: Duration("P0D") },
+
+// ── Any: any value, kept exactly ──
+Ok { type: "Payload", input: 1 },
+Ok { type: "Payload", input: 0x10, output: 16 },
+Ok { type: "Payload", input: "text" },
+Ok { type: "Payload", input: x"00ff" },
+Ok { type: "Payload", input: [1, "a", None] },
+Ok { type: "Payload", input: { b: 1, a: [Some({ c: 19.90 })] } },
+Ok { type: "Payload", input: Invoice { total: 19.90, lines: [Line(1, "A1")] } },
+Ok { type: "Payload", input: -0 },
+
+// ── Secret: the same data as its type ──
+Ok { type: "Key", input: "sk-123" },
+Err { type: "Key", input: 123 },
+Err { type: "Key", input: Secret("sk-123") },
+Ok { type: "Config", input: { name: "a", key: "sk-1", extra: {} } },
+Ok { type: "Config", input: { name: "a", key: "sk-1", pin: 1234, extra: [1, X(2)] } },
+Err { type: "Config", input: { name: "a", key: "sk-1", pin: "1234", extra: 1 } },
+Err { type: "Config", input: { name: "a", key: "sk-1" } },

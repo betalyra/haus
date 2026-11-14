@@ -2,11 +2,13 @@
 import haus.Value
 import haus.Decode
 import haus.Encode
+import Attributes
 import Builtins
 import Numbers
 import Records
 import Types
 import Variants
+import "../../test-suite/schema/attributes.cases.haus" as attributes_cases : Str
 import "../../test-suite/schema/builtins.cases.haus" as builtins_cases : Str
 import "../../test-suite/schema/numbers.cases.haus" as numbers_cases : Str
 import "../../test-suite/schema/records.cases.haus" as records_cases : Str
@@ -66,6 +68,16 @@ SchemaTest := [].{
 		}
 	}
 
+	## Decode a value with a type of attributes.schema.haus, and encode the result.
+	attributes : Str, Value -> Codec
+	attributes = |ty, v| match ty {
+		"Client" => Decoded(Attributes.decode_client(v).map_ok(Attributes.encode_client))
+		"Shape" => Decoded(Attributes.decode_shape(v).map_ok(Attributes.encode_shape))
+		"Later" => Decoded(Attributes.decode_later(v).map_ok(Attributes.encode_later))
+		"Uses" => Decoded(Attributes.decode_uses(v).map_ok(Attributes.encode_uses))
+		_ => NoType
+	}
+
 	## Decode a value with a type of builtins.schema.haus, and encode the result.
 	builtins : Str, Value -> Codec
 	builtins = |ty, v| match ty {
@@ -79,6 +91,9 @@ SchemaTest := [].{
 		"Day" => Decoded(Builtins.decode_day(v).map_ok(Builtins.encode_day))
 		"At" => Decoded(Builtins.decode_at(v).map_ok(Builtins.encode_at))
 		"Span" => Decoded(Builtins.decode_span(v).map_ok(Builtins.encode_span))
+		"Payload" => Decoded(Builtins.decode_payload(v).map_ok(Builtins.encode_payload))
+		"Key" => Decoded(Builtins.decode_key(v).map_ok(Builtins.encode_key))
+		"Config" => Decoded(Builtins.decode_config(v).map_ok(Builtins.encode_config))
 		_ => NoType
 	}
 
@@ -124,7 +139,7 @@ SchemaTest := [].{
 		"Level" => Decoded(Variants.decode_level(v).map_ok(Variants.encode_level))
 		"Strict" => Decoded(Variants.decode_strict(v).map_ok(Variants.encode_strict))
 		"ClosedPayload" => Decoded(Variants.decode_closed_payload(v).map_ok(Variants.encode_closed_payload))
-		"Any" => Decoded(Variants.decode_any(v).map_ok(Variants.encode_any))
+		"AnyTag" => Decoded(Variants.decode_any_tag(v).map_ok(Variants.encode_any_tag))
 		"Holder" => Decoded(Variants.decode_holder(v).map_ok(Variants.encode_holder))
 		_ => NoType
 	}
@@ -136,8 +151,41 @@ field = |fields, key| match fields.find_first(|(k, _)| k == key) {
 	Err(_) => Err(Missing)
 }
 
+# attributes.cases.haus
+expect SchemaTest.count(attributes_cases) == 10
+
+# Ok { type: "Client", input: { id: 1, mail: "a@example.com" } },
+expect SchemaTest.check(attributes_cases, 0, SchemaTest.attributes)
+
+# Ok { type: "Client", input: { id: 1, email: "a@example.com" } },
+expect SchemaTest.check(attributes_cases, 1, SchemaTest.attributes)
+
+# Err { type: "Client", input: { mail: "a@example.com" } },
+expect SchemaTest.check(attributes_cases, 2, SchemaTest.attributes)
+
+# Ok { type: "Shape", input: Square { side: 2 } },
+expect SchemaTest.check(attributes_cases, 3, SchemaTest.attributes)
+
+# Ok { type: "Shape", input: Dot },
+expect SchemaTest.check(attributes_cases, 4, SchemaTest.attributes)
+
+# Err { type: "Shape", input: Triangle },
+expect SchemaTest.check(attributes_cases, 5, SchemaTest.attributes)
+
+# Ok { type: "Later", input: { n: 1 } },
+expect SchemaTest.check(attributes_cases, 6, SchemaTest.attributes)
+
+# Ok { type: "Later", input: { n: 1, m: 2, x: 3 }, output: { n: 1, m: 2 } },
+expect SchemaTest.check(attributes_cases, 7, SchemaTest.attributes)
+
+# Err { type: "Later", input: { m: 2 } },
+expect SchemaTest.check(attributes_cases, 8, SchemaTest.attributes)
+
+# Ok { type: "Uses", input: { client: { id: 1 }, shape: Dot } },
+expect SchemaTest.check(attributes_cases, 9, SchemaTest.attributes)
+
 # builtins.cases.haus
-expect SchemaTest.count(builtins_cases) == 57
+expect SchemaTest.count(builtins_cases) == 72
 
 # Ok { type: "S", input: "" },
 expect SchemaTest.check(builtins_cases, 0, SchemaTest.builtins)
@@ -309,6 +357,51 @@ expect SchemaTest.check(builtins_cases, 55, SchemaTest.builtins)
 
 # Err { type: "Span", input: Duration("P0D") },
 expect SchemaTest.check(builtins_cases, 56, SchemaTest.builtins)
+
+# Ok { type: "Payload", input: 1 },
+expect SchemaTest.check(builtins_cases, 57, SchemaTest.builtins)
+
+# Ok { type: "Payload", input: 0x10, output: 16 },
+expect SchemaTest.check(builtins_cases, 58, SchemaTest.builtins)
+
+# Ok { type: "Payload", input: "text" },
+expect SchemaTest.check(builtins_cases, 59, SchemaTest.builtins)
+
+# Ok { type: "Payload", input: x"00ff" },
+expect SchemaTest.check(builtins_cases, 60, SchemaTest.builtins)
+
+# Ok { type: "Payload", input: [1, "a", None] },
+expect SchemaTest.check(builtins_cases, 61, SchemaTest.builtins)
+
+# Ok { type: "Payload", input: { b: 1, a: [Some({ c: 19.90 })] } },
+expect SchemaTest.check(builtins_cases, 62, SchemaTest.builtins)
+
+# Ok { type: "Payload", input: Invoice { total: 19.90, lines: [Line(1, "A1")] } },
+expect SchemaTest.check(builtins_cases, 63, SchemaTest.builtins)
+
+# Ok { type: "Payload", input: -0 },
+expect SchemaTest.check(builtins_cases, 64, SchemaTest.builtins)
+
+# Ok { type: "Key", input: "sk-123" },
+expect SchemaTest.check(builtins_cases, 65, SchemaTest.builtins)
+
+# Err { type: "Key", input: 123 },
+expect SchemaTest.check(builtins_cases, 66, SchemaTest.builtins)
+
+# Err { type: "Key", input: Secret("sk-123") },
+expect SchemaTest.check(builtins_cases, 67, SchemaTest.builtins)
+
+# Ok { type: "Config", input: { name: "a", key: "sk-1", extra: {} } },
+expect SchemaTest.check(builtins_cases, 68, SchemaTest.builtins)
+
+# Ok { type: "Config", input: { name: "a", key: "sk-1", pin: 1234, extra: [1, X(2)] } },
+expect SchemaTest.check(builtins_cases, 69, SchemaTest.builtins)
+
+# Err { type: "Config", input: { name: "a", key: "sk-1", pin: "1234", extra: 1 } },
+expect SchemaTest.check(builtins_cases, 70, SchemaTest.builtins)
+
+# Err { type: "Config", input: { name: "a", key: "sk-1" } },
+expect SchemaTest.check(builtins_cases, 71, SchemaTest.builtins)
 
 # numbers.cases.haus
 expect SchemaTest.count(numbers_cases) == 91
@@ -808,19 +901,19 @@ expect SchemaTest.check(variants_cases, 37, SchemaTest.variants)
 # Err { type: "ClosedPayload", input: Circle { r: 1, x: 2 } },
 expect SchemaTest.check(variants_cases, 38, SchemaTest.variants)
 
-# Ok { type: "Any", input: EUR },
+# Ok { type: "AnyTag", input: EUR },
 expect SchemaTest.check(variants_cases, 39, SchemaTest.variants)
 
-# Ok { type: "Any", input: Custom("XBT") },
+# Ok { type: "AnyTag", input: Custom("XBT") },
 expect SchemaTest.check(variants_cases, 40, SchemaTest.variants)
 
-# Ok { type: "Any", input: Money { amount: 19.90, currency: EUR } },
+# Ok { type: "AnyTag", input: Money { amount: 19.90, currency: EUR } },
 expect SchemaTest.check(variants_cases, 41, SchemaTest.variants)
 
-# Err { type: "Any", input: "EUR" },
+# Err { type: "AnyTag", input: "EUR" },
 expect SchemaTest.check(variants_cases, 42, SchemaTest.variants)
 
-# Err { type: "Any", input: 1 },
+# Err { type: "AnyTag", input: 1 },
 expect SchemaTest.check(variants_cases, 43, SchemaTest.variants)
 
 # Ok { type: "Holder", input: { shape: Hexagon, any: [EUR, USD(1)] } },

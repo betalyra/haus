@@ -21,9 +21,17 @@
  *   or the fields of a named record (`{ ...Entity, name: String }`). Whether
  *   the result is open or closed is decided by its own `closed` alone.
  *
+ * Attributes (`@deprecated("use email")`) before a type, a field or a tag are
+ * metadata for tools (spec §14): they are kept on Definition, Field and Case
+ * for tools (declarations, `checkData`), and decoding never reads them.
+ * Attributes this version doesn't define are accepted, given no meaning, and
+ * reported in `SchemaFile.warnings`.
+ *
  * Errors are HausSchemaFileError, with the position in the schema file.
  */
-import { HausSyntaxError, locate } from "./errors.js"
+import { HausSyntaxError, locate, START } from "./errors.js"
+import { DEFAULT_LIMITS, Parser } from "./parser.js"
+import type { Value } from "./value.js"
 
 export class HausSchemaFileError extends HausSyntaxError {}
 
@@ -32,7 +40,7 @@ export class HausSchemaFileError extends HausSyntaxError {}
 export const BUILTINS = [
   "String", "Bytes", "Bool", "Decimal", "Int",
   "Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64",
-  "Float32", "Float64",
+  "Float32", "Float64", "Any",
 ] as const
 export type Builtin = (typeof BUILTINS)[number]
 
@@ -51,16 +59,53 @@ export type Type =
   | { readonly kind: "array"; readonly item: Type }
   | { readonly kind: "map"; readonly value: Type }
   | { readonly kind: "maybe"; readonly item: Type }
+  /** `Secret a`: the same data as `a`, hidden on the host side (spec §15). */
+  | { readonly kind: "secret"; readonly item: Type }
   | RecordType
   | VariantType
   | { readonly kind: "ref"; readonly instance: Instance }
   /** A type parameter, only in the template of a generic type. */
   | { readonly kind: "param"; readonly name: string }
 
+/**
+ * An attribute written before a type, field or tag: `@deprecated("use email")`.
+ * Metadata for tools; decoding never depends on it (spec §14, §15).
+ */
+export interface Attribute {
+  readonly name: string
+  readonly args: readonly Value[]
+}
+
+/** The attributes this version defines (spec §14). Others are accepted, without meaning, with a warning. */
+export const ATTRIBUTES = ["deprecated"] as const
+
+/**
+ * `@deprecated` among `attributes`: its message ("" when it has none), or
+ * undefined when there is no `@deprecated`.
+ */
+export const deprecation = (attributes: readonly Attribute[] | undefined): string | undefined => {
+  const d = attributes?.find((a) => a.name === "deprecated")
+  if (!d) return undefined
+  const [message] = d.args
+  return message?.kind === "string" ? message.value : ""
+}
+
+/** Something a tool should point out in a schema file, without failing: an attribute this version doesn't define. */
+export interface SchemaWarning {
+  readonly message: string
+  /** UTF-16 offsets into the schema file, `end` exclusive. */
+  readonly offset: number
+  readonly end: number
+  readonly line: number
+  readonly column: number
+}
+
 export interface Field {
   readonly key: string
   readonly optional: boolean
   readonly type: Type
+  /** Its attributes (a spread copies them with the field). Never read when decoding. */
+  readonly attributes?: readonly Attribute[]
 }
 
 export interface RecordType {
@@ -78,6 +123,8 @@ export type Payload =
 export interface Case {
   readonly tag: string
   readonly payload: Payload
+  /** Its attributes (a spread copies them with the case). Never read when decoding. */
+  readonly attributes?: readonly Attribute[]
 }
 
 export interface VariantType {
@@ -122,8 +169,10 @@ export interface Definition {
   readonly params: readonly string[]
   /** The `//` comment lines just above the definition. */
   readonly doc: string
-  /** The definition's source text, with its comment. */
+  /** The definition's source text, with its comment and attributes. */
   readonly source: string
+  /** Its attributes, such as `@deprecated("use Customer")`. */
+  readonly attributes: readonly Attribute[]
   readonly offset: number
   /**
    * The type for non-generic definitions; for generic ones the template,
@@ -143,12 +192,14 @@ export interface SchemaFile {
   readonly id: string | undefined
   /** The definition named `name`, if any. */
   definition(name: string): Definition | undefined
+  /** Attributes this version doesn't define, in this file (not in the files it imports). */
+  readonly warnings: readonly SchemaWarning[]
 }
 
 // ── lexer ────────────────────────────────────────────────────
 
 type Token =
-  | { readonly t: "upper" | "lower" | "string" | "module"; readonly value: string; readonly pos: number }
+  | { readonly t: "upper" | "lower" | "string" | "module" | "attribute"; readonly value: string; readonly pos: number }
   | { readonly t: "punct"; readonly value: string; readonly pos: number }
   | { readonly t: "eof"; readonly value: ""; readonly pos: number }
 
@@ -158,7 +209,8 @@ class Lexer {
   pos = 0
   constructor(readonly text: string, readonly fail: (reason: string, pos: number) => never) {}
 
-  private skip(): void {
+  /** Skip whitespace and comments. */
+  skip(): void {
     const s = this.text
     while (this.pos < s.length) {
       const c = s[this.pos]!
@@ -201,6 +253,15 @@ class Lexer {
         return { t: "module", value: mm[0], pos }
       }
     }
+    // An attribute: @deprecated (its arguments are parsed by the parser).
+    if (s[pos] === "@") {
+      const attribute = /@([a-z_][A-Za-z0-9_]*)/y
+      attribute.lastIndex = pos
+      const am = attribute.exec(s)
+      if (!am) this.fail("expected an attribute name after '@', like @deprecated", pos)
+      this.pos += am[0].length
+      return { t: "attribute", value: am[1]!, pos }
+    }
     if (s[pos] === '"') {
       const str = /"(?:[^"\\\n]|\\.)*"/y
       str.lastIndex = pos
@@ -242,11 +303,18 @@ interface SpreadNode {
   readonly pos: number
 }
 
+/** `@name` or `@name(value, …)`, `end` exclusive. */
+interface AttributeNode extends Attribute {
+  readonly pos: number
+  readonly end: number
+}
+
 interface FieldNode {
   readonly key: string
   readonly optional: boolean
   readonly type: Node
   readonly pos: number
+  readonly attributes: readonly Attribute[]
 }
 
 interface RecordNode {
@@ -261,6 +329,7 @@ interface CaseNode {
   readonly tag: string
   readonly args: readonly Node[]
   readonly pos: number
+  readonly attributes: readonly Attribute[]
 }
 
 interface VariantNode {
@@ -279,6 +348,7 @@ interface TypeDecl {
   readonly end: number
   readonly docStart: number
   readonly doc: string
+  readonly attributes: readonly Attribute[]
 }
 
 interface ImportDecl {
@@ -294,6 +364,10 @@ class SchemaParser {
   private readonly lexer: Lexer
   private depth = 0
   private lastEnd = 0
+  /** Every attribute, in source order. */
+  readonly attributes: AttributeNode[] = []
+  /** Attributes this version doesn't define: a warning each. */
+  readonly warnings: { readonly message: string; readonly pos: number; readonly end: number }[] = []
 
   constructor(readonly text: string, readonly fail: (reason: string, pos: number) => never) {
     this.lexer = new Lexer(text, fail)
@@ -335,12 +409,76 @@ class SchemaParser {
     const imports: ImportDecl[] = []
     const types: TypeDecl[] = []
     while (this.tok.t !== "eof") {
+      const attributes = this.parseAttributes()
       const kw = this.keyword()
-      if (kw === "import") imports.push(this.parseImport())
-      else if (kw === "type") types.push(this.parseType())
+      if (kw === "type") types.push(this.parseType(attributes))
+      else if (attributes.length > 0) this.unexpected("a type definition after the attribute (attributes go before a type, a field or a tag)")
+      else if (kw === "import") imports.push(this.parseImport())
       else this.unexpected("'type' or 'import'")
     }
     return { imports, types }
+  }
+
+  /**
+   * The attributes before a type, field or tag (spec §14): `@deprecated`,
+   * `@deprecated("use email")`, or one this version doesn't define (kept,
+   * without meaning, with a warning).
+   */
+  private parseAttributes(): AttributeNode[] {
+    const out: AttributeNode[] = []
+    while (this.tok.t === "attribute") {
+      const t = this.advance()
+      const nameEnd = t.pos + 1 + t.value.length
+      let args: Value[] = []
+      if (this.is("(")) {
+        if (this.tok.pos !== nameEnd) this.fail(`no space is allowed between @${t.value} and '('`, nameEnd)
+        args = this.parseAttributeArgs(this.tok.pos)
+      }
+      const attribute: AttributeNode = { name: t.value, args, pos: t.pos, end: this.lastEnd }
+      if (out.some((a) => a.name === t.value)) this.fail(`@${t.value} appears twice here`, t.pos)
+      if (t.value === "deprecated") {
+        if (args.length > 1 || (args.length === 1 && args[0]!.kind !== "string")) {
+          this.fail('@deprecated takes no argument or one string: @deprecated or @deprecated("use email")', t.pos)
+        }
+      } else {
+        this.warnings.push({ message: `unknown attribute @${t.value}: this version of haus gives it no meaning (it knows ${ATTRIBUTES.map((a) => `@${a}`).join(", ")})`, pos: t.pos, end: this.lastEnd })
+      }
+      out.push(attribute)
+      this.attributes.push(attribute)
+    }
+    return out
+  }
+
+  /** `( value, … )` at `open`: haus values, parsed by the data parser (any value, comments between them). */
+  private parseAttributeArgs(open: number): Value[] {
+    const values: Value[] = []
+    const lexer = this.lexer
+    const data = new Parser(this.text, START, DEFAULT_LIMITS)
+    lexer.pos = open + 1
+    for (;;) {
+      lexer.skip()
+      const c = this.text[lexer.pos]
+      if (c === ")") {
+        if (values.length === 0) this.fail("an attribute's ( … ) needs at least one value; write the attribute without parentheses", open)
+        break
+      }
+      if (c === undefined) this.fail("unclosed '(' of an attribute", open)
+      try {
+        const { value, end } = data.valueAt(lexer.pos)
+        values.push(value)
+        lexer.pos = end
+      } catch (e) {
+        if (e instanceof HausSyntaxError) this.fail(e.reason, e.offset)
+        throw e
+      }
+      lexer.skip()
+      if (this.text[lexer.pos] === ",") lexer.pos++
+      else if (this.text[lexer.pos] !== ")") this.fail(`expected ',' or ')' in the attribute's arguments`, lexer.pos)
+    }
+    lexer.pos++ // )
+    this.lastEnd = lexer.pos
+    this.tok = lexer.next()
+    return values
   }
 
   private parseImport(): ImportDecl {
@@ -365,7 +503,7 @@ class SchemaParser {
     return { module: parts.join("/"), names, pos }
   }
 
-  private parseType(): TypeDecl {
+  private parseType(attributes: readonly AttributeNode[]): TypeDecl {
     const pos = this.advance().pos
     if (this.tok.t !== "upper") this.unexpected("a type name (starting with a capital letter)")
     const name = this.advance().value
@@ -376,8 +514,8 @@ class SchemaParser {
     }
     this.expect("=")
     const body = this.parseApp()
-    const { start, doc } = docComment(this.text, pos)
-    return { name, params, body, pos, end: this.lastEnd, docStart: start, doc }
+    const { start, doc } = docComment(this.text, attributes[0]?.pos ?? pos)
+    return { name, params, body, pos, end: this.lastEnd, docStart: start, doc, attributes: attributes.map(attributeOf) }
   }
 
   private nested<T>(pos: number, f: () => T): T {
@@ -452,18 +590,20 @@ class SchemaParser {
     const fields: FieldNode[] = []
     const spreads: SpreadNode[] = []
     while (!this.is("}")) {
+      const attributes = this.parseAttributes()
       if (this.is("...")) {
+        if (attributes.length > 0) this.fail("attributes can't be put on a spread: the fields it copies keep their own", attributes[0]!.pos)
         this.advance()
         spreads.push(this.parseSpread(fields.length))
       } else {
         const k = this.tok
-        if (k.t !== "lower" && k.t !== "string") this.unexpected("a field name, ...Name or '}'")
+        if (k.t !== "lower" && k.t !== "string") this.unexpected(attributes.length > 0 ? "a field name after the attribute" : "a field name, ...Name or '}'")
         this.advance()
         const optional = this.is("?")
         if (optional) this.advance()
         this.expect(":")
         const type = this.parseApp()
-        fields.push({ key: k.value, optional, type, pos: k.pos })
+        fields.push({ key: k.value, optional, type, pos: k.pos, attributes: attributes.map(attributeOf) })
       }
       if (this.is(",")) this.advance()
       else if (!this.is("}")) this.unexpected("',' or '}'")
@@ -478,15 +618,17 @@ class SchemaParser {
     const spreads: SpreadNode[] = []
     if (this.is("|")) this.advance()
     while (!this.is(">")) {
+      const attributes = this.parseAttributes()
       if (this.cur().t === "upper") {
         const tag = this.advance()
         const args: Node[] = []
         while (this.startsAtom()) args.push(this.parseAtom())
-        cases.push({ tag: tag.value, args, pos: tag.pos })
+        cases.push({ tag: tag.value, args, pos: tag.pos, attributes: attributes.map(attributeOf) })
       } else if (this.is("...")) {
+        if (attributes.length > 0) this.fail("attributes can't be put on a spread: the tags it copies keep their own", attributes[0]!.pos)
         this.advance()
         spreads.push(this.parseSpread(cases.length))
-      } else this.unexpected("a tag, ...Name or '>'")
+      } else this.unexpected(attributes.length > 0 ? "a tag after the attribute" : "a tag, ...Name or '>'")
       if (this.is(">")) break
       this.expect("|")
     }
@@ -494,6 +636,31 @@ class SchemaParser {
     if (closed && cases.length === 0 && spreads.length === 0) this.fail("a closed variant needs at least one tag", pos)
     return { t: "variant", cases, spreads, closed, pos }
   }
+}
+
+/** An attribute without its position. */
+const attributeOf = ({ name, args }: AttributeNode): Attribute => ({ name, args })
+
+/**
+ * The schema file without its attributes: each one replaced by spaces (line
+ * breaks kept), so positions stay the same. Decoding with the result is the
+ * same as with the file (spec §15, "Attributes don't matter"). Throws
+ * HausSchemaFileError when the file can't be parsed.
+ */
+export function withoutAttributes(text: string): string {
+  const fail = (reason: string, pos: number): never => {
+    const at = locate(text, pos, START)
+    throw new HausSchemaFileError(reason, at.offset, at.line, at.column)
+  }
+  const parser = new SchemaParser(text, fail)
+  parser.parseFile()
+  let out = ""
+  let from = 0
+  for (const a of parser.attributes) {
+    out += text.slice(from, a.pos) + text.slice(a.pos, a.end).replace(/[^\n]/g, " ")
+    from = a.end
+  }
+  return out + text.slice(from)
 }
 
 /** The `//` lines directly above `pos` (no blank line in between). */
@@ -547,7 +714,7 @@ export interface ParseSchemaOptions {
 
 // ── resolution ───────────────────────────────────────────────
 
-const PRELUDE_GENERIC: Record<string, number> = { Array: 1, Map: 1, Maybe: 1, Result: 2, Stream: 1 }
+const PRELUDE_GENERIC: Record<string, number> = { Array: 1, Map: 1, Maybe: 1, Result: 2, Secret: 1, Stream: 1 }
 const MAX_INSTANCES = 10_000
 const MAX_FILES = 256
 
@@ -567,6 +734,7 @@ interface Unit {
   /** Every named type in scope: its own definitions and imported ones. */
   readonly scope: Map<string, Def>
   readonly std: Map<string, StdType>
+  readonly warnings: SchemaParser["warnings"]
 }
 
 interface Def {
@@ -593,8 +761,9 @@ export function parseSchemaFile(text: string, options: ParseSchemaOptions = {}):
   // ── loading: parse each file once, build its scope ──
   const load = (text: string, key: string | undefined, id: string | undefined, fail: Fail, root: boolean): Unit => {
     if (units.size >= MAX_FILES) fail(`more than ${MAX_FILES} schema files are imported`, 0)
-    const { imports, types } = new SchemaParser(text, fail).parseFile()
-    const unit: Unit = { root, id, text, fail, own: new Map(), scope: new Map(), std: new Map() }
+    const parser = new SchemaParser(text, fail)
+    const { imports, types } = parser.parseFile()
+    const unit: Unit = { root, id, text, fail, own: new Map(), scope: new Map(), std: new Map(), warnings: parser.warnings }
     if (key !== undefined) units.set(key, unit)
     if (id !== undefined) ids.set(id, key)
     loading.push(key ?? "")
@@ -742,6 +911,8 @@ export function parseSchemaFile(text: string, options: ParseSchemaOptions = {}):
         return `Map(${keyOf(t.value)})`
       case "maybe":
         return `Maybe(${keyOf(t.item)})`
+      case "secret":
+        return `Secret(${keyOf(t.item)})`
       case "ref":
         return t.instance.key
       case "record":
@@ -790,9 +961,14 @@ export function parseSchemaFile(text: string, options: ParseSchemaOptions = {}):
     return inst.body
   }
 
-  const resolveRef = (t: Type, pos: number): Type => {
+  /** The type a reference stands for; with `throughSecret`, also what a `Secret` holds (it guards nothing: §9.9). */
+  const resolveRef = (t: Type, pos: number, throughSecret = false): Type => {
     const seen = new Set<Instance>()
-    while (t.kind === "ref") {
+    while (t.kind === "ref" || (throughSecret && t.kind === "secret")) {
+      if (t.kind === "secret") {
+        t = t.item
+        continue
+      }
       if (seen.has(t.instance)) fail(`type ${t.instance.name} refers to itself without a record, array or variant in between`, pos)
       seen.add(t.instance)
       t = bodyOf(t.instance)
@@ -850,6 +1026,8 @@ export function parseSchemaFile(text: string, options: ParseSchemaOptions = {}):
           return { kind: "map", value: a }
         case "Maybe":
           return { kind: "maybe", item: a }
+        case "Secret":
+          return { kind: "secret", item: a }
         case "Result":
           return {
             kind: "variant",
@@ -917,7 +1095,7 @@ export function parseSchemaFile(text: string, options: ParseSchemaOptions = {}):
 
   const evaluateRecord = (n: RecordNode, env: Env): RecordType => {
     const check = once("field")
-    const own = n.fields.map((f) => ({ field: { key: f.key, optional: f.optional, type: evaluate(f.type, env) }, from: "", pos: f.pos }))
+    const own = n.fields.map((f) => ({ field: { key: f.key, optional: f.optional, type: evaluate(f.type, env), attributes: f.attributes } as Field, from: "", pos: f.pos }))
     const fields = inOrder(own, n.spreads, (sp) =>
       (spreadOf(sp, "record") as RecordType).fields.map((field) => ({ field, from: `from ...${sp.name}`, pos: sp.pos })),
     ).map(({ field, from, pos }) => (check(field.key, from, pos), field))
@@ -933,7 +1111,7 @@ export function parseSchemaFile(text: string, options: ParseSchemaOptions = {}):
         c.args.length === 0 ? { kind: "none" }
         : c.args.length === 1 && first!.t === "record" ? { kind: "record", record: evaluateRecord(first!, env) }
         : { kind: "positional", items: c.args.map((a) => evaluate(a, env)) }
-      return { c: { tag: c.tag, payload } as Case, from: "", pos: c.pos }
+      return { c: { tag: c.tag, payload, attributes: c.attributes } as Case, from: "", pos: c.pos }
     })
     const cases = inOrder(own, n.spreads, (sp) =>
       (spreadOf(sp, "variant") as VariantType).cases.map((c) => ({ c, from: `from ...${sp.name}`, pos: sp.pos })),
@@ -952,6 +1130,7 @@ export function parseSchemaFile(text: string, options: ParseSchemaOptions = {}):
       params: def.params,
       doc: d.doc,
       source: def.unit.text.slice(d.docStart, d.end).trim(),
+      attributes: d.attributes,
       offset: d.pos,
       template: undefined as unknown as Instance, // set below, once the definition exists
     }
@@ -973,12 +1152,16 @@ export function parseSchemaFile(text: string, options: ParseSchemaOptions = {}):
     if (inst.stream) unit.fail(`${inst.name} is a Stream; a stream can only be the whole file, not part of a type`, pos)
   }
   // §9.9: every cycle passes through a record, array or variant.
-  for (const inst of instances.values()) within(defOf.get(inst)!.unit, () => resolveRef({ kind: "ref", instance: inst }, inst.definition.offset))
+  for (const inst of instances.values()) within(defOf.get(inst)!.unit, () => resolveRef({ kind: "ref", instance: inst }, inst.definition.offset, true))
 
   const definitions = [...root.own.values()].map((d) => d.definition!)
   const byName = new Map(definitions.map((d) => [d.name, d]))
   const imported = new Map([...root.scope].filter(([, d]) => d.unit !== root).map(([name, d]) => [name, d.definition!]))
-  return { definitions, imports: root.std, imported, id: options.id, definition: (name) => byName.get(name) ?? imported.get(name) }
+  const warnings = root.warnings.map(({ message, pos, end }): SchemaWarning => {
+    const at = locate(text, pos, START)
+    return { message, offset: at.offset, end, line: at.line, column: at.column }
+  })
+  return { definitions, imports: root.std, imported, id: options.id, definition: (name) => byName.get(name) ?? imported.get(name), warnings }
 }
 
 /**

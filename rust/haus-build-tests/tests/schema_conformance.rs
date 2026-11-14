@@ -3,7 +3,11 @@
 //!
 //! Each case is `Ok { type, input, output? }` or `Err { type, input }`. Ok:
 //! decoding `input` with `type` succeeds, and encoding the result gives a value
-//! equal to `output` (or `input`). Err: decoding fails.
+//! equal to `output` (or `input`). Err: decoding fails. Every case runs on each
+//! schema twice: as written, and without its attributes, which must not
+//! change any result.
+//!
+//! `invalid/*.schema.haus` must be rejected by haus-build (spec §14).
 
 mod suite {
     include!(concat!(env!("OUT_DIR"), "/schema_suite.rs"));
@@ -47,9 +51,10 @@ impl Case {
         format!("{} {} {}", if self.ok { "Ok" } else { "Err" }, self.ty, canonical(&self.input))
     }
 
-    /// Runs the case on the schema `file`: None if it passes, what went wrong otherwise.
-    fn failure(&self, file: &str) -> Option<String> {
-        let Some(result) = suite::roundtrip(file, &self.ty, &self.input) else {
+    /// Runs the case on the schema `file` (without its attributes if `bare`):
+    /// None if it passes, what went wrong otherwise.
+    fn failure(&self, file: &str, bare: bool) -> Option<String> {
+        let Some(result) = suite::roundtrip(file, &self.ty, &self.input, bare) else {
             return Some(format!("no type {}", self.ty));
         };
         match (self.ok, result) {
@@ -74,10 +79,38 @@ fn schema_conformance() {
         let values = haus::parse(&text).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
         let cases: Vec<Case> =
             values.iter().map(Case::parse).collect::<Result<_, _>>().unwrap_or_else(|e| panic!("{file}: {e}"));
-        failures.extend(
-            cases.iter().filter_map(|c| c.failure(file).map(|why| format!("{file}.cases.haus: {}: {why}", c.name()))),
-        );
+        for (bare, label) in [(false, ""), (true, " (without attributes)")] {
+            failures.extend(cases.iter().filter_map(|c| {
+                c.failure(file, bare).map(|why| format!("{file}.cases.haus{label}: {}: {why}", c.name()))
+            }));
+        }
         (count + cases.len(), failures)
     });
     assert!(failures.is_empty(), "{} of {count} cases failed:\n{}", failures.len(), failures.join("\n"));
+}
+
+#[test]
+fn invalid_schemas_are_rejected() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test-suite/schema/invalid");
+    let mut paths: Vec<_> = fs::read_dir(&dir)
+        .unwrap_or_else(|e| panic!("{}: {e}", dir.display()))
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.to_string_lossy().ends_with(".schema.haus"))
+        .collect();
+    paths.sort();
+    assert!(!paths.is_empty(), "no schemas in {}", dir.display());
+    let none = haus_build::Packages::none();
+    let accepted: Vec<String> = paths
+        .iter()
+        .flat_map(|path| {
+            let text = fs::read_to_string(path).unwrap();
+            let name = path.file_name().unwrap().to_string_lossy().into_owned();
+            let rust = haus_build::generate(&text, "suite/invalid", &[], &none).ok().map(|_| format!("{name} (Rust)"));
+            let roc = haus_build::roc::generate(&text, "Invalid", "suite/invalid", &[], &none)
+                .ok()
+                .map(|_| format!("{name} (Roc)"));
+            [rust, roc].into_iter().flatten()
+        })
+        .collect();
+    assert!(accepted.is_empty(), "invalid schemas were accepted:\n{}", accepted.join("\n"));
 }

@@ -4,5 +4,5 @@ type Shape = < Circle { r: Float64 } | Point Float64 Float64 | Empty | Wrap Box 
 type Level = closed < Debug | Info >
 type Strict = closed < A | B Int | C { x: Int } >
 type ClosedPayload = closed < Circle closed { r: Int } >
-type Any = < >
-type Holder = { shape: Shape, any: Array Any }
+type AnyTag = < >
+type Holder = { shape: Shape, any: Array AnyTag }

@@ -38,6 +38,8 @@ const program = Effect.gen(function* () {
 | `19.90` | `BigDecimal` (exact), `Number` (Float64), `Haus.Float32`, `BigInt`, or a string |
 | `Instant("…")`, `ZonedDateTime("…")` | `DateTimeUtc`, `DateTimeZoned` |
 | an unknown tag in `Haus.OpenUnion` | `{ _tag: "@unknown", tag, value }` |
+| any value (`Any`) | `Haus.Any`: the parsed haus `Value`, unchanged |
+| a secret (`Secret a`) | `Schema.Redacted(A)`: shows `<redacted>`; errors inside never show the value |
 
 Three of these keep the value but not every spelling of it. Encoding what they
 decoded can write a different haus value, with another canonical form and
@@ -70,7 +72,9 @@ const order = yield* Haus.decode(schemas.Order!)(data)
 ```
 
 `Int` → `bigint`, `Decimal` → `BigDecimal`, `Maybe` → `Option`, `Instant` →
-`DateTime.Utc`. With [`@haus-fmt/import`](../import) (target `"effect"`), you can
+`DateTime.Utc`, `Any` → `Haus.Value`, `Secret a` → `Redacted<A>`. Attributes
+don't change decoding; `schemaDeclarations` marks `@deprecated` types, fields
+and tags with JSDoc `@deprecated`. With [`@haus-fmt/import`](../import) (target `"effect"`), you can
 import schema files directly: `import { Order } from "./order.schema.haus"`.
 
 ## Codecs

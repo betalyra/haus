@@ -8,5 +8,8 @@ publish = false
 [dependencies]
 haus = { package = "haus-fmt", path = "../haus" }
 
+[dev-dependencies]
+haus-build = { path = "../haus-build" }
+
 [build-dependencies]
 haus-build = { path = "../haus-build" }

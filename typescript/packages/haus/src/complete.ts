@@ -125,8 +125,9 @@ function scan(text: string, end: number): Frame[] | undefined {
   return stack
 }
 
+/** The type a value is written as: through references, and through `Secret` (the same data as its type). */
 const resolve = (t: Type): Type => {
-  for (let i = 0; t.kind === "ref" && i < 10_000; i++) t = t.instance.body
+  for (let i = 0; (t.kind === "ref" || t.kind === "secret") && i < 10_000; i++) t = t.kind === "ref" ? t.instance.body : t.item
   return t
 }
 

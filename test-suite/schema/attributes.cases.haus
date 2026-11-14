@@ -1,0 +1,12 @@
+// See numbers.cases.haus for the format. Attributes never change a result.
+
+Ok { type: "Client", input: { id: 1, mail: "a@example.com" } },
+Ok { type: "Client", input: { id: 1, email: "a@example.com" } },
+Err { type: "Client", input: { mail: "a@example.com" } },
+Ok { type: "Shape", input: Square { side: 2 } },
+Ok { type: "Shape", input: Dot },
+Err { type: "Shape", input: Triangle },
+Ok { type: "Later", input: { n: 1 } },
+Ok { type: "Later", input: { n: 1, m: 2, x: 3 }, output: { n: 1, m: 2 } },
+Err { type: "Later", input: { m: 2 } },
+Ok { type: "Uses", input: { client: { id: 1 }, shape: Dot } },

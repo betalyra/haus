@@ -12,7 +12,8 @@ import {
   arr as vArr, bytes as vBytes, checkStdTime, equals, floatText, num as vNum, rec as vRec, str as vStr, toFloat32, toFloat64, variant as vVariant,
   type HVariant, type StdTimeType, type Value,
 } from "@haus-fmt/haus"
-import { Array as Arr, BigDecimal, DateTime, Match, Option, Predicate, SchemaAST } from "effect"
+import * as h from "@haus-fmt/haus/schema"
+import { Array as Arr, BigDecimal, DateTime, Match, Option, Predicate, Redacted, SchemaAST } from "effect"
 
 export type Converter = (value: Value) => unknown
 
@@ -38,6 +39,15 @@ export const CLOSED = "hausClosed"
 
 /** Annotation on a string schema: only a haus string, never a number or `Tag("…")` (a schema file's `String`). */
 export const STRICT = "hausStrict"
+
+/** Annotation on an `Any` schema (`Haus.Any`): the value is the parsed haus `Value`, unchanged. */
+export const VALUE = "hausValue"
+
+/**
+ * Annotation on a `Schema.Redacted` (a schema file's `Secret a`): the haus
+ * type inside, for error messages that name it without the value.
+ */
+export const SECRET = "hausSecret"
 
 /**
  * Annotation on a number schema: which haus number type it is. "Int" takes
@@ -205,6 +215,15 @@ const resolve = (ast: AST): AST => (ast._tag === "Suspend" ? resolve(ast.thunk()
 const declarationId = (ast: SchemaAST.Declaration): Option.Option<unknown> =>
   Option.fromNullishOr((ast.annotations?.["representation"] as { readonly id?: unknown } | undefined)?.id)
 
+/** Whether `ast` is a `Schema.Redacted`. */
+export const isRedacted = (ast: AST): boolean => ast._tag === "Declaration" && Option.contains(declarationId(ast), "effect/schema/Redacted")
+
+/** What a secret's errors say instead of anything about its value (spec §15): its type. */
+export const secretMessage = (ast: AST): string => {
+  const type = ast.annotations?.[SECRET]
+  return `expected ${typeof type === "string" ? type : "a valid value"} (a Secret: the value is not shown)`
+}
+
 /** The `_tag` literal of a tagged-struct AST. */
 const tagOf = (ast: AST): Option.Option<string> => {
   const a = resolve(ast)
@@ -251,7 +270,12 @@ export const compile = (ast: AST): Converter => {
   return lazy
 }
 
-const compileNode: (ast: AST) => Converter = Match.type<AST>().pipe(
+/** `Haus.Any`: the parsed value as it is. */
+const asValue: Converter = (v) => v
+
+const compileNode = (ast: AST): Converter => (ast.annotations?.[VALUE] === true ? asValue : compileByTag(ast))
+
+const compileByTag: (ast: AST) => Converter = Match.type<AST>().pipe(
   Match.tag("String", "TemplateLiteral", compileString),
   Match.tag("Number", compileNumber),
   Match.tag("BigInt", (): Converter => (v) => (v.kind === "number" && INTEGER.test(v.text) ? BigInt(v.text) : generic(v))),
@@ -403,7 +427,9 @@ function compileUnion(ast: SchemaAST.Union): Converter {
     ...literals.map(([written]) => describe(written)),
     ...others.map((m) => `a value of ${resolve(m)._tag}`),
   ].join(" or ")
-  const otherwise: Converter = others.some((m) => m._tag === "Any" || m._tag === "Unknown") ? generic : (v) => mismatch(expected, v)
+  const otherwise: Converter = others.some((m) => m.annotations?.[VALUE] === true) ? asValue
+    : others.some((m) => m._tag === "Any" || m._tag === "Unknown") ? generic
+    : (v) => mismatch(expected, v)
   return (v) => {
     if (v.kind === "variant") {
       const exact = byTag.get(v.tag)
@@ -450,6 +476,20 @@ function compileDeclaration(ast: SchemaAST.Declaration): Converter {
       return (v) =>
         Option.isSome(variant(v, "None", 0)) ? Option.none()
         : Option.match(variant(v, "Some", 1), { onSome: (s) => Option.some(inner(s.args[0]!)), onNone: () => generic(v) })
+    }
+    case "effect/schema/Redacted": {
+      // `Secret a`: the value converted as `a`, in a Redacted. An error inside
+      // is replaced by one at the secret's place that doesn't show the value.
+      const inner = Arr.head(ast.typeParameters).pipe(Option.map(compile), Option.getOrElse(() => generic))
+      const message = secretMessage(ast)
+      return (v) => {
+        try {
+          return Redacted.make(inner(v))
+        } catch (e) {
+          if (e instanceof ConversionError) throw new ConversionError(message)
+          throw e
+        }
+      }
     }
     default:
       return generic
@@ -558,7 +598,22 @@ export const compileEncoder = (ast: AST): Encoder => {
   return lazy
 }
 
-const encodeNode: (ast: AST) => Encoder = Match.type<AST>().pipe(
+/**
+ * `Haus.Any`: the value is written back unchanged, after the checks of the
+ * core's `Any`: a haus value the parser could produce, within the limits.
+ */
+const encodeValue: Encoder = (js) => {
+  try {
+    return h.encode(h.Any, js as Value)
+  } catch (e) {
+    if (e instanceof h.HausEncodeError) throw new ConversionError(e.reason, e.path)
+    throw e
+  }
+}
+
+const encodeNode = (ast: AST): Encoder => (ast.annotations?.[VALUE] === true ? encodeValue : encodeByTag(ast))
+
+const encodeByTag: (ast: AST) => Encoder = Match.type<AST>().pipe(
   Match.tag("String", "TemplateLiteral", (ast): Encoder => {
     const tag = ast.annotations?.[PRELUDE_TAG]
     const bare = ast.annotations?.[BARE_TAG] === true
@@ -643,6 +698,7 @@ function encodeUnion(ast: SchemaAST.Union): Encoder {
         return id === "effect/schema/Option" ? Option.isOption(js)
           : id === "effect/schema/BigDecimal" ? BigDecimal.isBigDecimal(js)
           : id === "effect/schema/DateTimeUtc" || id === "effect/schema/DateTimeZoned" ? DateTime.isDateTime(js)
+          : id === "effect/schema/Redacted" ? Redacted.isRedacted(js)
           : false
       }
       default:
@@ -672,6 +728,20 @@ function encodeDeclaration(ast: SchemaAST.Declaration): Encoder {
       const inner = Arr.head(ast.typeParameters).pipe(Option.map(compileEncoder), Option.getOrElse(() => encodeGeneric))
       return (js) =>
         Option.isOption(js) ? Option.match(js, { onNone: () => vVariant("None"), onSome: (x) => vVariant("Some", [inner(x)]) }) : encodeGeneric(js)
+    }
+    case "effect/schema/Redacted": {
+      // Written in full (the receiver needs it), but never shown in an error.
+      const inner = Arr.head(ast.typeParameters).pipe(Option.map(compileEncoder), Option.getOrElse(() => encodeGeneric))
+      const message = secretMessage(ast)
+      return (js) => {
+        if (!Redacted.isRedacted(js)) throw new ConversionError("expected a Redacted (Redacted.make(…))")
+        try {
+          return inner(Redacted.value(js))
+        } catch (e) {
+          if (e instanceof ConversionError) throw new ConversionError(message)
+          throw e
+        }
+      }
     }
     default:
       return encodeGeneric

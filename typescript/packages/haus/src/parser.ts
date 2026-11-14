@@ -65,6 +65,7 @@ export class Parser {
   parseSequence(): Value[] {
     const out: Value[] = []
     this.skipBom()
+    this.checkDirective()
     this.skipTrivia()
     while (!this.eof()) {
       out.push(this.parseValue())
@@ -79,12 +80,37 @@ export class Parser {
   /** Exactly one value surrounded by trivia (used by the stream reader). */
   parseSingle(): Value {
     this.skipBom()
+    this.checkDirective()
     this.skipTrivia()
     if (this.eof() || this.peek() === ",") this.fail("expected a value")
     const v = this.parseValue()
     this.skipTrivia()
     if (!this.eof()) this.fail(`expected ',' between top-level values, found ${describe(this.peek())}`)
     return v
+  }
+
+  /**
+   * One value starting exactly at `start` (no trivia before it), for values
+   * inside other text, such as the arguments of a schema file's attributes.
+   * Returns the value and the offset just after it.
+   */
+  valueAt(start: number): { readonly value: Value; readonly end: number } {
+    this.pos = start
+    const value = this.parseValue()
+    return { value, end: this.pos }
+  }
+
+  /**
+   * Spec §10: a file whose first character (after a byte order mark) is `#`
+   * is reserved for a version directive such as `#haus 2`. Such a file is
+   * written for a later, incompatible version: say so instead of reporting
+   * an ordinary syntax error.
+   */
+  private checkDirective() {
+    // Only at the start of the whole text: offset 0, or 1 after a byte order mark
+    // (the stream reader drops the mark and starts its first piece at offset 1).
+    if (this.origin.offset + this.pos > 1 || !this.src.startsWith("#haus", this.pos)) return
+    this.fail("this file starts with a #haus version directive: it needs a newer version of haus")
   }
 
   // ── values ─────────────────────────────────────────────────

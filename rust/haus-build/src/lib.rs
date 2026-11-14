@@ -81,12 +81,19 @@ impl Display for Error {
 
 impl std::error::Error for Error {}
 
+/// Something a schema allows but probably doesn't mean, with where it is:
+/// `3:1: unknown attribute @since: this version of haus ignores it`. Build
+/// scripts report warnings to Cargo.
+pub type Warning = Error;
+
 type Result<T, E = Error> = std::result::Result<T, E>;
 
 /// How to generate code for a schema.
 #[derive(Debug, Clone, Default)]
 pub struct Config {
     codecs: Vec<Codec>,
+    quiet: bool,
+    without_attributes: bool,
 }
 
 impl Config {
@@ -98,6 +105,21 @@ impl Config {
     /// with this id: `.codec("std/time#Date", "crate::codecs::JiffDate")`.
     pub fn codec(mut self, id: impl Into<String>, path: impl Into<String>) -> Config {
         self.codecs.push(Codec { id: id.into(), path: path.into() });
+        self
+    }
+
+    /// Don't report the schema's warnings ([`Warning`]) to Cargo.
+    pub fn quiet(mut self) -> Config {
+        self.quiet = true;
+        self
+    }
+
+    /// Leave the schema's attributes out, as if they weren't written: the
+    /// code decodes and encodes the same (spec §15), without `#[deprecated]`.
+    /// For tests of that.
+    #[doc(hidden)]
+    pub fn without_attributes(mut self) -> Config {
+        self.without_attributes = true;
         self
     }
 
@@ -138,7 +160,18 @@ impl Config {
 
     fn emit(&self, schema: &Path, id: &str, name: &str) -> Result<()> {
         rerun_if_changed(schema);
-        let code = generate(&read(schema)?, id, &self.codecs, &Packages::from_env()?).map_err(|e| e.in_file(schema))?;
+        let text = read(schema)?;
+        let mut file = schema::parse(&text).map_err(|e| Error::from(e).in_file(schema))?;
+        if self.without_attributes {
+            file = schema::without_attributes(file);
+        }
+        if !self.quiet {
+            for w in &file.warnings {
+                println!("cargo::warning={}", Error::from(w.clone()).in_file(schema));
+            }
+        }
+        let code =
+            generate_file(&file, &text, id, &self.codecs, &Packages::from_env()?).map_err(|e| e.in_file(schema))?;
         let out = PathBuf::from(var("OUT_DIR")?).join(format!("{name}.rs"));
         fs::write(&out, code).map_err(|e| Error::at(&out, e))
     }
@@ -149,9 +182,18 @@ pub fn package() -> Result<()> {
     Config::new().package()
 }
 
+/// Check a schema on its own, without its imports (spec §14): its syntax and
+/// the rules that need no other file. Returns its warnings.
+pub fn check(text: &str) -> Result<Vec<Warning>> {
+    Ok(schema::parse(text)?.warnings.into_iter().map(Error::from).collect())
+}
+
 /// The Rust code for a schema, without touching the environment.
 pub fn generate(text: &str, id: &str, codecs: &[Codec], packages: &Packages) -> Result<String> {
-    let file = schema::parse(text)?;
+    generate_file(&schema::parse(text)?, text, id, codecs, packages)
+}
+
+fn generate_file(file: &schema::File, text: &str, id: &str, codecs: &[Codec], packages: &Packages) -> Result<String> {
     let imports = file
         .imports
         .iter()
@@ -163,7 +205,7 @@ pub fn generate(text: &str, id: &str, codecs: &[Codec], packages: &Packages) -> 
             Some(_) => Err(Error::new(format!("{name} is imported twice"))),
             None => Ok(all),
         })?;
-    Ok(codegen::generate(&file, &codegen::Input { text, id, imports: &imports, codecs })?)
+    Ok(codegen::generate(file, &codegen::Input { text, id, imports: &imports, codecs })?)
 }
 
 /// The types an import brings in, by name.

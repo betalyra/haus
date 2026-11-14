@@ -1,9 +1,9 @@
 /**
- * The schema conformance suite (test-suite/schema, spec §15), through the
+ * The schema conformance suite (test-suite/schema, spec §14, §15), through the
  * Effect adapter: each schema file is compiled to Effect schemas, and each
  * case goes haus Value → Effect type (`decodeValue`) → haus Value (`encodeValue`).
  */
-import { canonical, parseAll, type Value } from "@haus-fmt/haus"
+import { canonical, HausSchemaFileError, parseAll, withoutAttributes, type Value } from "@haus-fmt/haus"
 import { describe, expect, it } from "@effect/vitest"
 import { Effect, Exit } from "effect"
 import { readdirSync, readFileSync } from "node:fs"
@@ -49,11 +49,10 @@ const EXPECTED_FAILURES: Readonly<Record<string, ReadonlyArray<string>>> = {
 const suites = readdirSync(DIR).filter((f) => f.endsWith(".schema.haus")).map((f) => f.replace(".schema.haus", ""))
 
 describe.each(suites)("%s", (suite) => {
-  const { schemas } = Haus.compileSchemaFile(readFileSync(`${DIR}${suite}.schema.haus`, "utf8"))
-  const cases = schemaCases(readFileSync(`${DIR}${suite}.cases.haus`, "utf8"))
+  const [text, cases] = [readFileSync(`${DIR}${suite}.schema.haus`, "utf8"), schemaCases(readFileSync(`${DIR}${suite}.cases.haus`, "utf8"))]
   const expectedFailures = new Set(EXPECTED_FAILURES[suite] ?? [])
 
-  const run = (c: Case) => {
+  const run = (schemas: Haus.CompiledSchemaFile["schemas"]) => (c: Case) => {
     const schema = schemas[c.type]
     if (!schema) throw new Error(`no type ${c.type}`)
     const decoded = Effect.runSyncExit(Haus.decodeValue(schema)(c.input))
@@ -66,5 +65,24 @@ describe.each(suites)("%s", (suite) => {
     expect(canonical(encoded)).toBe(canonical(c.output))
   }
 
-  for (const c of cases) (expectedFailures.has(c.name) ? it.fails : it)(c.name, () => run(c))
+  const { schemas } = Haus.compileSchemaFile(text)
+  for (const c of cases) (expectedFailures.has(c.name) ? it.fails : it)(c.name, () => run(schemas)(c))
+
+  // Attributes don't matter (spec §15): the same results without them. Only
+  // files that have attributes; for the others the text is the same.
+  const stripped = withoutAttributes(text)
+  if (stripped !== text) {
+    describe("without attributes", () => {
+      const plain = Haus.compileSchemaFile(stripped).schemas
+      for (const c of cases) (expectedFailures.has(c.name) ? it.fails : it)(c.name, () => run(plain)(c))
+    })
+  }
+})
+
+const INVALID = `${DIR}invalid/`
+
+describe("invalid", () => {
+  it.each(readdirSync(INVALID).filter((f) => f.endsWith(".schema.haus")))("%s is rejected", (file) => {
+    expect(() => Haus.compileSchemaFile(readFileSync(`${INVALID}${file}`, "utf8"))).toThrow(HausSchemaFileError)
+  })
 })

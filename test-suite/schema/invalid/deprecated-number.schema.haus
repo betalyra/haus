@@ -1,0 +1,2 @@
+// A defined attribute with an argument it does not take.
+type A = { @deprecated(1) x: Int }

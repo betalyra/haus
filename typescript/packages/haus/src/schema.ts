@@ -24,6 +24,10 @@ import { checkStdTime, type StdTimeType } from "./std-time.js"
 import { floatText, toFloat32, toFloat64 } from "./float.js"
 import { arr, bytes as bytesValue, num, rec, str, variant, type HRecord, type HVariant, type Value } from "./value.js"
 import { issuesOf, type StandardSchemaV1 } from "./standard.js"
+import { DEFAULT_LIMITS } from "./parser.js"
+import { Secret as SecretValue } from "./secret.js"
+
+export type { Value }
 
 // ── core ─────────────────────────────────────────────────────
 
@@ -728,7 +732,15 @@ const variantSchema = <C extends Cases, A>(cases: C, open: boolean): Schema<A> =
 
 const VALUE_KINDS = new Set(["number", "string", "bytes", "array", "record", "variant"])
 
-/** A raw `Value` handed to the encoder (an Unknown's payload): check its shape, depth and size. */
+/** A number literal as the parser writes it (spec §2): no separators, hex or `+`; `1e5`, `-0`, `19.90`. */
+const NUMBER_TEXT = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:e(-?)([0-9]+))?$/
+
+/**
+ * A raw `Value` handed to the encoder (an Unknown's payload, an `Any`): check
+ * that it is a haus value the parser could have produced, within the limits
+ * (spec §9.5, §9.8): its shape, depth and size, number literals, tags, keys.
+ * It is written back unchanged.
+ */
 const checkedValue = (raw: unknown, at: At): Value => {
   const stack: [unknown, At][] = [[raw, at]]
   while (stack.length > 0) {
@@ -737,9 +749,38 @@ const checkedValue = (raw: unknown, at: At): Value => {
     const kind = typeof v === "object" && v !== null ? (v as { kind?: unknown }).kind : undefined
     if (typeof kind !== "string" || !VALUE_KINDS.has(kind)) return invalid("a haus value", v, here)
     const value = v as Value
-    if (value.kind === "array") value.items.forEach((x, i) => stack.push([x, here.child(i)]))
-    else if (value.kind === "record") for (const [k, x] of value.fields) stack.push([x, here.child(k)])
-    else if (value.kind === "variant") value.args.forEach((x, i) => stack.push([x, here.child(i)]))
+    switch (value.kind) {
+      case "number": {
+        const m = typeof value.text === "string" ? NUMBER_TEXT.exec(value.text) : null
+        if (!m) return invalid("a number with a normalized literal (spec §2)", value.text, here)
+        if (value.text.length > DEFAULT_LIMITS.maxNumberLength) here.fail(`number literal longer than ${DEFAULT_LIMITS.maxNumberLength} characters`)
+        if (m[2] !== undefined && (m[2].length > 5 || Number(m[2]) > DEFAULT_LIMITS.maxExponent)) here.fail(`exponent larger than ${DEFAULT_LIMITS.maxExponent}`)
+        break
+      }
+      case "string":
+        if (typeof value.value !== "string") return invalid("a string value", value.value, here)
+        if (value.value.length > DEFAULT_LIMITS.maxStringLength) here.fail(`string longer than ${DEFAULT_LIMITS.maxStringLength} characters`)
+        break
+      case "bytes":
+        if (!(value.bytes instanceof Uint8Array)) return invalid("a Uint8Array", value.bytes, here)
+        break
+      case "array":
+        if (!Array.isArray(value.items)) return invalid("an array of items", value.items, here)
+        value.items.forEach((x, i) => stack.push([x, here.child(i)]))
+        break
+      case "record":
+        if (!(value.fields instanceof globalThis.Map)) return invalid("a Map of fields", value.fields, here)
+        for (const [k, x] of value.fields) {
+          if (typeof k !== "string") return invalid("a string key", k, here)
+          stack.push([x, here.child(k)])
+        }
+        break
+      case "variant":
+        if (typeof value.tag !== "string" || !TAG.test(value.tag)) return invalid("a tag name", value.tag, here)
+        if (!Array.isArray(value.args)) return invalid("an array of arguments", value.args, here)
+        value.args.forEach((x, i) => stack.push([x, here.child(i)]))
+        break
+    }
   }
   return raw as Value
 }
@@ -783,6 +824,71 @@ export const AnyTag: Schema<string | Unknown> = make(
 )
 
 const TAG = /^[A-Z][A-Za-z0-9_]*$/
+
+// ── Any and Secret ───────────────────────────────────────────
+
+/**
+ * `Any` (spec §15): any value, kept exactly as parsed, as the generic haus
+ * `Value` tree. For a payload this schema passes on without knowing its
+ * shape. Encoding writes it back unchanged, after checking that it is a haus
+ * value within the limits. Treat its content as untrusted data.
+ */
+const any_: Schema<Value> = make("Any", (v) => v, (a, at) => checkedValue(a, at))
+
+export { any_ as Any }
+
+/**
+ * A secret's own errors: its place and its type, never the value or any part
+ * of it (spec §15). Errors from inside (including paths, which may hold map
+ * keys from the data) are replaced by one at the secret's place.
+ */
+const secretFailure = (expected: string, at: At, e: unknown): never => {
+  if (e instanceof HausDecodeError || e instanceof HausEncodeError) at.fail(`expected ${expected} (a Secret: the value is not shown)`)
+  throw e
+}
+
+/**
+ * `Secret a` (spec §15): the same data as `a`, decoded into a `Secret` that
+ * shows `<redacted>` when printed, logged or converted to JSON; `expose()`
+ * gives the value out. Errors never contain the value. Encode a
+ * `h.Secret.make(value)` (or `new Secret(value)`).
+ *
+ *   const Config = h.Record({ apiKey: h.Secret(h.String) })
+ *   const config = h.parse(Config, text)
+ *   String(config.apiKey)    // "<redacted>"
+ *   config.apiKey.expose()   // "sk-…"
+ */
+export const Secret = Object.assign(
+  <A>(inner: Schema<A>): Schema<SecretValue<A>> =>
+    make(
+      `Secret ${inner.expected}`,
+      (v, at) => {
+        try {
+          return new SecretValue(inner.decode(v, at))
+        } catch (e) {
+          return secretFailure(inner.expected, at, e)
+        }
+      },
+      (s, at) => {
+        // Not even a short description of what was given instead: it may be the secret itself.
+        if (!(s instanceof SecretValue)) return at.fail(`expected a Secret (h.Secret.make(…)), got ${s === null ? "null" : Array.isArray(s) ? "an array" : typeof s}`)
+        try {
+          return inner.encode(s.expose(), at)
+        } catch (e) {
+          return secretFailure(inner.expected, at, e)
+        }
+      },
+    ),
+  {
+    /** A secret holding `value`, to encode. */
+    make: <A>(value: A): SecretValue<A> => new SecretValue(value),
+    /** Whether `u` is a Secret. */
+    is: (u: unknown): u is SecretValue<unknown> => u instanceof SecretValue,
+  },
+)
+
+/** A decoded `Secret a`: `expose()` gives the value; printing it shows `<redacted>`. */
+export type Secret<A> = SecretValue<A>
 
 // ── recursion ────────────────────────────────────────────────
 

@@ -1,0 +1,56 @@
+{"suites": [
+  {"name": "attributes", "defs": [
+    ["Client",{"record":{"closed":false,"fields":[{"key":"id","optional":false,"type":{"builtin":"Int"}},{"key":"mail","optional":true,"type":{"builtin":"String"}},{"key":"email","optional":true,"type":{"builtin":"String"}}]}}],
+    ["Later",{"record":{"closed":false,"fields":[{"key":"n","optional":false,"type":{"builtin":"Int"}},{"key":"m","optional":true,"type":{"builtin":"Int"}}]}}],
+    ["Shape",{"variant":{"closed":true,"cases":[{"tag":"Circle","payload":{"record":{"closed":false,"fields":[{"key":"r","optional":false,"type":{"builtin":"Float64"}}]}}},{"tag":"Square","payload":{"record":{"closed":false,"fields":[{"key":"side","optional":false,"type":{"builtin":"Float64"}}]}}},{"tag":"Dot","payload":"none"}]}}],
+    ["Uses",{"record":{"closed":false,"fields":[{"key":"client","optional":false,"type":{"ref":"Client"}},{"key":"shape","optional":false,"type":{"ref":"Shape"}}]}}]
+  ]},
+  {"name": "builtins", "defs": [
+    ["At",{"time":"Instant"}],
+    ["B",{"builtin":"Bytes"}],
+    ["Config",{"record":{"closed":true,"fields":[{"key":"name","optional":false,"type":{"builtin":"String"}},{"key":"key","optional":false,"type":{"secret":{"builtin":"String"}}},{"key":"pin","optional":true,"type":{"secret":{"builtin":"Int"}}},{"key":"extra","optional":false,"type":{"builtin":"Any"}}]}}],
+    ["Counts",{"map":{"builtin":"Int"}}],
+    ["Day",{"time":"Date"}],
+    ["Flag",{"builtin":"Bool"}],
+    ["Ints",{"array":{"builtin":"Int"}}],
+    ["Key",{"secret":{"builtin":"String"}}],
+    ["MaybeInt",{"maybe":{"builtin":"Int"}}],
+    ["Outcome",{"variant":{"closed":true,"cases":[{"tag":"Err","payload":{"positional":[{"builtin":"String"}]}},{"tag":"Ok","payload":{"positional":[{"builtin":"Int"}]}}]}}],
+    ["Payload",{"builtin":"Any"}],
+    ["S",{"builtin":"String"}],
+    ["Span",{"time":"Duration"}]
+  ]},
+  {"name": "numbers", "defs": [
+    ["Dec",{"builtin":"Decimal"}],
+    ["F32",{"builtin":"Float32"}],
+    ["F64",{"builtin":"Float64"}],
+    ["I",{"builtin":"Int"}],
+    ["I64",{"builtin":"Int64"}],
+    ["I8",{"builtin":"Int8"}],
+    ["U64",{"builtin":"UInt64"}],
+    ["U8",{"builtin":"UInt8"}]
+  ]},
+  {"name": "records", "defs": [
+    ["Empty",{"record":{"closed":false,"fields":[]}}],
+    ["Outer",{"record":{"closed":true,"fields":[{"key":"user","optional":false,"type":{"ref":"User"}}]}}],
+    ["Strict",{"record":{"closed":true,"fields":[{"key":"id","optional":false,"type":{"builtin":"Int"}},{"key":"tags","optional":true,"type":{"array":{"builtin":"String"}}}]}}],
+    ["User",{"record":{"closed":false,"fields":[{"key":"id","optional":false,"type":{"builtin":"Int"}},{"key":"name","optional":false,"type":{"builtin":"String"}},{"key":"nick","optional":true,"type":{"builtin":"String"}},{"key":"note","optional":true,"type":{"maybe":{"builtin":"String"}}}]}}]
+  ]},
+  {"name": "types", "defs": [
+    ["Expr",{"variant":{"closed":true,"cases":[{"tag":"Num","payload":{"positional":[{"builtin":"Int"}]}},{"tag":"Add","payload":{"positional":[{"ref":"Expr"},{"ref":"Expr"}]}},{"tag":"Neg","payload":{"record":{"closed":false,"fields":[{"key":"of","optional":false,"type":{"ref":"Expr"}}]}}}]}}],
+    ["IntPair",{"ref":"Pair(Int)"}],
+    ["Ints",{"ref":"List(Int)"}],
+    ["List(Int)",{"variant":{"closed":false,"cases":[{"tag":"Nil","payload":"none"},{"tag":"Cons","payload":{"positional":[{"builtin":"Int"},{"ref":"List(Int)"}]}}]}}],
+    ["Pair(Int)",{"record":{"closed":false,"fields":[{"key":"first","optional":false,"type":{"builtin":"Int"}},{"key":"second","optional":false,"type":{"builtin":"Int"}}]}}],
+    ["Tree",{"record":{"closed":false,"fields":[{"key":"name","optional":false,"type":{"builtin":"String"}},{"key":"children","optional":false,"type":{"array":{"ref":"Tree"}}}]}}]
+  ]},
+  {"name": "variants", "defs": [
+    ["AnyTag",{"variant":{"closed":false,"cases":[]}}],
+    ["Box",{"record":{"closed":false,"fields":[{"key":"w","optional":false,"type":{"builtin":"Int"}}]}}],
+    ["ClosedPayload",{"variant":{"closed":true,"cases":[{"tag":"Circle","payload":{"record":{"closed":true,"fields":[{"key":"r","optional":false,"type":{"builtin":"Int"}}]}}}]}}],
+    ["Holder",{"record":{"closed":false,"fields":[{"key":"shape","optional":false,"type":{"ref":"Shape"}},{"key":"any","optional":false,"type":{"array":{"ref":"AnyTag"}}}]}}],
+    ["Level",{"variant":{"closed":true,"cases":[{"tag":"Debug","payload":"none"},{"tag":"Info","payload":"none"}]}}],
+    ["Shape",{"variant":{"closed":false,"cases":[{"tag":"Circle","payload":{"record":{"closed":false,"fields":[{"key":"r","optional":false,"type":{"builtin":"Float64"}}]}}},{"tag":"Point","payload":{"positional":[{"builtin":"Float64"},{"builtin":"Float64"}]}},{"tag":"Empty","payload":"none"},{"tag":"Wrap","payload":{"positional":[{"ref":"Box"}]}},{"tag":"Pair","payload":{"positional":[{"builtin":"Int"},{"builtin":"String"}]}}]}}],
+    ["Strict",{"variant":{"closed":true,"cases":[{"tag":"A","payload":"none"},{"tag":"B","payload":{"positional":[{"builtin":"Int"}]}},{"tag":"C","payload":{"record":{"closed":false,"fields":[{"key":"x","optional":false,"type":{"builtin":"Int"}}]}}}]}}]
+  ]}
+]}

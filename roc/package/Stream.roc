@@ -67,6 +67,7 @@ Stream := [].{
 	finish = |state| {
 		(rest, values) = scan(state, True)?
 		text = utf8(rest.buf, rest.origin)?
+		directive(text, rest.origin)?
 		last = Value.parse_rest(text).map_err(|e| shift(e, rest.origin))?
 		if !last.is_empty() and rest.options.require_terminator {
 			end = after(rest.origin, rest.buf)
@@ -218,6 +219,7 @@ cut : Stream.Reader, U64 -> Try((Stream.Reader, Value), Value.ParseError)
 cut = |s, comma| {
 	piece = s.buf.sublist({ start: 0, len: comma })
 	text = utf8(piece, s.origin)?
+	directive(text, s.origin)?
 	value = match Value.parse_rest(text) {
 		Ok([v]) => v
 		Ok([]) => {
@@ -247,6 +249,17 @@ unbalanced = |s, i| {
 			}
 	}
 }
+
+## A version directive at the start of the stream (spec §10): `#haus 2`.
+## The first value starts at column 1, or 2 after a byte order mark; any
+## later one after at least a value and a comma.
+directive : Str, Pos -> Try({}, Value.ParseError)
+directive = |text, origin|
+	if origin.line == 1 and origin.column <= 2 and Value.starts_with_directive(text) {
+		Err({ reason: Value.newer_version_reason, line: origin.line, column: origin.column })
+	} else {
+		Ok({})
+	}
 
 utf8 : List(U8), Pos -> Try(Str, Value.ParseError)
 utf8 = |bytes, origin| match Str.from_utf8(bytes) {
@@ -372,3 +385,8 @@ expect {
 	}
 	same("\u(FEFF){ ok: true }") and same("\u(FEFF)\u(001B)") and same("\u(FEFF)\",x")
 }
+
+# A version directive at the start (spec §10) needs a newer version of haus.
+expect Stream.all(["#haus 2\n1,\n2,\n".to_utf8()]).map_ok(|vs| vs.len()).map_err(|e| e.reason) == Err("the file starts with a version directive (#haus): it needs a newer version of haus")
+expect Stream.all(["\u(FEFF)#ha".to_utf8(), "us 2\n1,\n".to_utf8()]).map_ok(|vs| vs.len()).map_err(|e| (e.reason, e.column)) == Err(("the file starts with a version directive (#haus): it needs a newer version of haus", 2))
+expect Stream.all(["1,\n#haus 2,\n".to_utf8()]).map_ok(|vs| vs.len()).map_err(|e| e.reason) == Err("expected a value, found '#'")

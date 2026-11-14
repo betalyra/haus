@@ -1,0 +1,2 @@
+// No space between an attribute name and its arguments.
+type A = { @deprecated ("x") x: Int }

@@ -19,9 +19,13 @@
  *   < Point Float64 Float64 > → { _tag: "Point"; values: readonly [number, number] }
  *   open variants → … | Unknown                                               (other tags kept as raw values)
  *   < > → string | Unknown                                                    (any tag: a bare tag as its name)
+ *   Any → Value (the parsed value, unchanged)                                 Secret a → Secret<A> (shows <redacted>; expose())
+ *
+ * Attributes don't change the schemas (spec §15). `@deprecated` becomes a
+ * JSDoc `@deprecated` in the declarations.
  */
 import * as h from "./schema.js"
-import { parseSchemaFile, type Builtin, type Case, type Definition, type Field, type Instance, type ParseSchemaOptions, type SchemaFile, type Type } from "./schema-file.js"
+import { deprecation, parseSchemaFile, type Attribute, type Builtin, type Case, type Definition, type Field, type Instance, type ParseSchemaOptions, type SchemaFile, type Type } from "./schema-file.js"
 
 export interface CompiledSchemaFile {
   readonly file: SchemaFile
@@ -53,7 +57,8 @@ const builtin = (name: Builtin): h.AnySchema => {
     case "UInt32": return h.UInt32
     case "UInt64": return h.UInt64
     case "Float32": return h.Float32
-    default: return h.Float64
+    case "Float64": return h.Float64
+    case "Any": return h.Any
   }
 }
 
@@ -89,6 +94,8 @@ export const fromSchemaFile = (file: SchemaFile): CompiledSchemaFile => {
         return h.Map(build(t.value))
       case "maybe":
         return h.Maybe(build(t.item))
+      case "secret":
+        return h.Secret(build(t.item))
       case "record":
         return h.Record(fields(t.fields), { closed: t.closed })
       case "variant": {
@@ -128,17 +135,33 @@ export const fromSchemaFile = (file: SchemaFile): CompiledSchemaFile => {
 
 const KEY = /^[A-Za-z_$][A-Za-z0-9_$]*$/
 const prop = (k: string) => (KEY.test(k) ? k : JSON.stringify(k))
-const comment = (body: string) => `/**\n * ${body.replaceAll("*/", "*\\/").split("\n").join("\n * ")}\n */\n`
+const escapeDoc = (text: string) => text.replaceAll("*/", "*\\/")
+const comment = (body: string) => `/**\n * ${escapeDoc(body).split("\n").join("\n * ")}\n */\n`
 
-/** JSDoc for a definition: its comment and its haus source. */
-export const definitionDoc = (d: Definition, extra = ""): string =>
-  comment(`${extra}${"```haus-schema\n"}${d.source}\n${"```"}`)
+/** The JSDoc tag for `@deprecated` attributes, or "". */
+const deprecatedTag = (attributes: readonly Attribute[] | undefined): string => {
+  const message = deprecation(attributes)
+  return message === undefined ? "" : `@deprecated${message ? ` ${message}` : ""}`
+}
+
+/** An inline JSDoc `/** @deprecated … *\/ ` for a deprecated field or case, or "". */
+export const deprecatedDoc = (attributes: readonly Attribute[] | undefined): string => {
+  const tag = deprecatedTag(attributes)
+  return tag ? `/** ${escapeDoc(tag)} */ ` : ""
+}
+
+/** JSDoc for a definition: its comment and its haus source, and `@deprecated` when it is. */
+export const definitionDoc = (d: Definition, extra = ""): string => {
+  const tag = deprecatedTag(d.attributes)
+  return comment(`${extra}${"```haus-schema\n"}${d.source}\n${"```"}${tag ? `\n${tag}` : ""}`)
+}
 
 /** The definitions a type refers to. */
 const referenced = (t: Type, onRef: (d: Definition) => void): void => {
   switch (t.kind) {
     case "array":
     case "maybe":
+    case "secret":
       return referenced(t.item, onRef)
     case "map":
       return referenced(t.value, onRef)
@@ -204,6 +227,7 @@ export const schemaDeclarations = (file: SchemaFile, options: DeclarationOptions
           case "Bytes": return "Uint8Array"
           case "Bool": return "boolean"
           case "Int": case "Int64": case "UInt64": return "bigint"
+          case "Any": return "h$.Value"
           default: return "number"
         }
       case "std":
@@ -214,13 +238,15 @@ export const schemaDeclarations = (file: SchemaFile, options: DeclarationOptions
         return `ReadonlyMap<string, ${print(t.value)}>`
       case "maybe":
         return `${print(t.item)} | null`
+      case "secret":
+        return `h$.Secret<${print(t.item)}>`
       case "record":
         return record(t.fields)
       case "variant": {
-        if (isEnum(t.cases) && !t.open) return t.cases.map((c) => JSON.stringify(c.tag)).join(" | ")
+        if (isEnum(t.cases) && !t.open) return t.cases.map((c) => deprecatedDoc(c.attributes) + JSON.stringify(c.tag)).join(" | ")
         if (t.cases.length === 0) return "string | h$.Unknown"
         const cases = t.cases.map((c) => {
-          const tag = `readonly _tag: ${JSON.stringify(c.tag)}`
+          const tag = `${deprecatedDoc(c.attributes)}readonly _tag: ${JSON.stringify(c.tag)}`
           switch (c.payload.kind) {
             case "none": return `{ ${tag} }`
             case "record": return `{ ${[tag, ...fieldList(c.payload.record.fields)].join("; ")} }`
@@ -238,7 +264,7 @@ export const schemaDeclarations = (file: SchemaFile, options: DeclarationOptions
         return paramName(t.name)
     }
   }
-  const fieldList = (fs: readonly Field[]) => fs.map((f) => `readonly ${prop(f.key)}${f.optional ? "?" : ""}: ${print(f.type)}`)
+  const fieldList = (fs: readonly Field[]) => fs.map((f) => `${deprecatedDoc(f.attributes)}readonly ${prop(f.key)}${f.optional ? "?" : ""}: ${print(f.type)}`)
   const record = (fs: readonly Field[]) => (fs.length === 0 ? "{}" : `{ ${fieldList(fs).join("; ")} }`)
 
   const own = new Set(file.definitions)

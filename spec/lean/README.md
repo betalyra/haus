@@ -15,7 +15,10 @@ and a reference parser that computes it.
 | [`Haus/Canonical.lean`](Haus/Canonical.lean), [`Haus/RoundTrip/`](Haus/RoundTrip) | The canonical form (spec §12), and the proofs that it parses back and is unique |
 | [`Haus/Stream.lean`](Haus/Stream.lean), [`Haus/Stream/`](Haus/Stream) | A model of the bindings' stream readers (spec §6), and the proofs that the chunks don't matter and that it reads what `parse` does |
 | [`Haus/Time/`](Haus/Time) | The std/time profile ([`std/time.md`](../std/time.md)): the rules, a checker, and the proof that it computes them |
+| [`Haus/Schema/`](Haus/Schema) | Decoding with a schema (spec §15): resolved types, exact float rounding and spelling, the reference decoder and encoder, the rules they follow, and the round trip |
+| [`Haus/Version.lean`](Haus/Version.lean) | Versions (spec §10): `Extends old new` |
 | [`Main.lean`](Main.lean) | `haus-ref`, the parser on the command line |
+| [`scripts/schema-types.ts`](scripts/schema-types.ts), [`schema-suite.json`](schema-suite.json) | The schema suite's types, resolved by the TypeScript binding's schema-file parser for `haus-ref --schema-suite` |
 
 It needs [elan](https://github.com/leanprover/elan) (`brew install elan-init`);
 the Lean version is pinned in `lean-toolchain`. No Mathlib.
@@ -25,7 +28,15 @@ lake build
 .lake/build/bin/haus-ref FILE                    # values in the test-suite JSON encoding
 .lake/build/bin/haus-ref --suite ../../test-suite # the conformance suite
 .lake/build/bin/haus-ref --time Date 2026-02-29     # a std/time check
+.lake/build/bin/haus-ref --schema-suite ../../test-suite/schema  # the schema suite (spec §15)
 ```
+
+The schema suite's schema files are parsed by the TypeScript binding
+(`typescript/packages/haus`, built with `pnpm build`), not in Lean.
+[`scripts/schema-types.ts`](scripts/schema-types.ts) writes the types they
+define, resolved, to [`schema-suite.json`](schema-suite.json); run it again
+after changing a schema file (`node scripts/schema-types.ts > schema-suite.json`).
+`haus-ref --schema-batch TYPES FILE` decodes one value per line, for fuzzing.
 
 ## What is proven
 
@@ -117,3 +128,37 @@ decide), and each piece is parsed on its own.
 
 Not modelled: the limit on one value's length (§7), strict mode, UTF-8
 decoding and error positions.
+
+**About schema decoding** (spec §15), in [`Haus/Schema/`](Haus/Schema).
+`Ty` is a resolved type: built-in types, `Secret`, `Array`, `Map`, records
+and variants (open or closed, every payload form), std/time types, and
+named references into an environment, generic types applied. Attributes
+(§14) are not part of it: a `Schema` keeps them in a table of their own,
+which decoding never reads. `decode` recurses on the value, so it always
+terminates; a reference that comes up again before any input is consumed
+is an error. Floats are rounded and spelled exactly, with integer
+arithmetic ([`Float.lean`](Haus/Schema/Float.lean)). All 250 cases of
+`test-suite/schema` pass.
+
+| Theorem | Says |
+|---|---|
+| `decode_iff` | The decoder computes the rules of §15, written as an inductive relation (`Dec`, one rule per row of §15's tables): `decode env t v = .ok x ↔ Dec env t v x` |
+| `decode_encode` | Decode, encode, decode is decode: when `t` accepts `v` as `x`, it accepts `encode x`, again as `x` |
+| `encode_agree` | `encode x` is `v`, except for the fields an open record ignores, the spelling of floats and `-0` decoded as an integer (`Agree`) |
+| `secret_error` | An error inside a `Secret` is the same for every value: its place and type, nothing of the value |
+| `Schema.decode_erase` | Attributes don't matter: decoding with the schema without its attributes is decoding with the schema (`rfl`) |
+
+`decode_encode` and `encode_agree` assume `FloatLaw`: the spelling of a
+decoded float rounds back to the same float. It is checked, not proven: by
+the suite, by `#guard`s at the edges of both formats, and on 20,000 random
+literals, where rounding and spelling also matched JavaScript's `Number`
+and `toString` exactly.
+
+**About versions** (spec §10), in [`Haus/Version.lean`](Haus/Version.lean).
+A `Version` is what a version fixes: its files, its canonical form, its
+built-in types and its schema files. `Extends old new` says every text
+`old` accepts, `new` accepts with the same values, and on what `old` can
+express the canonical form, the built-in types and the types of every
+schema `old` accepts are the same. `Extends.refl`, `Extends.trans` and
+`current_extends_self` are proven; each release will prove that it extends
+the one before.

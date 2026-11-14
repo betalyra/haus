@@ -8,6 +8,9 @@
  *   const info = hoverAt(ctx, offset)
  *   hoverMarkdown(info)   // for editors
  *   hoverText(info)       // plain text, for tooltips
+ *
+ * Values of a `Secret` type, and everything inside them, are masked (spec
+ * §15): the hover shows the schema's type, never the value.
  */
 import { checkData, describeType } from "./check.js"
 import { DEFAULT_LIMITS, Parser } from "./parser.js"
@@ -20,6 +23,8 @@ export interface HoverContext {
   readonly inference: Inference
   /** The schema's type at each value, when the file has a schema. */
   readonly schemaTypes?: ReadonlyMap<Value, Type>
+  /** Values of a `Secret` type (with a schema): they and what they contain are not shown. */
+  readonly secrets?: ReadonlySet<Value>
 }
 
 /** Parse a data file (with locations) for hovering; with a schema, also find the schema's type at every value. */
@@ -33,8 +38,15 @@ export function contextOf(values: readonly Value[], schema?: { readonly file: Sc
   const inference = infer(values)
   if (!schema) return { values, inference }
   const schemaTypes = new Map<Value, Type>()
-  checkData(schema.file, schema.type, values, { onValue: (v, t) => schemaTypes.set(v, t) })
-  return { values, inference, schemaTypes }
+  const secrets = new Set<Value>()
+  checkData(schema.file, schema.type, values, {
+    onValue: (v, t, secret) => {
+      // The first type is the one written in the schema (`Secret String` before the `String` inside it).
+      if (!schemaTypes.has(v)) schemaTypes.set(v, t)
+      if (secret) secrets.add(v)
+    },
+  })
+  return { values, inference, schemaTypes, secrets }
 }
 
 export interface HoverInfo {
@@ -50,14 +62,25 @@ export interface HoverInfo {
   readonly inferred?: { readonly type: string; readonly occurrences: number }
   /** A note on the value: the prelude or std/time type of a tag, or a number a float can't hold exactly. */
   readonly note?: string
+  /** The value is (inside) a `Secret`: show nothing about it but its schema type. */
+  readonly secret?: true
+}
+
+interface Hit {
+  readonly value: Value
+  readonly key?: string
+  readonly span: readonly [number, number]
+  /** Inside a value of a `Secret` type. */
+  readonly secret: boolean
 }
 
 /** The innermost value (or record key) at `offset`. */
-function find(v: Value, offset: number): { value: Value; key?: string; span: readonly [number, number] } | undefined {
+function find(v: Value, offset: number, secrets: ReadonlySet<Value> | undefined, inSecret = false): Hit | undefined {
   if (v.start === undefined || v.end === undefined || offset < v.start || offset >= v.end) return undefined
+  const secret = inSecret || (secrets?.has(v) ?? false)
   const inner = (items: Iterable<Value>) => {
     for (const x of items) {
-      const hit = find(x, offset)
+      const hit = find(x, offset, secrets, secret)
       if (hit) return hit
     }
     return undefined
@@ -65,18 +88,21 @@ function find(v: Value, offset: number): { value: Value; key?: string; span: rea
   switch (v.kind) {
     case "record":
       for (const [key, span] of v.keySpans ?? []) {
-        if (offset >= span[0] && offset < span[1]) return { value: v.fields.get(key)!, key, span }
+        if (offset >= span[0] && offset < span[1]) {
+          const value = v.fields.get(key)!
+          return { value, key, span, secret: secret || (secrets?.has(value) ?? false) }
+        }
       }
-      return inner(v.fields.values()) ?? { value: v, span: [v.start, v.end] }
+      return inner(v.fields.values()) ?? { value: v, span: [v.start, v.end], secret }
     case "array":
-      return inner(v.items) ?? { value: v, span: [v.start, v.end] }
+      return inner(v.items) ?? { value: v, span: [v.start, v.end], secret }
     case "variant": {
       const tagEnd = v.start + v.tag.length
-      if (offset < tagEnd) return { value: v, span: [v.start, tagEnd] }
-      return inner(v.args) ?? { value: v, span: [v.start, v.end] }
+      if (offset < tagEnd) return { value: v, span: [v.start, tagEnd], secret }
+      return inner(v.args) ?? { value: v, span: [v.start, v.end], secret }
     }
     default:
-      return { value: v, span: [v.start, v.end] }
+      return { value: v, span: [v.start, v.end], secret }
   }
 }
 
@@ -118,11 +144,12 @@ function note(v: Value): string | undefined {
 /** What to show for `offset`, if there is a value there. */
 export function hoverAt(ctx: HoverContext, offset: number, options: { readonly width?: number } = {}): HoverInfo | undefined {
   for (const top of ctx.values) {
-    const hit = find(top, offset)
+    const hit = find(top, offset, ctx.secrets)
     if (!hit) continue
-    const shape = ctx.inference.shapeOf.get(hit.value)
+    // A secret shows only its schema type: no inferred type (it may list tags of the data) and no note on the value.
+    const shape = hit.secret ? undefined : ctx.inference.shapeOf.get(hit.value)
     const type = ctx.schemaTypes?.get(hit.value)
-    const n = note(hit.value)
+    const n = hit.secret ? undefined : note(hit.value)
     return {
       start: hit.span[0],
       end: hit.span[1],
@@ -131,6 +158,7 @@ export function hoverAt(ctx: HoverContext, offset: number, options: { readonly w
       ...(type ? { schema: { type: describeType(type), ...(type.kind === "ref" ? { definition: type.instance.definition } : {}) } } : {}),
       ...(shape ? { inferred: { type: printShape(shape, { width: options.width ?? 80, context: ctx.inference.root }), occurrences: shape.occurrences } } : {}),
       ...(n ? { note: n } : {}),
+      ...(hit.secret ? { secret: true as const } : {}),
     }
   }
   return undefined
@@ -168,7 +196,7 @@ export function hoverMarkdown(info: HoverInfo): string {
     parts.push(block(info.inferred.type), `_Inferred from this file (${seen} at this position)._\n\n---\n\n`)
   }
   const head = info.key === undefined ? "" : `**field** \`${info.key}\`\n\n`
-  const [kind, ...rest] = describeValue(info.value).split(" ")
+  const [kind, ...rest] = info.secret ? ["secret", "(the value is not shown)"] : describeValue(info.value).split(" ")
   parts.push(`${head}**${kind}** ${rest.join(" ")}`)
   if (info.note) parts.push(`\n\n${info.note}`)
   return parts.join("")
@@ -176,7 +204,7 @@ export function hoverMarkdown(info: HoverInfo): string {
 
 /** Plain text for a tooltip: `status: Status` and a line of detail. */
 export function hoverText(info: HoverInfo): string {
-  const type = info.schema?.type ?? info.inferred?.type ?? describeValue(info.value)
+  const type = info.schema?.type ?? info.inferred?.type ?? (info.secret ? "secret" : describeValue(info.value))
   const lines = [info.key === undefined ? type : `${info.key}: ${type}`]
   const doc = info.schema?.definition?.doc.trim()
   if (doc) lines.push(doc.split("\n")[0]!)

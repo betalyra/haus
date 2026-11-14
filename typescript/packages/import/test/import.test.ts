@@ -79,6 +79,43 @@ describe("effect target", async () => {
   })
 })
 
+describe("Secret, Any and attributes", async () => {
+  const SECRET = "hunter2-ZQXJ9WVK"
+  const schema = `type Root = { name: String, @deprecated("use token") key?: Secret String, token?: Secret String, extra: Any }`
+  /** A schema file and a data file in a fresh directory. */
+  const files = (data: string) => {
+    const dir = mkdtempSync(join(tmpdir(), "haus-secret-"))
+    writeFileSync(join(dir, "x.schema.haus"), schema)
+    writeFileSync(join(dir, "x.haus"), data)
+    return { schema: join(dir, "x.schema.haus"), data: join(dir, "x.haus") }
+  }
+  const good = `{ name: "a", key: "${SECRET}", extra: Order { id: 1 } }`
+  const bad = `{\n  name: "a",\n  key: 98765432,\n  extra: 1,\n}`
+
+  for (const target of ["plain", "effect"] as const) {
+    it(`${target}: declarations, decoding and errors without the value`, async () => {
+      const b = await backend(target)
+      const { schema: schemaPath, data } = files(good)
+      const types = typesFor(schema, schemaPath, b).text
+      expect(types).toContain(target === "plain" ? "key?: h$.Secret<string>" : "key?: Redacted$.Redacted<string>")
+      expect(types).toContain(target === "plain" ? "readonly extra: h$.Value" : "readonly extra: Haus$.Value")
+      expect(types).toContain("/** @deprecated use token */ readonly key?:")
+
+      const root = (await load(moduleFor(good, data, b, runtimeOf).code)).default as { key: unknown; extra: { kind: string } }
+      expect(String(root.key)).toBe("<redacted>")
+      expect(JSON.stringify(root)).not.toContain(SECRET)
+      expect(root.extra.kind).toBe("variant")
+
+      const wrong = files(bad)
+      const diagnostics = typesFor(bad, wrong.data, b).diagnostics
+      expect(diagnostics.map((d) => d.message)).toEqual(["expected String (a Secret: the value is not shown) (x.schema.haus: Root)"])
+      const failed = await load(moduleFor(bad, wrong.data, b, runtimeOf).code).then(() => "loaded", (e: Error) => e.message)
+      expect(failed).toMatch(/^x\.haus:3:\d+: expected String \(a Secret: the value is not shown\)/)
+      expect(failed).not.toContain("98765432")
+    })
+  }
+})
+
 describe("vite plugin", () => {
   it("loads .haus files and watches their schema files", async () => {
     const plugin = haus({ target: "effect" })

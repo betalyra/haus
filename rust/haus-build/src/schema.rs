@@ -1,13 +1,15 @@
 //! Schema files (`.schema.haus`): syntax tree and parser, following
 //! spec/grammar.ebnf. Parsing builds the tree; [`check`] then reports what
-//! the grammar allows but the spec doesn't (duplicates, `closed < >`), and
-//! [`expand`] copies spread types in (`< ...UserEvent | Ping >`), so the
-//! generators only ever see plain records and variants.
+//! the grammar allows but the spec doesn't (duplicates, `closed < >`,
+//! attributes with the wrong arguments), and [`expand`] copies spread types
+//! in (`< ...UserEvent | Ping >`), so the generators only ever see plain
+//! records and variants.
 
+use haus::Value;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use winnow::ascii::{multispace1, till_line_ending};
-use winnow::combinator::{alt, cut_err, delimited, eof, not, opt, peek, preceded, repeat, separated, terminated};
+use winnow::combinator::{alt, cut_err, delimited, eof, fail, not, opt, peek, preceded, repeat, separated, terminated};
 use winnow::error::{ContextError, ErrMode, ModalResult, StrContext, StrContextValue};
 use winnow::prelude::*;
 use winnow::stream::{LocatingSlice, Location};
@@ -38,10 +40,39 @@ pub fn error(text: &str, pos: usize, reason: impl Into<String>) -> Error {
 
 // ── syntax tree ──────────────────────────────────────────────
 
+/// The prelude (spec §14): built-in types and their number of parameters.
+/// A schema can't redefine them.
+pub const PRELUDE: &[(&str, usize)] = &[
+    ("Bool", 0),
+    ("Maybe", 1),
+    ("Result", 2),
+    ("String", 0),
+    ("Bytes", 0),
+    ("Array", 1),
+    ("Map", 1),
+    ("Int", 0),
+    ("Int8", 0),
+    ("Int16", 0),
+    ("Int32", 0),
+    ("Int64", 0),
+    ("UInt8", 0),
+    ("UInt16", 0),
+    ("UInt32", 0),
+    ("UInt64", 0),
+    ("Float32", 0),
+    ("Float64", 0),
+    ("Decimal", 0),
+    ("Any", 0),
+    ("Secret", 1),
+    ("Stream", 1),
+];
+
 #[derive(Debug, Clone)]
 pub struct File {
     pub imports: Vec<Import>,
     pub types: Vec<TypeDef>,
+    /// What is allowed but probably not meant: unknown attributes, uses of deprecated types.
+    pub warnings: Vec<Error>,
 }
 
 #[derive(Debug, Clone)]
@@ -59,6 +90,27 @@ pub struct TypeDef {
     pub pos: usize,
     /// The `//` lines directly above.
     pub doc: String,
+    pub attrs: Vec<Attribute>,
+}
+
+/// `@deprecated("use email")`: information for tools, never for decoding (spec §14).
+#[derive(Debug, Clone)]
+pub struct Attribute {
+    pub name: String,
+    /// The arguments (none without parentheses), or what is wrong with them.
+    pub args: Result<Vec<Value>, Fail>,
+    pub pos: usize,
+}
+
+/// The attributes this version of haus defines (spec §14).
+const DEFINED_ATTRIBUTES: &[&str] = &["deprecated"];
+
+/// Whether `attrs` mark something deprecated, and the message if there is one.
+pub fn deprecation(attrs: &[Attribute]) -> Option<Option<&str>> {
+    attrs.iter().find(|a| a.name == "deprecated").map(|a| match a.args.as_deref() {
+        Ok([Value::String(why)]) => Some(why.as_str()),
+        _ => None,
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -90,6 +142,8 @@ pub struct Spread {
     pub name: String,
     pub at: usize,
     pub pos: usize,
+    /// Attributes written before it, which [`check`] rejects.
+    pub attrs: Vec<Attribute>,
 }
 
 impl Ty {
@@ -100,12 +154,31 @@ impl Ty {
     }
 }
 
+/// As written in a schema, for messages: `Array (Maybe Int)`, `{ … }`.
+impl fmt::Display for Ty {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Ty::Name { name, args, .. } => {
+                f.write_str(name)?;
+                args.iter().try_for_each(|a| match a {
+                    Ty::Name { args, .. } if !args.is_empty() => write!(f, " ({a})"),
+                    _ => write!(f, " {a}"),
+                })
+            }
+            Ty::Param { name, .. } => f.write_str(name),
+            Ty::Record { closed, .. } => f.write_str(if *closed { "closed { … }" } else { "{ … }" }),
+            Ty::Variant { closed, .. } => f.write_str(if *closed { "closed < … >" } else { "< … >" }),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Field {
     pub key: String,
     pub optional: bool,
     pub ty: Ty,
     pub pos: usize,
+    pub attrs: Vec<Attribute>,
 }
 
 #[derive(Debug, Clone)]
@@ -114,6 +187,7 @@ pub struct Case {
     /// `Tag A B`: positional; `Tag { … }`: one record.
     pub payload: Vec<Ty>,
     pub pos: usize,
+    pub attrs: Vec<Attribute>,
 }
 
 /// Parse and check a schema file.
@@ -131,10 +205,46 @@ pub fn parse(text: &str) -> Result<File, Error> {
             expected.map_or_else(|| format!("unexpected {found}"), |what| format!("expected {what}, found {found}")),
         )
     })?;
-    check(&file).map_err(|(pos, reason)| error(text, pos, reason))?;
-    let file = expand(file).map_err(|(pos, reason)| error(text, pos, reason))?;
-    let types = file.types.into_iter().map(|d| TypeDef { doc: doc_comment(text, d.pos), ..d }).collect();
-    Ok(File { types, ..file })
+    let at = |(pos, reason): Fail| error(text, pos, reason);
+    let mut warnings = check(&file).map_err(at)?;
+    let file = expand(file).map_err(at)?;
+    guarded(&file).map_err(at)?;
+    warnings.extend(deprecated_uses(&file));
+    warnings.sort_by_key(|(pos, _)| *pos);
+    let types = file
+        .types
+        .into_iter()
+        .map(|d| TypeDef { doc: doc_comment(text, d.attrs.first().map_or(d.pos, |a| a.pos)), ..d })
+        .collect();
+    Ok(File { types, warnings: warnings.into_iter().map(at).collect(), ..file })
+}
+
+/// The same file without its attributes: they never change decoding (spec §15).
+pub fn without_attributes(file: File) -> File {
+    fn ty(t: &mut Ty) {
+        match t {
+            Ty::Name { args, .. } => args.iter_mut().for_each(ty),
+            Ty::Param { .. } => {}
+            Ty::Record { fields, .. } => fields.iter_mut().for_each(|f| {
+                f.attrs.clear();
+                ty(&mut f.ty);
+            }),
+            Ty::Variant { cases, .. } => cases.iter_mut().for_each(|c| {
+                c.attrs.clear();
+                c.payload.iter_mut().for_each(ty);
+            }),
+        }
+    }
+    let types = file
+        .types
+        .into_iter()
+        .map(|mut d| {
+            d.attrs.clear();
+            ty(&mut d.ty);
+            d
+        })
+        .collect();
+    File { types, warnings: vec![], ..file }
 }
 
 /// What the parser stopped at, for messages.
@@ -231,7 +341,7 @@ fn file(i: &mut Input) -> ModalResult<File> {
         }
         (imports, types)
     });
-    Ok(File { imports, types })
+    Ok(File { imports, types, warnings: vec![] })
 }
 
 fn import(i: &mut Input) -> ModalResult<Import> {
@@ -252,10 +362,133 @@ fn import(i: &mut Input) -> ModalResult<Import> {
 }
 
 fn typedef(i: &mut Input) -> ModalResult<TypeDef> {
-    let (pos, name, params, ty) =
-        preceded(keyword("type"), cut_err((pos, upper, repeat(0.., param), preceded(sym("="), ty)))).parse_next(i)?;
+    let (attrs, (pos, name, params, ty)) = attributed(
+        "'type' after the attributes",
+        preceded(keyword("type"), cut_err((pos, upper, repeat(0.., param), preceded(sym("="), ty)))),
+    )
+    .parse_next(i)?;
     // The doc comment is filled in by `parse`, which has the whole text.
-    Ok(TypeDef { name, params, ty, pos, doc: String::new() })
+    Ok(TypeDef { name, params, ty, pos, doc: String::new(), attrs })
+}
+
+/// `@name` or `@name(value, …)`, then whitespace. The arguments are haus
+/// values, read by the data parser; what is wrong with them is reported by
+/// [`check`].
+fn attribute(i: &mut Input) -> ModalResult<Attribute> {
+    let pos = i.current_token_start();
+    let name = (
+        one_of(|c: char| c.is_ascii_lowercase() || c == '_'),
+        take_while(0.., |c: char| c.is_ascii_alphanumeric() || c == '_'),
+    )
+        .take()
+        .map(str::to_owned)
+        .context(expected("an attribute name after '@': @deprecated"));
+    let name = preceded('@', cut_err(name)).parse_next(i)?;
+    let rest: &str = i;
+    let args = if rest.starts_with('(') {
+        let Some(close) = closing_paren(rest) else {
+            return cut_err(fail.context(expected("')' closing the attribute's arguments"))).parse_next(i);
+        };
+        let start = i.current_token_start() + 1;
+        let inner = &rest[1..close];
+        let _ = i.next_slice(close + 1);
+        match haus::parse(inner) {
+            Ok(args) if args.is_empty() => Err((start - 1, format!("empty parentheses: write @{name} without them"))),
+            Ok(args) => Ok(args),
+            Err(e) => Err((start + e.offset, format!("in the arguments of @{name}: {}", e.reason))),
+        }
+    } else {
+        // `@deprecated ("x")` would be an attribute without arguments, then `("x")`.
+        let before = i.checkpoint();
+        ws.parse_next(i)?;
+        if i.starts_with('(') {
+            i.reset(&before);
+            return cut_err(fail.context(expected("'(' right after the attribute's name, without a space")))
+                .parse_next(i);
+        }
+        Ok(vec![])
+    };
+    ws.parse_next(i)?;
+    Ok(Attribute { name, args, pos })
+}
+
+/// The attributes before `p`, and `p`, which must follow if there are any
+/// (`what`, for the message if it doesn't).
+fn attributed<'a, O>(
+    what: &'static str,
+    mut p: impl Parser<Input<'a>, O, E>,
+) -> impl Parser<Input<'a>, (Vec<Attribute>, O), E> {
+    move |i: &mut Input<'a>| {
+        let attrs: Vec<Attribute> = repeat(0.., attribute).parse_next(i)?;
+        if attrs.is_empty() {
+            return Ok((attrs, p.parse_next(i)?));
+        }
+        let start = i.checkpoint();
+        match p.parse_next(i) {
+            Ok(x) => Ok((attrs, x)),
+            // Nothing of `p` was read: say what should have come.
+            Err(ErrMode::Backtrack(_)) => {
+                i.reset(&start);
+                cut_err(fail.context(expected(what))).parse_next(i)
+            }
+            Err(e) => Err(e.cut()),
+        }
+    }
+}
+
+/// Where the `)` matching the `(` that `s` starts with is, skipping strings,
+/// comments and nested brackets.
+fn closing_paren(s: &str) -> Option<usize> {
+    let b = s.as_bytes();
+    let (mut i, mut depth) = (0, 0usize);
+    while i < b.len() {
+        match b[i] {
+            b'(' | b'[' | b'{' => depth += 1,
+            b')' | b']' | b'}' => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    return (b[i] == b')').then_some(i);
+                }
+            }
+            b'"' if s[i..].starts_with("\"\"\"") => {
+                i += 3;
+                while i < b.len() && !s[i..].starts_with("\"\"\"") {
+                    i += if b[i] == b'\\' { 2 } else { 1 };
+                }
+                i += 2;
+            }
+            b'"' => {
+                i += 1;
+                while i < b.len() && b[i] != b'"' && b[i] != b'\n' {
+                    i += if b[i] == b'\\' { 2 } else { 1 };
+                }
+            }
+            b'/' if s[i..].starts_with("//") => i += s[i..].find('\n')?,
+            b'/' if s[i..].starts_with("/*") => {
+                let mut nested = 0usize;
+                loop {
+                    if s[i..].starts_with("/*") {
+                        nested += 1;
+                        i += 2;
+                    } else if s[i..].starts_with("*/") {
+                        nested -= 1;
+                        i += 2;
+                        if nested == 0 {
+                            break;
+                        }
+                    } else if i < b.len() {
+                        i += 1;
+                    } else {
+                        return None;
+                    }
+                }
+                continue;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
 }
 
 /// `Name atom+ | atom`.
@@ -295,11 +528,12 @@ fn spread<T>(i: &mut Input) -> ModalResult<Member<T>> {
 }
 
 /// Own entries and spreads, each spread remembering how many entries came before it.
-fn split<T>(members: Vec<Member<T>>) -> (Vec<T>, Vec<Spread>) {
-    members.into_iter().fold((vec![], vec![]), |(mut own, mut spreads), m| {
+/// `with` gives an own entry its attributes.
+fn split<T>(members: Vec<(Vec<Attribute>, Member<T>)>, with: impl Fn(T, Vec<Attribute>) -> T) -> (Vec<T>, Vec<Spread>) {
+    members.into_iter().fold((vec![], vec![]), |(mut own, mut spreads), (attrs, m)| {
         match m {
-            Member::Own(x) => own.push(x),
-            Member::Spread(name, pos) => spreads.push(Spread { name, at: own.len(), pos }),
+            Member::Own(x) => own.push(with(x, attrs)),
+            Member::Spread(name, pos) => spreads.push(Spread { name, at: own.len(), pos, attrs }),
         }
         (own, spreads)
     })
@@ -307,20 +541,28 @@ fn split<T>(members: Vec<Member<T>>) -> (Vec<T>, Vec<Spread>) {
 
 fn record<'a>(closed: bool) -> impl Parser<Input<'a>, Ty, E> {
     let key = alt((lower, string)).context(expected("a field name"));
-    let field = (pos, key, cut_err((opt(sym("?")), preceded(sym(":"), ty))))
-        .map(|(pos, key, (optional, ty))| Member::Own(Field { key, optional: optional.is_some(), ty, pos }));
-    let body = terminated(separated(0.., alt((spread, field)), sym(",")), opt(sym(",")));
+    let field = (pos, key, cut_err((opt(sym("?")), preceded(sym(":"), ty)))).map(|(pos, key, (optional, ty))| {
+        Member::Own(Field { key, optional: optional.is_some(), ty, pos, attrs: vec![] })
+    });
+    let body = terminated(
+        separated(0.., attributed("a field after the attributes", alt((spread, field))), sym(",")),
+        opt(sym(",")),
+    );
     (pos, preceded(sym("{"), cut_err(terminated(body, sym("}"))))).map(move |(pos, members)| {
-        let (fields, spreads) = split(members);
+        let (fields, spreads) = split(members, |f, attrs| Field { attrs, ..f });
         Ty::Record { closed, fields, spreads, pos }
     })
 }
 
 fn variant<'a>(closed: bool) -> impl Parser<Input<'a>, Ty, E> {
-    let case = (pos, upper, repeat(0.., atom)).map(|(pos, tag, payload)| Member::Own(Case { tag, payload, pos }));
-    let body = preceded(opt(sym("|")), separated(0.., alt((spread, case)), sym("|")));
+    let case = (pos, upper, repeat(0.., atom))
+        .map(|(pos, tag, payload)| Member::Own(Case { tag, payload, pos, attrs: vec![] }));
+    let body = preceded(
+        opt(sym("|")),
+        separated(0.., attributed("a tag after the attributes", alt((spread, case))), sym("|")),
+    );
     (pos, preceded(sym("<"), cut_err(terminated(body, sym(">"))))).map(move |(pos, members)| {
-        let (cases, spreads) = split(members);
+        let (cases, spreads) = split(members, |c, attrs| Case { attrs, ..c });
         Ty::Variant { closed, cases, spreads, pos }
     })
 }
@@ -339,12 +581,20 @@ fn doc_comment(text: &str, pos: usize) -> String {
 
 // ── checks ───────────────────────────────────────────────────
 
-/// What the grammar allows but the spec doesn't (§14): duplicate fields and
-/// tags, `closed < >`, and row parameters (`...r`).
-fn check(file: &File) -> Result<(), (usize, String)> {
+/// What the grammar allows but the spec doesn't (§14): types defined twice
+/// or named like a prelude type, duplicate fields and tags, `closed < >`,
+/// row parameters (`...r`), and attributes with arguments they don't take,
+/// twice on one thing, or on a spread. Returns the warnings: unknown attributes.
+fn check(file: &File) -> Result<Vec<Fail>, Fail> {
     fn first_duplicate<'a>(names: impl Iterator<Item = (&'a str, usize)>) -> Option<(&'a str, usize)> {
         let mut seen = std::collections::HashSet::new();
         names.into_iter().find(|(n, _)| !seen.insert(*n))
+    }
+    if let Some((name, pos)) = first_duplicate(file.types.iter().map(|d| (d.name.as_str(), d.pos))) {
+        return Err((pos, format!("{name} is defined twice")));
+    }
+    if let Some(d) = file.types.iter().find(|d| PRELUDE.iter().any(|(n, _)| *n == d.name)) {
+        return Err((d.pos, format!("{} is a prelude type and can't be redefined", d.name)));
     }
     fn ty(t: &Ty) -> Result<(), (usize, String)> {
         let rows = match t {
@@ -355,6 +605,12 @@ fn check(file: &File) -> Result<(), (usize, String)> {
             return Err((
                 s.pos,
                 format!("row parameters (...{}) aren't supported; spread a named type instead: ...UserEvent", s.name),
+            ));
+        }
+        if let Some((s, a)) = rows.iter().find_map(|s| s.attrs.first().map(|a| (s, a))) {
+            return Err((
+                a.pos,
+                format!("a spread can't have attributes; the fields or tags of {} keep their own", s.name),
             ));
         }
         match t {
@@ -373,12 +629,167 @@ fn check(file: &File) -> Result<(), (usize, String)> {
             },
         }
     }
-    file.types.iter().try_for_each(|d| ty(&d.ty))
+    file.types.iter().try_for_each(|d| ty(&d.ty))?;
+    let mut warnings = vec![];
+    for attrs in attribute_lists(file) {
+        attributes(attrs, &mut warnings)?;
+    }
+    Ok(warnings)
+}
+
+/// Every list of attributes in a file: of its types, fields and tags.
+fn attribute_lists(file: &File) -> Vec<&[Attribute]> {
+    fn ty<'a>(t: &'a Ty, out: &mut Vec<&'a [Attribute]>) {
+        match t {
+            Ty::Name { args, .. } => args.iter().for_each(|a| ty(a, out)),
+            Ty::Param { .. } => {}
+            Ty::Record { fields, .. } => fields.iter().for_each(|f| {
+                out.push(&f.attrs);
+                ty(&f.ty, out);
+            }),
+            Ty::Variant { cases, .. } => cases.iter().for_each(|c| {
+                out.push(&c.attrs);
+                c.payload.iter().for_each(|p| ty(p, out));
+            }),
+        }
+    }
+    let mut out = vec![];
+    for d in &file.types {
+        out.push(d.attrs.as_slice());
+        ty(&d.ty, &mut out);
+    }
+    out
+}
+
+/// The attributes of one type, field or tag: defined ones with the right
+/// arguments, once each. Unknown ones are accepted with a warning: they may
+/// come from a later version of haus (spec §14).
+fn attributes(attrs: &[Attribute], warnings: &mut Vec<Fail>) -> Result<(), Fail> {
+    for (i, a) in attrs.iter().enumerate() {
+        let args = a.args.as_ref().map_err(Clone::clone)?;
+        if !DEFINED_ATTRIBUTES.contains(&a.name.as_str()) {
+            warnings.push((a.pos, format!("unknown attribute @{}: this version of haus ignores it", a.name)));
+            continue;
+        }
+        if attrs[..i].iter().any(|b| b.name == a.name) {
+            return Err((a.pos, format!("@{} is written twice here", a.name)));
+        }
+        if a.name == "deprecated" && !matches!(args.as_slice(), [] | [Value::String(_)]) {
+            return Err((a.pos, "@deprecated takes at most one argument, a string: @deprecated(\"use email\")".into()));
+        }
+    }
+    Ok(())
+}
+
+/// Every cycle of definitions consumes input (spec §9.9): `type A = B`,
+/// `type B = A` would apply a type to the same value again and again. A
+/// definition reaches another without consuming input if its whole type is
+/// that one, or a `Secret` of it, or an argument a generic type passes through
+/// (`type Id a = a`).
+fn guarded(file: &File) -> Result<(), Fail> {
+    let defs: HashMap<&str, &TypeDef> = file.types.iter().map(|d| (d.name.as_str(), d)).collect();
+    // The parameters a definition's whole type may be (`type Id a = a`, `type S a = Secret a`).
+    fn passes<'a>(def: &'a TypeDef, defs: &HashMap<&str, &'a TypeDef>, busy: &mut Vec<&'a str>) -> Vec<usize> {
+        if busy.contains(&def.name.as_str()) {
+            return vec![];
+        }
+        busy.push(&def.name);
+        let mut out = vec![];
+        let mut names = vec![];
+        reaches(&def.ty, defs, busy, &mut names, &mut out, &def.params);
+        busy.pop();
+        out
+    }
+    /// The definitions `t` reaches without consuming input, and the parameters (by index) it may be.
+    fn reaches<'a>(
+        t: &'a Ty,
+        defs: &HashMap<&str, &'a TypeDef>,
+        busy: &mut Vec<&'a str>,
+        names: &mut Vec<&'a str>,
+        params: &mut Vec<usize>,
+        own: &[String],
+    ) {
+        match t {
+            Ty::Name { name, args, .. } if name == "Secret" => {
+                args.iter().for_each(|a| reaches(a, defs, busy, names, params, own));
+            }
+            Ty::Name { name, args, .. } => {
+                if let Some(def) = defs.get(name.as_str()) {
+                    names.push(&def.name);
+                    for i in passes(def, defs, busy) {
+                        if let Some(a) = args.get(i) {
+                            reaches(a, defs, busy, names, params, own);
+                        }
+                    }
+                }
+            }
+            Ty::Param { name, .. } => params.extend(own.iter().position(|p| p == name)),
+            Ty::Record { .. } | Ty::Variant { .. } => {}
+        }
+    }
+    let edges: HashMap<&str, Vec<&str>> = file
+        .types
+        .iter()
+        .map(|d| {
+            let mut names = vec![];
+            reaches(&d.ty, &defs, &mut vec![], &mut names, &mut vec![], &d.params);
+            (d.name.as_str(), names)
+        })
+        .collect();
+    for d in &file.types {
+        let (mut seen, mut todo) = (HashSet::new(), edges[d.name.as_str()].clone());
+        while let Some(n) = todo.pop() {
+            if n == d.name {
+                return Err((
+                    d.pos,
+                    format!(
+                        "{} refers to itself without a record field, array element or variant payload in between, \
+                         so decoding it would never end",
+                        d.name
+                    ),
+                ));
+            }
+            if seen.insert(n) {
+                todo.extend(edges.get(n).into_iter().flatten());
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Warnings for uses of deprecated types, outside deprecated types (spec §14).
+fn deprecated_uses(file: &File) -> Vec<Fail> {
+    fn walk(t: &Ty, f: &mut impl FnMut(&str, usize)) {
+        match t {
+            Ty::Name { name, args, pos } => {
+                f(name, *pos);
+                args.iter().for_each(|a| walk(a, f));
+            }
+            Ty::Param { .. } => {}
+            Ty::Record { fields, .. } => fields.iter().for_each(|x| walk(&x.ty, f)),
+            Ty::Variant { cases, .. } => cases.iter().flat_map(|c| &c.payload).for_each(|p| walk(p, f)),
+        }
+    }
+    let deprecated: HashMap<&str, Option<&str>> =
+        file.types.iter().filter_map(|d| deprecation(&d.attrs).map(|why| (d.name.as_str(), why))).collect();
+    let mut out = vec![];
+    for d in file.types.iter().filter(|d| !deprecated.contains_key(d.name.as_str())) {
+        walk(&d.ty, &mut |name, pos| {
+            if let Some(why) = deprecated.get(name) {
+                out.push((
+                    pos,
+                    why.map_or(format!("{name} is deprecated"), |why| format!("{name} is deprecated: {why}")),
+                ));
+            }
+        });
+    }
+    out
 }
 
 // ── spreads ──────────────────────────────────────────────────
 
-type Fail = (usize, String);
+/// What is wrong, at a byte offset.
+pub type Fail = (usize, String);
 
 /// Copies every `...Name` in: a variant gets the named variant's tags, a
 /// record the named record's fields, in the place they are written. Whether
